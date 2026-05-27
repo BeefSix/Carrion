@@ -1,8 +1,9 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/RTSCamera.gd" id="1_camera"]
 [ext_resource type="PackedScene" path="res://scenes/units/Unit.tscn" id="2_unit"]
 [ext_resource type="Script" path="res://scripts/SelectionManager.gd" id="3_sel"]
+[ext_resource type="PackedScene" path="res://scenes/HUD.tscn" id="4_hud"]
 
 [sub_resource type="NavigationPolygon" id="NavigationPolygon_main"]
 vertices = PackedVector2Array(0, 0, 2560, 0, 2560, 2560, 0, 2560)
@@ -48,3 +49,5 @@ body_color = Color(0.25, 0.5, 0.9, 1)
 
 [node name="SelectionManager" type="Node2D" parent="."]
 script = ExtResource("3_sel")
+
+[node name="HUD" parent="." instance=ExtResource("4_hud")]
