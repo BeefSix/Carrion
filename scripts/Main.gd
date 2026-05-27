@@ -8,10 +8,24 @@ const MARGIN := 100.0
 const CP_KEEPOUT_RADIUS := 250.0
 const MIN_SEPARATION := 100.0
 const MAX_ATTEMPTS := 2000
+const DEV_SPEED := 4.0
+const DEV_NOISE_INJECT := 100.0
 
 
 func _ready() -> void:
 	_spawn_lootables()
+
+
+func _input(event: InputEvent) -> void:
+	if not (event is InputEventKey) or not event.pressed or event.echo:
+		return
+	match event.keycode:
+		KEY_F2:
+			Engine.time_scale = DEV_SPEED if is_equal_approx(Engine.time_scale, 1.0) else 1.0
+		KEY_F3:
+			var nf := get_tree().get_first_node_in_group("noise_field")
+			if nf != null:
+				nf.add_noise(get_global_mouse_position(), DEV_NOISE_INJECT)
 
 
 func _spawn_lootables() -> void:

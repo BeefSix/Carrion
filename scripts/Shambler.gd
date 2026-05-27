@@ -1,6 +1,6 @@
 extends "res://scripts/Unit.gd"
 
-enum ZombieState { IDLE, CHASE, ATTACK }
+enum ZombieState { IDLE, INVESTIGATE, CHASE, ATTACK }
 
 const VISION_RANGE := 384.0
 const ATTACK_RANGE := 36.0
@@ -8,11 +8,19 @@ const LOST_TARGET_RANGE := 576.0
 const ATTACK_DAMAGE := 8
 const ATTACK_PERIOD := 1.0
 const RETARGET_INTERVAL := 0.3
+const INVESTIGATE_ARRIVE_RANGE := 60.0
 
 var _zombie_state: int = ZombieState.IDLE
 var _target = null
+var _investigate_target: Vector2 = Vector2.ZERO
 var _attack_cooldown := 0.0
 var _retarget_timer := 0.0
+
+
+func investigate(world_pos: Vector2) -> void:
+	_investigate_target = world_pos
+	_zombie_state = ZombieState.INVESTIGATE
+	_nav.target_position = world_pos
 
 
 func _physics_process(delta: float) -> void:
@@ -30,6 +38,15 @@ func _physics_process(delta: float) -> void:
 			if _target != null:
 				_zombie_state = ZombieState.CHASE
 				_nav.target_position = _target.global_position
+		ZombieState.INVESTIGATE:
+			if _target != null:
+				_zombie_state = ZombieState.CHASE
+				_nav.target_position = _target.global_position
+			elif global_position.distance_to(_investigate_target) <= INVESTIGATE_ARRIVE_RANGE:
+				_zombie_state = ZombieState.IDLE
+				velocity = Vector2.ZERO
+			else:
+				_follow_navigation()
 		ZombieState.CHASE:
 			if _target == null or not is_instance_valid(_target):
 				_zombie_state = ZombieState.IDLE

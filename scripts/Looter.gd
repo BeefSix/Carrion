@@ -91,6 +91,9 @@ func _physics_process(delta: float) -> void:
 func _finish_channel() -> void:
 	if _target_lootable != null and is_instance_valid(_target_lootable) and _target_lootable.has_method("take_salvage"):
 		_carrying = _target_lootable.take_salvage(SALVAGE_PER_TRIP)
+		var nf := get_tree().get_first_node_in_group("noise_field")
+		if nf != null:
+			nf.add_noise(global_position, 25.0)
 	else:
 		_carrying = 0
 	_home_base = _find_nearest_command_post()

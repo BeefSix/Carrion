@@ -5,6 +5,7 @@ extends CanvasLayer
 @onready var _building_title: Label = $BuildingPanel/VBox/Title
 @onready var _action_button: Button = $BuildingPanel/VBox/ActionButton
 @onready var _status_label: Label = $BuildingPanel/VBox/StatusLabel
+@onready var _speed_label: Label = $SpeedIndicator
 
 var _current_building = null
 
@@ -14,6 +15,7 @@ func _ready() -> void:
 	_on_salvage_changed(GameState.salvage)
 	_building_panel.hide()
 	_status_label.visible = false
+	_speed_label.visible = false
 	_action_button.pressed.connect(_on_action_pressed)
 	var sel_mgr := get_tree().get_first_node_in_group("selection_manager")
 	if sel_mgr != null:
@@ -40,6 +42,12 @@ func _on_action_pressed() -> void:
 
 
 func _process(_delta: float) -> void:
+	if is_equal_approx(Engine.time_scale, 1.0):
+		_speed_label.visible = false
+	else:
+		_speed_label.visible = true
+		_speed_label.text = "Speed: %.0fx" % Engine.time_scale
+
 	if _current_building == null or not is_instance_valid(_current_building):
 		return
 	var has_action: bool = true
