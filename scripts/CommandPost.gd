@@ -11,6 +11,11 @@ var _producing := false
 var _produce_timer := 0.0
 
 
+func _ready() -> void:
+	super._ready()
+	add_to_group("command_post")
+
+
 func primary_action() -> void:
 	if _producing:
 		return
@@ -19,6 +24,10 @@ func primary_action() -> void:
 	GameState.spend(LOOTER_COST)
 	_producing = true
 	_produce_timer = LOOTER_BUILD_TIME
+
+
+func has_action() -> bool:
+	return true
 
 
 func get_action_button_text() -> String:

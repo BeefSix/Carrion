@@ -44,17 +44,22 @@ func _die() -> void:
 	queue_free()
 
 
-func _physics_process(_delta: float) -> void:
-	if current_command != Command.MOVE:
-		return
+func _follow_navigation() -> bool:
 	if _nav.is_navigation_finished():
-		current_command = Command.IDLE
 		velocity = Vector2.ZERO
-		return
+		return false
 	var next_pos := _nav.get_next_path_position()
 	var to_next := next_pos - global_position
 	velocity = to_next.normalized() * move_speed
 	move_and_slide()
+	return true
+
+
+func _physics_process(_delta: float) -> void:
+	if current_command != Command.MOVE:
+		return
+	if not _follow_navigation():
+		current_command = Command.IDLE
 
 
 func _draw() -> void:

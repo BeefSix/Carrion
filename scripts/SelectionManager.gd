@@ -28,15 +28,34 @@ func _unhandled_input(event: InputEvent) -> void:
 				_dragging = false
 				queue_redraw()
 		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-			_command_move(get_global_mouse_position())
+			_handle_right_click(get_global_mouse_position())
 	elif event is InputEventMouseMotion and _dragging:
 		queue_redraw()
 
 
-func _command_move(world_pos: Vector2) -> void:
+func _handle_right_click(world_pos: Vector2) -> void:
+	var target_lootable = _find_lootable_at(world_pos)
 	for u in _selected_units:
-		if is_instance_valid(u) and u.has_method("move_to"):
+		if not is_instance_valid(u):
+			continue
+		if target_lootable != null and u.has_method("gather_from"):
+			u.gather_from(target_lootable)
+		elif u.has_method("move_to"):
 			u.move_to(world_pos)
+
+
+func _find_lootable_at(world_pos: Vector2):
+	var space := get_world_2d().direct_space_state
+	var params := PhysicsPointQueryParameters2D.new()
+	params.position = world_pos
+	params.collide_with_areas = false
+	params.collide_with_bodies = true
+	var hits := space.intersect_point(params)
+	for hit in hits:
+		var collider = hit.collider
+		if collider != null and collider.is_in_group("lootable"):
+			return collider
+	return null
 
 
 func _finalize_selection(end_screen: Vector2, end_world: Vector2) -> void:

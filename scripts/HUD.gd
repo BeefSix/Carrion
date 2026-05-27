@@ -40,6 +40,13 @@ func _on_action_pressed() -> void:
 func _process(_delta: float) -> void:
 	if _current_building == null or not is_instance_valid(_current_building):
 		return
+	var has_action: bool = true
+	if _current_building.has_method("has_action"):
+		has_action = _current_building.has_action()
+	if not has_action:
+		_action_button.hide()
+		return
+	_action_button.show()
 	if _current_building.has_method("get_action_button_text"):
 		_action_button.text = _current_building.get_action_button_text()
 	if _current_building.has_method("get_action_available"):

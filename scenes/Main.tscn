@@ -1,9 +1,10 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/RTSCamera.gd" id="1_camera"]
 [ext_resource type="Script" path="res://scripts/SelectionManager.gd" id="3_sel"]
 [ext_resource type="PackedScene" path="res://scenes/HUD.tscn" id="4_hud"]
 [ext_resource type="PackedScene" path="res://scenes/buildings/CommandPost.tscn" id="5_cp"]
+[ext_resource type="PackedScene" path="res://scenes/buildings/Lootable.tscn" id="6_loot"]
 
 [sub_resource type="NavigationPolygon" id="NavigationPolygon_main"]
 vertices = PackedVector2Array(0, 0, 2560, 0, 2560, 2560, 0, 2560)
@@ -34,6 +35,15 @@ script = ExtResource("1_camera")
 
 [node name="CommandPost" parent="." instance=ExtResource("5_cp")]
 position = Vector2(1280, 1280)
+
+[node name="Lootable1" parent="." instance=ExtResource("6_loot")]
+position = Vector2(1500, 1200)
+
+[node name="Lootable2" parent="." instance=ExtResource("6_loot")]
+position = Vector2(1100, 1380)
+
+[node name="Lootable3" parent="." instance=ExtResource("6_loot")]
+position = Vector2(1400, 1450)
 
 [node name="SelectionManager" type="Node2D" parent="."]
 script = ExtResource("3_sel")

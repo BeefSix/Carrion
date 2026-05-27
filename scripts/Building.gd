@@ -30,6 +30,10 @@ func take_damage(amount: int) -> void:
 		_die()
 
 
+func has_action() -> bool:
+	return false
+
+
 func _die() -> void:
 	queue_free()
 
@@ -38,10 +42,11 @@ func _draw() -> void:
 	if selected:
 		var half := size_pixels / 2.0
 		draw_rect(Rect2(-half, size_pixels), Color(1, 1, 0.4), false, 3.0)
-	var bar_width: float = size_pixels.x
-	var bar_height := 4.0
-	var bar_y: float = -size_pixels.y / 2.0 - 10.0
-	var x: float = -bar_width / 2.0
-	draw_rect(Rect2(x, bar_y, bar_width, bar_height), Color(0.15, 0.05, 0.05))
-	var fill_ratio: float = float(current_hp) / float(max_hp) if max_hp > 0 else 0.0
-	draw_rect(Rect2(x, bar_y, bar_width * fill_ratio, bar_height), Color(0.3, 0.8, 0.3))
+	if current_hp < max_hp:
+		var bar_width: float = size_pixels.x
+		var bar_height := 4.0
+		var bar_y: float = -size_pixels.y / 2.0 - 10.0
+		var x: float = -bar_width / 2.0
+		draw_rect(Rect2(x, bar_y, bar_width, bar_height), Color(0.15, 0.05, 0.05))
+		var fill_ratio: float = float(current_hp) / float(max_hp) if max_hp > 0 else 0.0
+		draw_rect(Rect2(x, bar_y, bar_width * fill_ratio, bar_height), Color(0.3, 0.8, 0.3))
