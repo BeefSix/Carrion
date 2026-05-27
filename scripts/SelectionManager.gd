@@ -1,12 +1,19 @@
 class_name SelectionManager
 extends Node2D
 
+signal selection_changed(units: Array, building)
+
 const DRAG_THRESHOLD_PX := 8.0
 
 var _dragging := false
 var _drag_start_world: Vector2
 var _drag_start_screen: Vector2
 var _selected_units: Array = []
+var _selected_building = null
+
+
+func _ready() -> void:
+	add_to_group("selection_manager")
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -50,9 +57,17 @@ func _click_select(world_pos: Vector2) -> void:
 	_clear_selection()
 	for hit in hits:
 		var collider = hit.collider
-		if collider != null and collider.is_in_group("units"):
+		if collider == null:
+			continue
+		if collider.is_in_group("buildings"):
+			_select_building(collider)
+			_emit_change()
+			return
+		if collider.is_in_group("units"):
 			_add_to_selection(collider)
-			break
+			_emit_change()
+			return
+	_emit_change()
 
 
 func _box_select(corner_a: Vector2, corner_b: Vector2) -> void:
@@ -61,6 +76,7 @@ func _box_select(corner_a: Vector2, corner_b: Vector2) -> void:
 	for unit in get_tree().get_nodes_in_group("units"):
 		if rect.has_point(unit.position):
 			_add_to_selection(unit)
+	_emit_change()
 
 
 func _clear_selection() -> void:
@@ -68,6 +84,16 @@ func _clear_selection() -> void:
 		if is_instance_valid(u) and u.has_method("set_selected"):
 			u.set_selected(false)
 	_selected_units.clear()
+	if _selected_building != null and is_instance_valid(_selected_building):
+		if _selected_building.has_method("set_selected"):
+			_selected_building.set_selected(false)
+	_selected_building = null
+
+
+func _select_building(b) -> void:
+	_selected_building = b
+	if b.has_method("set_selected"):
+		b.set_selected(true)
 
 
 func _add_to_selection(u) -> void:
@@ -75,6 +101,10 @@ func _add_to_selection(u) -> void:
 		_selected_units.append(u)
 		if u.has_method("set_selected"):
 			u.set_selected(true)
+
+
+func _emit_change() -> void:
+	selection_changed.emit(_selected_units.duplicate(), _selected_building)
 
 
 func get_selected() -> Array:

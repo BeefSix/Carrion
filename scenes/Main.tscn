@@ -1,9 +1,9 @@
 [gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/RTSCamera.gd" id="1_camera"]
-[ext_resource type="PackedScene" path="res://scenes/units/Unit.tscn" id="2_unit"]
 [ext_resource type="Script" path="res://scripts/SelectionManager.gd" id="3_sel"]
 [ext_resource type="PackedScene" path="res://scenes/HUD.tscn" id="4_hud"]
+[ext_resource type="PackedScene" path="res://scenes/buildings/CommandPost.tscn" id="5_cp"]
 
 [sub_resource type="NavigationPolygon" id="NavigationPolygon_main"]
 vertices = PackedVector2Array(0, 0, 2560, 0, 2560, 2560, 0, 2560)
@@ -32,20 +32,8 @@ limit_right = 2560
 limit_bottom = 2560
 script = ExtResource("1_camera")
 
-[node name="TestUnit" parent="." instance=ExtResource("2_unit")]
+[node name="CommandPost" parent="." instance=ExtResource("5_cp")]
 position = Vector2(1280, 1280)
-max_hp = 60
-body_color = Color(0.25, 0.5, 0.9, 1)
-
-[node name="TestUnit2" parent="." instance=ExtResource("2_unit")]
-position = Vector2(1340, 1280)
-max_hp = 60
-body_color = Color(0.25, 0.5, 0.9, 1)
-
-[node name="TestUnit3" parent="." instance=ExtResource("2_unit")]
-position = Vector2(1220, 1280)
-max_hp = 60
-body_color = Color(0.25, 0.5, 0.9, 1)
 
 [node name="SelectionManager" type="Node2D" parent="."]
 script = ExtResource("3_sel")
