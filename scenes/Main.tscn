@@ -1,7 +1,22 @@
-[gd_scene format=3]
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/RTSCamera.gd" id="1_camera"]
 
 [node name="Main" type="Node2D"]
 
 [node name="Ground" type="Polygon2D" parent="."]
 color = Color(0.35, 0.3, 0.22, 1)
 polygon = PackedVector2Array(0, 0, 2560, 0, 2560, 2560, 0, 2560)
+
+[node name="MapBorder" type="Line2D" parent="."]
+width = 4.0
+default_color = Color(0.7, 0.65, 0.55, 1)
+points = PackedVector2Array(0, 0, 2560, 0, 2560, 2560, 0, 2560, 0, 0)
+
+[node name="Camera" type="Camera2D" parent="."]
+position = Vector2(1280, 1280)
+limit_left = 0
+limit_top = 0
+limit_right = 2560
+limit_bottom = 2560
+script = ExtResource("1_camera")
