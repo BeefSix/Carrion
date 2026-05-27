@@ -10,6 +10,7 @@ enum Command { IDLE, MOVE, ATTACK, GATHER }
 
 var current_hp: int
 var current_command: Command = Command.IDLE
+var selected: bool = false
 
 
 func _ready() -> void:
@@ -24,11 +25,20 @@ func take_damage(amount: int) -> void:
 		_die()
 
 
+func set_selected(value: bool) -> void:
+	if selected == value:
+		return
+	selected = value
+	queue_redraw()
+
+
 func _die() -> void:
 	queue_free()
 
 
 func _draw() -> void:
+	if selected:
+		draw_circle(Vector2.ZERO, 18.0, Color(1, 1, 0.4), false, 2.0, true)
 	var bar_width := 24.0
 	var bar_height := 4.0
 	var bar_y := -20.0

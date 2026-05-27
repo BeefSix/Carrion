@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/RTSCamera.gd" id="1_camera"]
 [ext_resource type="PackedScene" path="res://scenes/units/Unit.tscn" id="2_unit"]
+[ext_resource type="Script" path="res://scripts/SelectionManager.gd" id="3_sel"]
 
 [node name="Main" type="Node2D"]
 
@@ -26,3 +27,16 @@ script = ExtResource("1_camera")
 position = Vector2(1280, 1280)
 max_hp = 60
 body_color = Color(0.25, 0.5, 0.9, 1)
+
+[node name="TestUnit2" parent="." instance=ExtResource("2_unit")]
+position = Vector2(1340, 1280)
+max_hp = 60
+body_color = Color(0.25, 0.5, 0.9, 1)
+
+[node name="TestUnit3" parent="." instance=ExtResource("2_unit")]
+position = Vector2(1220, 1280)
+max_hp = 60
+body_color = Color(0.25, 0.5, 0.9, 1)
+
+[node name="SelectionManager" type="Node2D" parent="."]
+script = ExtResource("3_sel")
