@@ -30,8 +30,24 @@ func take_damage(amount: int) -> void:
 		_die()
 
 
-func has_action() -> bool:
+func get_action_count() -> int:
+	return 0
+
+
+func get_action_text(_idx: int) -> String:
+	return ""
+
+
+func get_action_available(_idx: int) -> bool:
 	return false
+
+
+func do_action(_idx: int) -> void:
+	pass
+
+
+func get_status_text() -> String:
+	return ""
 
 
 func _die() -> void:

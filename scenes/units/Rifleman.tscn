@@ -1,0 +1,24 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/Rifleman.gd" id="1_rifle"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_rifle"]
+size = Vector2(24, 24)
+
+[node name="Rifleman" type="CharacterBody2D" groups=["units", "player_units"]]
+script = ExtResource("1_rifle")
+max_hp = 70
+move_speed = 80.0
+body_color = Color(0.4, 0.55, 0.3, 1)
+
+[node name="Body" type="Polygon2D" parent="."]
+color = Color(1, 1, 1, 1)
+polygon = PackedVector2Array(-12, -12, 12, -12, 12, 12, -12, 12)
+
+[node name="CollisionShape" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_rifle")
+
+[node name="NavigationAgent" type="NavigationAgent2D" parent="."]
+path_desired_distance = 8.0
+target_desired_distance = 8.0
+radius = 12.0

@@ -38,20 +38,23 @@ anchor_left = 1.0
 anchor_top = 0.0
 anchor_right = 1.0
 anchor_bottom = 0.0
-offset_left = -288.0
+offset_left = -304.0
 offset_top = 16.0
 offset_right = -16.0
-offset_bottom = 160.0
+offset_bottom = 220.0
 grow_horizontal = 0
 
 [node name="VBox" type="VBoxContainer" parent="BuildingPanel"]
 
 [node name="Title" type="Label" parent="BuildingPanel/VBox"]
-text = "Building"
+text = "Actor"
 horizontal_alignment = 1
 
 [node name="ActionButton" type="Button" parent="BuildingPanel/VBox"]
-text = "Action"
+text = "Action 1"
+
+[node name="ActionButton2" type="Button" parent="BuildingPanel/VBox"]
+text = "Action 2"
 
 [node name="StatusLabel" type="Label" parent="BuildingPanel/VBox"]
 text = ""

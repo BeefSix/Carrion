@@ -2,7 +2,7 @@ class_name Unit
 extends CharacterBody2D
 
 enum Faction { MILITARY, TRIBAL, ZOMBIE, NEUTRAL }
-enum Command { IDLE, MOVE, ATTACK, GATHER }
+enum Command { IDLE, MOVE, ATTACK, GATHER, CONSTRUCT }
 
 @export var faction: Faction = Faction.MILITARY
 @export var max_hp: int = 100
@@ -62,6 +62,26 @@ func _physics_process(_delta: float) -> void:
 		return
 	if not _follow_navigation():
 		current_command = Command.IDLE
+
+
+func get_action_count() -> int:
+	return 0
+
+
+func get_action_text(_idx: int) -> String:
+	return ""
+
+
+func get_action_available(_idx: int) -> bool:
+	return false
+
+
+func do_action(_idx: int) -> void:
+	pass
+
+
+func get_status_text() -> String:
+	return ""
 
 
 func _draw() -> void:

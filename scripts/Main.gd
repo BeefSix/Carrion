@@ -3,6 +3,7 @@ extends Node2D
 const LOOTABLE_SCENE := preload("res://scenes/buildings/Lootable.tscn")
 const LOOTABLE_COUNT := 30
 const INFESTED_FRACTION := 0.5
+const INFESTED_KEEPOUT_RADIUS := 700.0
 const MAP_SIZE := Vector2(2560, 2560)
 const MARGIN := 100.0
 const CP_KEEPOUT_RADIUS := 250.0
@@ -40,7 +41,8 @@ func _spawn_lootables() -> void:
 			rng.randf_range(MARGIN, MAP_SIZE.x - MARGIN),
 			rng.randf_range(MARGIN, MAP_SIZE.y - MARGIN)
 		)
-		if pos.distance_to(cp_pos) < CP_KEEPOUT_RADIUS:
+		var dist_from_cp := pos.distance_to(cp_pos)
+		if dist_from_cp < CP_KEEPOUT_RADIUS:
 			continue
 		var too_close := false
 		for p in placed:
@@ -52,6 +54,6 @@ func _spawn_lootables() -> void:
 		placed.append(pos)
 		var lootable = LOOTABLE_SCENE.instantiate()
 		lootable.position = pos
-		if rng.randf() < INFESTED_FRACTION:
+		if dist_from_cp >= INFESTED_KEEPOUT_RADIUS and rng.randf() < INFESTED_FRACTION:
 			lootable.is_infested = true
 		add_child(lootable)

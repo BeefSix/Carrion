@@ -1,25 +1,19 @@
-class_name CommandPost
+class_name Barracks
 extends "res://scripts/Building.gd"
 
-const LOOTER_COST := 50
-const LOOTER_BUILD_TIME := 18.0
-const BARRACKS_COST := 200
-const BARRACKS_BUILD_TIME := 50.0
-const LOOTER_SPAWN_OFFSET := Vector2(0, 80)
-const BARRACKS_SPAWN_OFFSET := Vector2(140, 0)
+const RIFLEMAN_COST := 75
+const RIFLEMAN_BUILD_TIME := 25.0
+const HEAVY_GUNNER_COST := 225
+const HEAVY_GUNNER_BUILD_TIME := 40.0
+const SPAWN_OFFSET := Vector2(0, 80)
 
-@export var looter_scene: PackedScene
-@export var barracks_scene: PackedScene
+@export var rifleman_scene: PackedScene
+@export var heavy_gunner_scene: PackedScene
 
 var _producing := false
 var _produce_timer := 0.0
 var _produce_what := ""
 var _queue: Array = []
-
-
-func _ready() -> void:
-	super._ready()
-	add_to_group("command_post")
 
 
 func get_action_count() -> int:
@@ -28,31 +22,31 @@ func get_action_count() -> int:
 
 func get_action_text(idx: int) -> String:
 	if idx == 0:
-		return "Build Looter (%d Salvage)" % LOOTER_COST
+		return "Build Rifleman (%d Salvage)" % RIFLEMAN_COST
 	if idx == 1:
-		return "Build Barracks (%d Salvage)" % BARRACKS_COST
+		return "Build Heavy Gunner (%d Salvage)" % HEAVY_GUNNER_COST
 	return ""
 
 
 func get_action_available(idx: int) -> bool:
 	if idx == 0:
-		return GameState.can_spend(LOOTER_COST)
+		return GameState.can_spend(RIFLEMAN_COST)
 	if idx == 1:
-		return GameState.can_spend(BARRACKS_COST)
+		return GameState.can_spend(HEAVY_GUNNER_COST)
 	return false
 
 
 func do_action(idx: int) -> void:
 	if idx == 0:
-		_queue_item("looter", LOOTER_COST)
+		_queue_item("rifleman", RIFLEMAN_COST)
 	elif idx == 1:
-		_queue_item("barracks", BARRACKS_COST)
+		_queue_item("heavy_gunner", HEAVY_GUNNER_COST)
 
 
 func get_status_text() -> String:
 	if not _producing:
 		return ""
-	var pretty_name: String = "Looter" if _produce_what == "looter" else "Barracks"
+	var pretty_name: String = "Rifleman" if _produce_what == "rifleman" else "Heavy Gunner"
 	var t := "Building %s... %.0fs" % [pretty_name, _produce_timer]
 	if _queue.size() > 0:
 		t += "  •  Queued: %d" % _queue.size()
@@ -72,7 +66,7 @@ func _queue_item(item: String, cost: int) -> void:
 func _start_production(item: String) -> void:
 	_producing = true
 	_produce_what = item
-	_produce_timer = LOOTER_BUILD_TIME if item == "looter" else BARRACKS_BUILD_TIME
+	_produce_timer = RIFLEMAN_BUILD_TIME if item == "rifleman" else HEAVY_GUNNER_BUILD_TIME
 
 
 func _process(delta: float) -> void:
@@ -87,13 +81,13 @@ func _process(delta: float) -> void:
 
 
 func _spawn_item(item: String) -> void:
-	if item == "looter":
-		if looter_scene != null:
-			var l = looter_scene.instantiate()
-			l.position = global_position + LOOTER_SPAWN_OFFSET
-			get_parent().add_child(l)
-	elif item == "barracks":
-		if barracks_scene != null:
-			var b = barracks_scene.instantiate()
-			b.position = global_position + BARRACKS_SPAWN_OFFSET
-			get_parent().add_child(b)
+	var scene: PackedScene = null
+	if item == "rifleman":
+		scene = rifleman_scene
+	elif item == "heavy_gunner":
+		scene = heavy_gunner_scene
+	if scene == null:
+		return
+	var u = scene.instantiate()
+	u.position = global_position + SPAWN_OFFSET
+	get_parent().add_child(u)

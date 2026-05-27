@@ -1,0 +1,23 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/Barracks.gd" id="1_bar"]
+[ext_resource type="PackedScene" path="res://scenes/units/Rifleman.tscn" id="2_rifle"]
+[ext_resource type="PackedScene" path="res://scenes/units/HeavyGunner.tscn" id="3_hg"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_bar"]
+size = Vector2(80, 64)
+
+[node name="Barracks" type="StaticBody2D" groups=["buildings", "barracks"]]
+script = ExtResource("1_bar")
+max_hp = 1500
+body_color = Color(0.4, 0.45, 0.22, 1)
+size_pixels = Vector2(80, 64)
+rifleman_scene = ExtResource("2_rifle")
+heavy_gunner_scene = ExtResource("3_hg")
+
+[node name="Body" type="Polygon2D" parent="."]
+color = Color(1, 1, 1, 1)
+polygon = PackedVector2Array(-40, -32, 40, -32, 40, 32, -40, 32)
+
+[node name="CollisionShape" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_bar")

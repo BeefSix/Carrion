@@ -1,0 +1,24 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/HeavyGunner.gd" id="1_hg"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_hg"]
+size = Vector2(28, 28)
+
+[node name="HeavyGunner" type="CharacterBody2D" groups=["units", "player_units"]]
+script = ExtResource("1_hg")
+max_hp = 100
+move_speed = 64.0
+body_color = Color(0.28, 0.42, 0.2, 1)
+
+[node name="Body" type="Polygon2D" parent="."]
+color = Color(1, 1, 1, 1)
+polygon = PackedVector2Array(-14, -14, 14, -14, 14, 14, -14, 14)
+
+[node name="CollisionShape" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_hg")
+
+[node name="NavigationAgent" type="NavigationAgent2D" parent="."]
+path_desired_distance = 8.0
+target_desired_distance = 8.0
+radius = 14.0

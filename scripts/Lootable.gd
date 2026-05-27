@@ -3,6 +3,7 @@ extends "res://scripts/Building.gd"
 
 const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
 const SHAMBLER_SPAWN_INTERVAL := 60.0
+const FIRST_SPAWN_MIN_DELAY := 30.0
 const INFESTED_BODY_COLOR := Color(0.42, 0.5, 0.3, 1)
 
 @export var starting_salvage: int = 200
@@ -20,7 +21,7 @@ func _ready() -> void:
 		body_color = INFESTED_BODY_COLOR
 		if has_node("Body"):
 			($Body as Polygon2D).color = body_color
-		_spawn_timer = randf() * SHAMBLER_SPAWN_INTERVAL
+		_spawn_timer = randf_range(FIRST_SPAWN_MIN_DELAY, SHAMBLER_SPAWN_INTERVAL)
 
 
 func take_salvage(amount: int) -> int:
