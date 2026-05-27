@@ -5,6 +5,7 @@ enum Faction { MILITARY, TRIBAL, ZOMBIE, NEUTRAL }
 enum Command { IDLE, MOVE, ATTACK, GATHER, CONSTRUCT, FLEE }
 
 const MIN_CORPSE_CHANCE := 0.05
+const ENGAGEMENT_RANGE := 256.0
 
 @export var faction: Faction = Faction.MILITARY
 @export var max_hp: int = 100
@@ -39,9 +40,14 @@ func move_to(world_pos: Vector2) -> void:
 func take_damage(amount: int, attacker = null) -> void:
 	if current_hp <= 0:
 		return
+	var actual: int = min(amount, current_hp)
+	if attacker != null and is_instance_valid(attacker) and "damage_dealt" in attacker:
+		attacker.damage_dealt += float(actual)
 	current_hp = max(0, current_hp - amount)
 	queue_redraw()
 	if current_hp == 0:
+		if attacker != null and is_instance_valid(attacker) and "kills_count" in attacker:
+			attacker.kills_count += 1
 		_die(attacker)
 
 
@@ -54,6 +60,26 @@ func set_selected(value: bool) -> void:
 
 func get_xp_total() -> float:
 	return float(kills_count * 10) + (damage_dealt * 0.1) + (combat_time * 0.5)
+
+
+func _process(delta: float) -> void:
+	if faction == Faction.ZOMBIE:
+		return
+	if _is_engaged():
+		combat_time += delta
+
+
+func _is_engaged() -> bool:
+	for u in get_tree().get_nodes_in_group("units"):
+		if u == self or not is_instance_valid(u):
+			continue
+		if u.faction == faction:
+			continue
+		if u.faction == Faction.NEUTRAL:
+			continue
+		if global_position.distance_to(u.global_position) <= ENGAGEMENT_RANGE:
+			return true
+	return false
 
 
 func _die(attacker = null) -> void:
