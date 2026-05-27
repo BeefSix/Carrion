@@ -207,3 +207,21 @@ func _draw() -> void:
 	var max_eff: int = get_effective_max_hp()
 	var fill_ratio: float = float(current_hp) / float(max_eff) if max_eff > 0 else 0.0
 	draw_rect(Rect2(x, bar_y, bar_width * fill_ratio, bar_height), Color(0.3, 0.8, 0.3))
+	_draw_veterancy_chevrons()
+
+
+func _draw_veterancy_chevrons() -> void:
+	if veterancy_level < 2:
+		return
+	var count: int = veterancy_level - 1
+	var color: Color = Color(0.85, 0.55, 0.2) if veterancy_level == 2 else Color(0.85, 0.85, 0.92)
+	var base_x := 14.0
+	var base_y := -22.0
+	for i in range(count):
+		var y: float = base_y - i * 4.0
+		var pts := PackedVector2Array([
+			Vector2(base_x, y + 3.0),
+			Vector2(base_x + 3.0, y),
+			Vector2(base_x + 6.0, y + 3.0),
+		])
+		draw_polyline(pts, color, 1.6, true)
