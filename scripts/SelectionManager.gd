@@ -82,7 +82,7 @@ func _click_select(world_pos: Vector2) -> void:
 			_select_building(collider)
 			_emit_change()
 			return
-		if collider.is_in_group("units"):
+		if collider.is_in_group("player_units"):
 			_add_to_selection(collider)
 			_emit_change()
 			return
@@ -92,7 +92,7 @@ func _click_select(world_pos: Vector2) -> void:
 func _box_select(corner_a: Vector2, corner_b: Vector2) -> void:
 	var rect := Rect2(corner_a, corner_b - corner_a).abs()
 	_clear_selection()
-	for unit in get_tree().get_nodes_in_group("units"):
+	for unit in get_tree().get_nodes_in_group("player_units"):
 		if rect.has_point(unit.position):
 			_add_to_selection(unit)
 	_emit_change()

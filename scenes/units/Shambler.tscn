@@ -1,22 +1,23 @@
 [gd_scene load_steps=3 format=3]
 
-[ext_resource type="Script" path="res://scripts/Looter.gd" id="1_looter"]
+[ext_resource type="Script" path="res://scripts/Shambler.gd" id="1_shambler"]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_looter"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_shambler"]
 size = Vector2(24, 24)
 
-[node name="Looter" type="CharacterBody2D" groups=["units", "player_units"]]
-script = ExtResource("1_looter")
-max_hp = 60
-move_speed = 96.0
-body_color = Color(0.25, 0.55, 0.95, 1)
+[node name="Shambler" type="CharacterBody2D" groups=["units"]]
+script = ExtResource("1_shambler")
+faction = 2
+max_hp = 40
+move_speed = 48.0
+body_color = Color(0.42, 0.5, 0.22, 1)
 
 [node name="Body" type="Polygon2D" parent="."]
 color = Color(1, 1, 1, 1)
 polygon = PackedVector2Array(-12, -12, 12, -12, 12, 12, -12, 12)
 
 [node name="CollisionShape" type="CollisionShape2D" parent="."]
-shape = SubResource("RectangleShape2D_looter")
+shape = SubResource("RectangleShape2D_shambler")
 
 [node name="NavigationAgent" type="NavigationAgent2D" parent="."]
 path_desired_distance = 8.0

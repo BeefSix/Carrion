@@ -27,6 +27,8 @@ func move_to(world_pos: Vector2) -> void:
 
 
 func take_damage(amount: int) -> void:
+	if current_hp <= 0:
+		return
 	current_hp = max(0, current_hp - amount)
 	queue_redraw()
 	if current_hp == 0:
