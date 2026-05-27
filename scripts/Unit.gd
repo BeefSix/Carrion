@@ -7,15 +7,23 @@ enum Command { IDLE, MOVE, ATTACK, GATHER }
 @export var faction: Faction = Faction.MILITARY
 @export var max_hp: int = 100
 @export var body_color: Color = Color.WHITE
+@export var move_speed: float = 96.0
 
 var current_hp: int
 var current_command: Command = Command.IDLE
 var selected: bool = false
 
+@onready var _nav: NavigationAgent2D = $NavigationAgent
+
 
 func _ready() -> void:
 	current_hp = max_hp
 	($Body as Polygon2D).color = body_color
+
+
+func move_to(world_pos: Vector2) -> void:
+	_nav.target_position = world_pos
+	current_command = Command.MOVE
 
 
 func take_damage(amount: int) -> void:
@@ -34,6 +42,19 @@ func set_selected(value: bool) -> void:
 
 func _die() -> void:
 	queue_free()
+
+
+func _physics_process(_delta: float) -> void:
+	if current_command != Command.MOVE:
+		return
+	if _nav.is_navigation_finished():
+		current_command = Command.IDLE
+		velocity = Vector2.ZERO
+		return
+	var next_pos := _nav.get_next_path_position()
+	var to_next := next_pos - global_position
+	velocity = to_next.normalized() * move_speed
+	move_and_slide()
 
 
 func _draw() -> void:
