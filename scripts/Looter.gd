@@ -1,7 +1,17 @@
 class_name Looter
 extends "res://scripts/Unit.gd"
 
-enum Sub { NONE, HUNT_APPROACH, HUNT_FIRE, POST_KILL_SEARCH, RETURN_HOME, GATHER_APPROACH, GATHER_CHANNEL, GATHER_RETURN }
+enum Sub {
+	NONE,
+	HUNT_APPROACH,
+	HUNT_FIRE,
+	RETURN_HOME,
+	RETURN_TO_HUNT,
+	SEARCH,
+	GATHER_APPROACH,
+	GATHER_CHANNEL,
+	GATHER_RETURN,
+}
 
 const MAGNUM_DAMAGE := 22
 const MAGNUM_PERIOD := 2.5
@@ -10,13 +20,15 @@ const MAGNUM_NOISE := 20.0
 const HUNT_VISION := 384.0
 const SALVAGE_PER_KILL := 12
 const SALVAGE_PER_LOOT_TRIP := 25
+const CARRY_CAP := 12
 const CHANNEL_TIME := 3.0
 const INTERACTION_RANGE := 48.0
+const KILL_AREA_ARRIVE_RANGE := 80.0
 const AVOID_RANGE := 160.0
 const RETARGET_INTERVAL := 0.3
-const POST_KILL_SEARCH_DURATION := 6.0
-const POST_KILL_SEARCH_RADIUS := 150.0
-const POST_KILL_WANDER_INTERVAL := 1.5
+const SEARCH_DURATION := 6.0
+const SEARCH_RADIUS := 150.0
+const SEARCH_WANDER_INTERVAL := 1.5
 
 var _sub: Sub = Sub.NONE
 var _target_zombie = null
@@ -27,7 +39,7 @@ var _attack_cooldown := 0.0
 var _channel_timer := 0.0
 var _retarget_timer := 0.0
 
-var _search_kill_pos: Vector2 = Vector2.ZERO
+var _last_kill_pos: Vector2 = Vector2.ZERO
 var _search_timer := 0.0
 var _search_wander_timer := 0.0
 
@@ -44,10 +56,7 @@ func gather_from(lootable) -> void:
 
 func move_to(world_pos: Vector2) -> void:
 	super.move_to(world_pos)
-	_cancel_auto()
-
-
-func _cancel_auto() -> void:
+	# Preserve _last_kill_pos so the cycle resumes after the manual detour.
 	_sub = Sub.NONE
 	_target_zombie = null
 	_target_lootable = null
@@ -63,20 +72,19 @@ func _physics_process(delta: float) -> void:
 		return
 
 	if _sub == Sub.NONE:
-		if _carrying > 0:
-			_start_return_home()
-		else:
-			_try_start_auto_hunt()
+		_pick_next_action()
 
 	match _sub:
 		Sub.HUNT_APPROACH:
 			_tick_hunt_approach()
 		Sub.HUNT_FIRE:
-			_tick_hunt_fire(delta)
-		Sub.POST_KILL_SEARCH:
-			_tick_post_kill_search(delta)
+			_tick_hunt_fire()
 		Sub.RETURN_HOME:
 			_tick_return_home()
+		Sub.RETURN_TO_HUNT:
+			_tick_return_to_hunt()
+		Sub.SEARCH:
+			_tick_search(delta)
 		Sub.GATHER_APPROACH:
 			_tick_gather_approach()
 		Sub.GATHER_CHANNEL:
@@ -85,6 +93,16 @@ func _physics_process(delta: float) -> void:
 			_tick_gather_return()
 		_:
 			velocity = Vector2.ZERO
+
+
+func _pick_next_action() -> void:
+	if _carrying > 0:
+		_start_return_home()
+		return
+	if _last_kill_pos != Vector2.ZERO:
+		_start_return_to_hunt()
+		return
+	_try_start_auto_hunt()
 
 
 func _try_start_auto_hunt() -> void:
@@ -106,6 +124,20 @@ func _start_return_home() -> void:
 	_nav.target_position = _home_base.position
 
 
+func _start_return_to_hunt() -> void:
+	if global_position.distance_to(_last_kill_pos) <= KILL_AREA_ARRIVE_RANGE:
+		_enter_search()
+		return
+	_sub = Sub.RETURN_TO_HUNT
+	_nav.target_position = _last_kill_pos
+
+
+func _enter_search() -> void:
+	_sub = Sub.SEARCH
+	_search_timer = SEARCH_DURATION
+	_search_wander_timer = 0.0
+
+
 func _tick_hunt_approach() -> void:
 	if _target_zombie == null or not is_instance_valid(_target_zombie):
 		_sub = Sub.NONE
@@ -121,7 +153,7 @@ func _tick_hunt_approach() -> void:
 	_follow_navigation()
 
 
-func _tick_hunt_fire(_delta: float) -> void:
+func _tick_hunt_fire() -> void:
 	if _target_zombie == null or not is_instance_valid(_target_zombie):
 		_sub = Sub.NONE
 		return
@@ -136,37 +168,11 @@ func _tick_hunt_fire(_delta: float) -> void:
 		var was_alive: bool = _target_zombie.current_hp > 0
 		_target_zombie.take_damage(MAGNUM_DAMAGE, self)
 		if was_alive and (not is_instance_valid(_target_zombie) or _target_zombie.current_hp <= 0):
-			_carrying += SALVAGE_PER_KILL
-			_search_kill_pos = global_position
-			_search_timer = POST_KILL_SEARCH_DURATION
-			_search_wander_timer = 0.0
+			_carrying = min(_carrying + SALVAGE_PER_KILL, CARRY_CAP)
+			_last_kill_pos = global_position
 			_target_zombie = null
-			_sub = Sub.POST_KILL_SEARCH
-
-
-func _tick_post_kill_search(delta: float) -> void:
-	_search_timer -= delta
-	var z = _find_nearest_zombie_in_range(HUNT_VISION)
-	if z != null:
-		_target_zombie = z
-		_sub = Sub.HUNT_APPROACH
-		_nav.target_position = z.global_position
-		return
-	if _search_timer <= 0.0:
-		_sub = Sub.NONE
-		return
-	_search_wander_timer -= delta
-	if _search_wander_timer <= 0.0:
-		_search_wander_timer = POST_KILL_WANDER_INTERVAL
-		var offset := Vector2(randf_range(-POST_KILL_SEARCH_RADIUS, POST_KILL_SEARCH_RADIUS), randf_range(-POST_KILL_SEARCH_RADIUS, POST_KILL_SEARCH_RADIUS))
-		var target: Vector2 = _search_kill_pos + offset
-		target.x = clamp(target.x, 50.0, 2510.0)
-		target.y = clamp(target.y, 50.0, 2510.0)
-		_nav.target_position = target
-	if not _nav.is_navigation_finished():
-		_follow_navigation()
-	else:
-		velocity = Vector2.ZERO
+			# Carry cap forces immediate return — no lingering after kill.
+			_start_return_home()
 
 
 func _tick_return_home() -> void:
@@ -181,7 +187,59 @@ func _tick_return_home() -> void:
 		_sub = Sub.NONE
 		velocity = Vector2.ZERO
 		return
+	_try_defensive_fire()
 	_avoidant_move_to(_home_base.position)
+
+
+func _try_defensive_fire() -> void:
+	if _attack_cooldown > 0.0:
+		return
+	var z = _find_nearest_zombie_in_range(MAGNUM_RANGE)
+	if z == null:
+		return
+	_attack_cooldown = MAGNUM_PERIOD
+	_emit_magnum_noise()
+	# Defensive kills don't increase carry — already at cap.
+	z.take_damage(MAGNUM_DAMAGE, self)
+
+
+func _tick_return_to_hunt() -> void:
+	var z = _find_nearest_zombie_in_range(HUNT_VISION)
+	if z != null:
+		_target_zombie = z
+		_sub = Sub.HUNT_APPROACH
+		_nav.target_position = z.global_position
+		return
+	if global_position.distance_to(_last_kill_pos) <= KILL_AREA_ARRIVE_RANGE:
+		_enter_search()
+		return
+	_follow_navigation()
+
+
+func _tick_search(delta: float) -> void:
+	_search_timer -= delta
+	var z = _find_nearest_zombie_in_range(HUNT_VISION)
+	if z != null:
+		_target_zombie = z
+		_sub = Sub.HUNT_APPROACH
+		_nav.target_position = z.global_position
+		return
+	if _search_timer <= 0.0:
+		_sub = Sub.NONE
+		velocity = Vector2.ZERO
+		return
+	_search_wander_timer -= delta
+	if _search_wander_timer <= 0.0:
+		_search_wander_timer = SEARCH_WANDER_INTERVAL
+		var offset := Vector2(randf_range(-SEARCH_RADIUS, SEARCH_RADIUS), randf_range(-SEARCH_RADIUS, SEARCH_RADIUS))
+		var t: Vector2 = _last_kill_pos + offset
+		t.x = clamp(t.x, 50.0, 2510.0)
+		t.y = clamp(t.y, 50.0, 2510.0)
+		_nav.target_position = t
+	if not _nav.is_navigation_finished():
+		_follow_navigation()
+	else:
+		velocity = Vector2.ZERO
 
 
 func _tick_gather_approach() -> void:
