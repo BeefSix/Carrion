@@ -18,6 +18,10 @@ var _retarget_timer := 0.0
 
 
 func investigate(world_pos: Vector2) -> void:
+	if _zombie_state == ZombieState.CHASE or _zombie_state == ZombieState.ATTACK:
+		return
+	if _zombie_state == ZombieState.INVESTIGATE and _investigate_target.distance_to(world_pos) < 50.0:
+		return
 	_investigate_target = world_pos
 	_zombie_state = ZombieState.INVESTIGATE
 	_nav.target_position = world_pos

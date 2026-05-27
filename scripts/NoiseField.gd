@@ -1,39 +1,47 @@
 extends Node2D
 
-const CELL_SIZE := 256.0
-const GRID_DIM := 10
-const MAP_SIZE := Vector2(2560, 2560)
 const NOISE_DECAY_RATE := 5.0
+const REACH_PER_NOISE := 2.0
+const MERGE_RADIUS := 96.0
 const HORDE_THRESHOLD := 200.0
 const HORDE_SIZE := 15
-const HORDE_COOLDOWN := 30.0
+const HORDE_COOLDOWN := 3.0
+const MIN_INTENSITY := 1.0
+const ATTRACT_INTERVAL := 0.4
+const MAP_SIZE := Vector2(2560, 2560)
 const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
 
-var _cells: Array = []
-var _cell_cooldowns: Array = []
+
+class Emitter:
+	var position: Vector2
+	var intensity: float = 0.0
+	var horde_cooldown: float = 0.0
+
+	func _init(p: Vector2, m: float) -> void:
+		position = p
+		intensity = m
+
+
+var _emitters: Array = []
 var _debug_visible := false
+var _attract_timer := 0.0
 var _debug_font: Font
 
 
 func _ready() -> void:
 	add_to_group("noise_field")
-	for x in range(GRID_DIM):
-		var col: Array = []
-		var col_cd: Array = []
-		for y in range(GRID_DIM):
-			col.append(0.0)
-			col_cd.append(0.0)
-		_cells.append(col)
-		_cell_cooldowns.append(col_cd)
 	_debug_font = ThemeDB.fallback_font
 
 
 func add_noise(world_pos: Vector2, magnitude: float) -> void:
-	var cx: int = int(world_pos.x / CELL_SIZE)
-	var cy: int = int(world_pos.y / CELL_SIZE)
-	cx = clamp(cx, 0, GRID_DIM - 1)
-	cy = clamp(cy, 0, GRID_DIM - 1)
-	_cells[cx][cy] += magnitude
+	for e in _emitters:
+		if e.position.distance_to(world_pos) <= MERGE_RADIUS:
+			var total: float = e.intensity + magnitude
+			if total > 0.0:
+				e.position = (e.position * e.intensity + world_pos * magnitude) / total
+			e.intensity = total
+			return
+	_emitters.append(Emitter.new(world_pos, magnitude))
 
 
 func _input(event: InputEvent) -> void:
@@ -44,22 +52,52 @@ func _input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	var decay: float = NOISE_DECAY_RATE * delta
-	for x in range(GRID_DIM):
-		for y in range(GRID_DIM):
-			if _cells[x][y] > 0.0:
-				_cells[x][y] = max(0.0, _cells[x][y] - decay)
-			if _cell_cooldowns[x][y] > 0.0:
-				_cell_cooldowns[x][y] = max(0.0, _cell_cooldowns[x][y] - delta)
-			if _cells[x][y] >= HORDE_THRESHOLD and _cell_cooldowns[x][y] <= 0.0:
-				_trigger_horde(x, y)
-				_cells[x][y] = 0.0
-				_cell_cooldowns[x][y] = HORDE_COOLDOWN
+	var to_remove: Array = []
+	for i in range(_emitters.size()):
+		var e = _emitters[i]
+		e.intensity = max(0.0, e.intensity - decay)
+		e.horde_cooldown = max(0.0, e.horde_cooldown - delta)
+		if e.intensity >= HORDE_THRESHOLD and e.horde_cooldown <= 0.0:
+			_trigger_horde(e.position)
+			e.intensity = 0.0
+			e.horde_cooldown = HORDE_COOLDOWN
+		if e.intensity < MIN_INTENSITY:
+			to_remove.append(i)
+
+	to_remove.reverse()
+	for i in to_remove:
+		_emitters.remove_at(i)
+
+	_attract_timer -= delta
+	if _attract_timer <= 0.0:
+		_attract_timer = ATTRACT_INTERVAL
+		_attract_zombies()
+
 	if _debug_visible:
 		queue_redraw()
 
 
-func _trigger_horde(cx: int, cy: int) -> void:
-	var target := Vector2(cx * CELL_SIZE + CELL_SIZE * 0.5, cy * CELL_SIZE + CELL_SIZE * 0.5)
+func _attract_zombies() -> void:
+	for u in get_tree().get_nodes_in_group("units"):
+		if not is_instance_valid(u):
+			continue
+		if u.faction != 2:  # Faction.ZOMBIE = 2
+			continue
+		if not u.has_method("investigate"):
+			continue
+		var best_emitter = null
+		var best_intensity: float = 0.0
+		for e in _emitters:
+			var reach: float = e.intensity * REACH_PER_NOISE
+			var d: float = u.global_position.distance_to(e.position)
+			if d <= reach and e.intensity > best_intensity:
+				best_intensity = e.intensity
+				best_emitter = e
+		if best_emitter != null:
+			u.investigate(best_emitter.position)
+
+
+func _trigger_horde(target: Vector2) -> void:
 	var spawn_pos := _pick_edge_spawn(target)
 	for i in range(HORDE_SIZE):
 		var jitter := Vector2(randf_range(-60, 60), randf_range(-60, 60))
@@ -90,17 +128,12 @@ func _pick_edge_spawn(target: Vector2) -> Vector2:
 func _draw() -> void:
 	if not _debug_visible:
 		return
-	for x in range(GRID_DIM):
-		for y in range(GRID_DIM):
-			var noise: float = _cells[x][y]
-			var rect := Rect2(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE)
-			if noise > 0.0:
-				var ratio: float = clamp(noise / HORDE_THRESHOLD, 0.0, 1.0)
-				draw_rect(rect, Color(1, 0.4, 0.1, ratio * 0.5), true)
-			var border_alpha: float = 0.25
-			if noise >= HORDE_THRESHOLD * 0.75:
-				border_alpha = 0.9
-			draw_rect(rect, Color(1, 0.4, 0.1, border_alpha), false, 1.0)
-			if noise >= 10.0 and _debug_font != null:
-				var text := "%d" % int(noise)
-				draw_string(_debug_font, rect.position + Vector2(8, 20), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 0.9, 0.6, 0.95))
+	for e in _emitters:
+		var reach: float = e.intensity * REACH_PER_NOISE
+		var ratio: float = clamp(e.intensity / HORDE_THRESHOLD, 0.0, 1.0)
+		draw_circle(e.position, reach, Color(1, 0.4, 0.1, 0.13), true, -1, true)
+		var ring_alpha: float = 0.45 + 0.5 * ratio
+		draw_arc(e.position, reach, 0.0, TAU, 56, Color(1, 0.4, 0.1, ring_alpha), 2.5, true)
+		if _debug_font != null:
+			var label := "%d" % int(e.intensity)
+			draw_string(_debug_font, e.position + Vector2(-12, -reach - 6), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 0.9, 0.6, 0.95))
