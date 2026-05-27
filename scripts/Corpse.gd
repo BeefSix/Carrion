@@ -1,11 +1,17 @@
 extends Node2D
 
 const SIZE := Vector2(16, 16)
-const ENHANCED_BODY_COLOR := Color(0.5, 0.28, 0.18, 1)
+const BASELINE_ENHANCED_COLOR := Color(0.5, 0.28, 0.18, 1)
+const L2_ENHANCED_COLOR := Color(0.78, 0.22, 0.14, 1)
+const L3_ENHANCED_COLOR := Color(0.95, 0.18, 0.08, 1)
+
+const VETERAN_HP_SCALE := { 1: 1.0, 2: 1.25, 3: 1.5 }
+const VETERAN_DAMAGE_SCALE := { 1: 1.0, 2: 1.15, 3: 1.25 }
 
 @export var original_max_hp: int = 60
 @export var return_delay: float = 42.0
 @export var was_military: bool = false
+@export var veterancy_at_death: int = 1
 
 var _timer := 0.0
 var _initial_delay := 0.0
@@ -33,11 +39,24 @@ func _rise() -> void:
 		return
 	var z = shambler_scene.instantiate()
 	z.position = position
-	z.max_hp = original_max_hp
+	var hp_scale: float = VETERAN_HP_SCALE.get(veterancy_at_death, 1.0)
+	z.max_hp = int(round(float(original_max_hp) * hp_scale))
 	if was_military:
-		z.body_color = ENHANCED_BODY_COLOR
+		z.body_color = _color_for_level(veterancy_at_death)
+	if "damage_mult" in z:
+		z.damage_mult = VETERAN_DAMAGE_SCALE.get(veterancy_at_death, 1.0)
 	get_parent().add_child(z)
 	queue_free()
+
+
+func _color_for_level(level: int) -> Color:
+	match level:
+		3:
+			return L3_ENHANCED_COLOR
+		2:
+			return L2_ENHANCED_COLOR
+		_:
+			return BASELINE_ENHANCED_COLOR
 
 
 func _draw() -> void:
@@ -49,4 +68,9 @@ func _draw() -> void:
 	var x: float = -bar_width / 2.0
 	var fill_ratio: float = clamp(_timer / _initial_delay, 0.0, 1.0) if _initial_delay > 0.0 else 0.0
 	draw_rect(Rect2(x, bar_y, bar_width, bar_height), Color(0.25, 0.05, 0.05))
-	draw_rect(Rect2(x, bar_y, bar_width * fill_ratio, bar_height), Color(0.7, 0.3, 0.18))
+	var bar_color: Color = Color(0.7, 0.3, 0.18)
+	if veterancy_at_death == 2:
+		bar_color = Color(0.85, 0.3, 0.15)
+	elif veterancy_at_death >= 3:
+		bar_color = Color(1.0, 0.3, 0.1)
+	draw_rect(Rect2(x, bar_y, bar_width * fill_ratio, bar_height), bar_color)

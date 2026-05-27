@@ -154,6 +154,7 @@ func _spawn_corpse() -> void:
 	c.position = global_position
 	c.original_max_hp = max_hp
 	c.was_military = (faction == Faction.MILITARY)
+	c.veterancy_at_death = veterancy_level
 	c.return_delay = 30.0 + float(max_hp) / 5.0
 	get_parent().add_child(c)
 
