@@ -1,19 +1,22 @@
 class_name Looter
 extends "res://scripts/Unit.gd"
 
-enum Sub { NONE, HUNT_APPROACH, HUNT_FIRE, RETURN_HOME, GATHER_APPROACH, GATHER_CHANNEL, GATHER_RETURN }
+enum Sub { NONE, HUNT_APPROACH, HUNT_FIRE, POST_KILL_SEARCH, RETURN_HOME, GATHER_APPROACH, GATHER_CHANNEL, GATHER_RETURN }
 
-const MAGNUM_DAMAGE := 40
-const MAGNUM_PERIOD := 2.0
+const MAGNUM_DAMAGE := 22
+const MAGNUM_PERIOD := 2.5
 const MAGNUM_RANGE := 128.0
-const MAGNUM_NOISE := 15.0
+const MAGNUM_NOISE := 20.0
 const HUNT_VISION := 384.0
-const SALVAGE_PER_KILL := 25
+const SALVAGE_PER_KILL := 12
 const SALVAGE_PER_LOOT_TRIP := 25
 const CHANNEL_TIME := 3.0
 const INTERACTION_RANGE := 48.0
 const AVOID_RANGE := 160.0
 const RETARGET_INTERVAL := 0.3
+const POST_KILL_SEARCH_DURATION := 6.0
+const POST_KILL_SEARCH_RADIUS := 150.0
+const POST_KILL_WANDER_INTERVAL := 1.5
 
 var _sub: Sub = Sub.NONE
 var _target_zombie = null
@@ -23,6 +26,10 @@ var _carrying := 0
 var _attack_cooldown := 0.0
 var _channel_timer := 0.0
 var _retarget_timer := 0.0
+
+var _search_kill_pos: Vector2 = Vector2.ZERO
+var _search_timer := 0.0
+var _search_wander_timer := 0.0
 
 
 func gather_from(lootable) -> void:
@@ -66,6 +73,8 @@ func _physics_process(delta: float) -> void:
 			_tick_hunt_approach()
 		Sub.HUNT_FIRE:
 			_tick_hunt_fire(delta)
+		Sub.POST_KILL_SEARCH:
+			_tick_post_kill_search(delta)
 		Sub.RETURN_HOME:
 			_tick_return_home()
 		Sub.GATHER_APPROACH:
@@ -128,8 +137,36 @@ func _tick_hunt_fire(_delta: float) -> void:
 		_target_zombie.take_damage(MAGNUM_DAMAGE, self)
 		if was_alive and (not is_instance_valid(_target_zombie) or _target_zombie.current_hp <= 0):
 			_carrying += SALVAGE_PER_KILL
+			_search_kill_pos = global_position
+			_search_timer = POST_KILL_SEARCH_DURATION
+			_search_wander_timer = 0.0
 			_target_zombie = null
-			_sub = Sub.NONE
+			_sub = Sub.POST_KILL_SEARCH
+
+
+func _tick_post_kill_search(delta: float) -> void:
+	_search_timer -= delta
+	var z = _find_nearest_zombie_in_range(HUNT_VISION)
+	if z != null:
+		_target_zombie = z
+		_sub = Sub.HUNT_APPROACH
+		_nav.target_position = z.global_position
+		return
+	if _search_timer <= 0.0:
+		_sub = Sub.NONE
+		return
+	_search_wander_timer -= delta
+	if _search_wander_timer <= 0.0:
+		_search_wander_timer = POST_KILL_WANDER_INTERVAL
+		var offset := Vector2(randf_range(-POST_KILL_SEARCH_RADIUS, POST_KILL_SEARCH_RADIUS), randf_range(-POST_KILL_SEARCH_RADIUS, POST_KILL_SEARCH_RADIUS))
+		var target: Vector2 = _search_kill_pos + offset
+		target.x = clamp(target.x, 50.0, 2510.0)
+		target.y = clamp(target.y, 50.0, 2510.0)
+		_nav.target_position = target
+	if not _nav.is_navigation_finished():
+		_follow_navigation()
+	else:
+		velocity = Vector2.ZERO
 
 
 func _tick_return_home() -> void:
