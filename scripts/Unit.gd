@@ -4,12 +4,11 @@ extends CharacterBody2D
 enum Faction { MILITARY, TRIBAL, ZOMBIE, NEUTRAL }
 enum Command { IDLE, MOVE, ATTACK, GATHER, CONSTRUCT, FLEE }
 
-const CORPSE_SCENE := preload("res://scenes/Corpse.tscn")
-
 @export var faction: Faction = Faction.MILITARY
 @export var max_hp: int = 100
 @export var body_color: Color = Color.WHITE
 @export var move_speed: float = 96.0
+@export var clean_kills: bool = false
 
 var current_hp: int
 var current_command: Command = Command.IDLE
@@ -28,13 +27,13 @@ func move_to(world_pos: Vector2) -> void:
 	current_command = Command.MOVE
 
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, attacker = null) -> void:
 	if current_hp <= 0:
 		return
 	current_hp = max(0, current_hp - amount)
 	queue_redraw()
 	if current_hp == 0:
-		_die()
+		_die(attacker)
 
 
 func set_selected(value: bool) -> void:
@@ -44,18 +43,26 @@ func set_selected(value: bool) -> void:
 	queue_redraw()
 
 
-func _die() -> void:
-	if faction == Faction.MILITARY:
+func _die(attacker = null) -> void:
+	if _should_leave_corpse(attacker):
 		_spawn_corpse()
 	queue_free()
 
 
+func _should_leave_corpse(attacker) -> bool:
+	if attacker != null and "clean_kills" in attacker and attacker.clean_kills:
+		return false
+	return faction == Faction.MILITARY or faction == Faction.ZOMBIE
+
+
 func _spawn_corpse() -> void:
-	if CORPSE_SCENE == null:
+	var corpse_scene: PackedScene = load("res://scenes/Corpse.tscn")
+	if corpse_scene == null:
 		return
-	var c = CORPSE_SCENE.instantiate()
+	var c = corpse_scene.instantiate()
 	c.position = global_position
 	c.original_max_hp = max_hp
+	c.was_military = (faction == Faction.MILITARY)
 	c.return_delay = 30.0 + float(max_hp) / 5.0
 	get_parent().add_child(c)
 

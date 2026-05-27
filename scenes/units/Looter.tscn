@@ -10,6 +10,7 @@ script = ExtResource("1_looter")
 max_hp = 60
 move_speed = 96.0
 body_color = Color(0.25, 0.55, 0.95, 1)
+clean_kills = true
 
 [node name="Body" type="Polygon2D" parent="."]
 color = Color(1, 1, 1, 1)

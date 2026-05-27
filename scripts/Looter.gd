@@ -1,51 +1,219 @@
 class_name Looter
 extends "res://scripts/Unit.gd"
 
-enum GatherState { NONE, APPROACH_LOOTABLE, CHANNELING, RETURN_HOME, DEPOSIT }
+enum Sub { NONE, HUNT_APPROACH, HUNT_FIRE, RETURN_HOME, GATHER_APPROACH, GATHER_CHANNEL, GATHER_RETURN }
 
+const MAGNUM_DAMAGE := 40
+const MAGNUM_PERIOD := 2.0
+const MAGNUM_RANGE := 128.0
+const MAGNUM_NOISE := 15.0
+const HUNT_VISION := 384.0
+const SALVAGE_PER_KILL := 25
+const SALVAGE_PER_LOOT_TRIP := 25
 const CHANNEL_TIME := 3.0
-const SALVAGE_PER_TRIP := 25
 const INTERACTION_RANGE := 48.0
-const FLEE_DETECT_RANGE := 160.0
+const AVOID_RANGE := 160.0
+const RETARGET_INTERVAL := 0.3
 
-var _gather_state: int = GatherState.NONE
+var _sub: Sub = Sub.NONE
+var _target_zombie = null
 var _target_lootable = null
 var _home_base = null
-var _channel_timer := 0.0
 var _carrying := 0
+var _attack_cooldown := 0.0
+var _channel_timer := 0.0
+var _retarget_timer := 0.0
 
 
 func gather_from(lootable) -> void:
 	if lootable == null or not is_instance_valid(lootable):
 		return
 	_target_lootable = lootable
-	_carrying = 0
-	_gather_state = GatherState.APPROACH_LOOTABLE
+	_target_zombie = null
+	_sub = Sub.GATHER_APPROACH
 	current_command = Command.GATHER
 	_nav.target_position = lootable.position
 
 
 func move_to(world_pos: Vector2) -> void:
 	super.move_to(world_pos)
-	_stop_gather()
+	_cancel_auto()
 
 
-func _stop_gather() -> void:
-	_gather_state = GatherState.NONE
+func _cancel_auto() -> void:
+	_sub = Sub.NONE
+	_target_zombie = null
 	_target_lootable = null
-	_home_base = null
-	_channel_timer = 0.0
 
 
-func _find_nearest_command_post():
-	var nearest = null
-	var nearest_dist := INF
-	for cp in get_tree().get_nodes_in_group("command_post"):
-		var dist: float = global_position.distance_to(cp.position)
-		if dist < nearest_dist:
-			nearest_dist = dist
-			nearest = cp
-	return nearest
+func _physics_process(delta: float) -> void:
+	_attack_cooldown = max(0.0, _attack_cooldown - delta)
+	_retarget_timer = max(0.0, _retarget_timer - delta)
+
+	if current_command == Command.MOVE:
+		if not _follow_navigation():
+			current_command = Command.IDLE
+		return
+
+	if _sub == Sub.NONE:
+		if _carrying > 0:
+			_start_return_home()
+		else:
+			_try_start_auto_hunt()
+
+	match _sub:
+		Sub.HUNT_APPROACH:
+			_tick_hunt_approach()
+		Sub.HUNT_FIRE:
+			_tick_hunt_fire(delta)
+		Sub.RETURN_HOME:
+			_tick_return_home()
+		Sub.GATHER_APPROACH:
+			_tick_gather_approach()
+		Sub.GATHER_CHANNEL:
+			_tick_gather_channel(delta)
+		Sub.GATHER_RETURN:
+			_tick_gather_return()
+		_:
+			velocity = Vector2.ZERO
+
+
+func _try_start_auto_hunt() -> void:
+	var z = _find_nearest_zombie_in_range(HUNT_VISION)
+	if z == null:
+		velocity = Vector2.ZERO
+		return
+	_target_zombie = z
+	_sub = Sub.HUNT_APPROACH
+	_nav.target_position = z.global_position
+
+
+func _start_return_home() -> void:
+	_home_base = _find_nearest_command_post()
+	if _home_base == null:
+		velocity = Vector2.ZERO
+		return
+	_sub = Sub.RETURN_HOME
+	_nav.target_position = _home_base.position
+
+
+func _tick_hunt_approach() -> void:
+	if _target_zombie == null or not is_instance_valid(_target_zombie):
+		_sub = Sub.NONE
+		return
+	var dist := global_position.distance_to(_target_zombie.global_position)
+	if dist <= MAGNUM_RANGE:
+		_sub = Sub.HUNT_FIRE
+		velocity = Vector2.ZERO
+		return
+	if _retarget_timer <= 0.0:
+		_retarget_timer = RETARGET_INTERVAL
+		_nav.target_position = _target_zombie.global_position
+	_follow_navigation()
+
+
+func _tick_hunt_fire(_delta: float) -> void:
+	if _target_zombie == null or not is_instance_valid(_target_zombie):
+		_sub = Sub.NONE
+		return
+	velocity = Vector2.ZERO
+	var dist := global_position.distance_to(_target_zombie.global_position)
+	if dist > MAGNUM_RANGE * 1.2:
+		_sub = Sub.HUNT_APPROACH
+		return
+	if _attack_cooldown <= 0.0:
+		_attack_cooldown = MAGNUM_PERIOD
+		_emit_magnum_noise()
+		var was_alive: bool = _target_zombie.current_hp > 0
+		_target_zombie.take_damage(MAGNUM_DAMAGE, self)
+		if was_alive and (not is_instance_valid(_target_zombie) or _target_zombie.current_hp <= 0):
+			_carrying += SALVAGE_PER_KILL
+			_target_zombie = null
+			_sub = Sub.NONE
+
+
+func _tick_return_home() -> void:
+	if _home_base == null or not is_instance_valid(_home_base):
+		_home_base = _find_nearest_command_post()
+		if _home_base == null:
+			_sub = Sub.NONE
+			return
+		_nav.target_position = _home_base.position
+	if global_position.distance_to(_home_base.position) <= INTERACTION_RANGE:
+		_deposit_at_home()
+		_sub = Sub.NONE
+		velocity = Vector2.ZERO
+		return
+	_avoidant_move_to(_home_base.position)
+
+
+func _tick_gather_approach() -> void:
+	if _target_lootable == null or not is_instance_valid(_target_lootable):
+		_sub = Sub.NONE
+		current_command = Command.IDLE
+		return
+	if global_position.distance_to(_target_lootable.position) <= INTERACTION_RANGE:
+		_sub = Sub.GATHER_CHANNEL
+		_channel_timer = CHANNEL_TIME
+		velocity = Vector2.ZERO
+	else:
+		_follow_navigation()
+
+
+func _tick_gather_channel(delta: float) -> void:
+	velocity = Vector2.ZERO
+	_channel_timer -= delta
+	if _channel_timer <= 0.0:
+		if _target_lootable != null and is_instance_valid(_target_lootable) and _target_lootable.has_method("take_salvage"):
+			var taken: int = _target_lootable.take_salvage(SALVAGE_PER_LOOT_TRIP)
+			_carrying += taken
+			var nf := get_tree().get_first_node_in_group("noise_field")
+			if nf != null:
+				nf.add_noise(global_position, 25.0)
+		_home_base = _find_nearest_command_post()
+		if _home_base == null:
+			_sub = Sub.NONE
+			current_command = Command.IDLE
+			return
+		_sub = Sub.GATHER_RETURN
+		_nav.target_position = _home_base.position
+
+
+func _tick_gather_return() -> void:
+	if _home_base == null or not is_instance_valid(_home_base):
+		_home_base = _find_nearest_command_post()
+		if _home_base == null:
+			_sub = Sub.NONE
+			current_command = Command.IDLE
+			return
+		_nav.target_position = _home_base.position
+	if global_position.distance_to(_home_base.position) <= INTERACTION_RANGE:
+		_deposit_at_home()
+		if _target_lootable != null and is_instance_valid(_target_lootable) and _target_lootable.remaining_salvage > 0:
+			_sub = Sub.GATHER_APPROACH
+			_nav.target_position = _target_lootable.position
+		else:
+			_sub = Sub.NONE
+			current_command = Command.IDLE
+	else:
+		_avoidant_move_to(_home_base.position)
+
+
+func _deposit_at_home() -> void:
+	if _carrying > 0:
+		GameState.add_salvage(_carrying)
+	_carrying = 0
+
+
+func _avoidant_move_to(target_pos: Vector2) -> void:
+	var to_target: Vector2 = (target_pos - global_position).normalized()
+	var threat = _find_nearest_zombie_in_range(AVOID_RANGE)
+	if threat != null:
+		var away: Vector2 = (global_position - threat.global_position).normalized()
+		velocity = (to_target + away * 1.5).normalized() * move_speed
+	else:
+		velocity = to_target * move_speed
+	move_and_slide()
 
 
 func _find_nearest_zombie_in_range(range_px: float):
@@ -63,90 +231,18 @@ func _find_nearest_zombie_in_range(range_px: float):
 	return best
 
 
-func _flee_from(threat) -> void:
-	var away: Vector2 = global_position - threat.global_position
-	if away.length_squared() < 0.01:
-		away = Vector2.RIGHT
-	velocity = away.normalized() * move_speed
-	move_and_slide()
+func _find_nearest_command_post():
+	var nearest = null
+	var nearest_dist := INF
+	for cp in get_tree().get_nodes_in_group("command_post"):
+		var dist: float = global_position.distance_to(cp.position)
+		if dist < nearest_dist:
+			nearest_dist = dist
+			nearest = cp
+	return nearest
 
 
-func _physics_process(delta: float) -> void:
-	var threat = _find_nearest_zombie_in_range(FLEE_DETECT_RANGE)
-	if threat != null and is_instance_valid(threat):
-		if current_command != Command.FLEE:
-			_stop_gather()
-		current_command = Command.FLEE
-		_flee_from(threat)
-		return
-
-	if current_command == Command.FLEE:
-		current_command = Command.IDLE
-		velocity = Vector2.ZERO
-
-	if current_command == Command.MOVE:
-		if not _follow_navigation():
-			current_command = Command.IDLE
-		return
-	if current_command != Command.GATHER:
-		return
-
-	match _gather_state:
-		GatherState.APPROACH_LOOTABLE:
-			if _target_lootable == null or not is_instance_valid(_target_lootable):
-				_stop_gather()
-				current_command = Command.IDLE
-				return
-			if global_position.distance_to(_target_lootable.position) <= INTERACTION_RANGE:
-				_gather_state = GatherState.CHANNELING
-				_channel_timer = CHANNEL_TIME
-				velocity = Vector2.ZERO
-			else:
-				_follow_navigation()
-		GatherState.CHANNELING:
-			_channel_timer -= delta
-			if _channel_timer <= 0:
-				_finish_channel()
-		GatherState.RETURN_HOME:
-			if _home_base == null or not is_instance_valid(_home_base):
-				_home_base = _find_nearest_command_post()
-				if _home_base == null:
-					_stop_gather()
-					current_command = Command.IDLE
-					return
-				_nav.target_position = _home_base.position
-			if global_position.distance_to(_home_base.position) <= INTERACTION_RANGE:
-				_deposit_and_continue()
-			else:
-				_follow_navigation()
-		GatherState.DEPOSIT:
-			pass
-
-
-func _finish_channel() -> void:
-	if _target_lootable != null and is_instance_valid(_target_lootable) and _target_lootable.has_method("take_salvage"):
-		_carrying = _target_lootable.take_salvage(SALVAGE_PER_TRIP)
-		var nf := get_tree().get_first_node_in_group("noise_field")
-		if nf != null:
-			nf.add_noise(global_position, 25.0)
-	else:
-		_carrying = 0
-	_home_base = _find_nearest_command_post()
-	if _home_base == null:
-		_stop_gather()
-		current_command = Command.IDLE
-		return
-	_gather_state = GatherState.RETURN_HOME
-	_nav.target_position = _home_base.position
-
-
-func _deposit_and_continue() -> void:
-	if _carrying > 0:
-		GameState.add_salvage(_carrying)
-	_carrying = 0
-	if _target_lootable != null and is_instance_valid(_target_lootable) and _target_lootable.remaining_salvage > 0:
-		_gather_state = GatherState.APPROACH_LOOTABLE
-		_nav.target_position = _target_lootable.position
-	else:
-		_stop_gather()
-		current_command = Command.IDLE
+func _emit_magnum_noise() -> void:
+	var nf := get_tree().get_first_node_in_group("noise_field")
+	if nf != null:
+		nf.add_noise(global_position, MAGNUM_NOISE)

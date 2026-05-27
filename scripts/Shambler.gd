@@ -9,12 +9,24 @@ const ATTACK_DAMAGE := 8
 const ATTACK_PERIOD := 1.0
 const RETARGET_INTERVAL := 0.3
 const INVESTIGATE_ARRIVE_RANGE := 60.0
+const WANDER_RADIUS := 96.0
+const WANDER_ARRIVE_RANGE := 30.0
+const WANDER_INTERVAL_MIN := 4.0
+const WANDER_INTERVAL_MAX := 10.0
 
 var _zombie_state: int = ZombieState.IDLE
 var _target = null
 var _investigate_target: Vector2 = Vector2.ZERO
 var _attack_cooldown := 0.0
 var _retarget_timer := 0.0
+var _wandering := false
+var _wander_target: Vector2 = Vector2.ZERO
+var _wander_timer := 0.0
+
+
+func _ready() -> void:
+	super._ready()
+	_wander_timer = randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
 
 
 func investigate(world_pos: Vector2) -> void:
@@ -24,6 +36,7 @@ func investigate(world_pos: Vector2) -> void:
 		return
 	_investigate_target = world_pos
 	_zombie_state = ZombieState.INVESTIGATE
+	_wandering = false
 	_nav.target_position = world_pos
 
 
@@ -38,10 +51,12 @@ func _physics_process(delta: float) -> void:
 
 	match _zombie_state:
 		ZombieState.IDLE:
-			velocity = Vector2.ZERO
 			if _target != null:
 				_zombie_state = ZombieState.CHASE
+				_wandering = false
 				_nav.target_position = _target.global_position
+				return
+			_tick_wander(delta)
 		ZombieState.INVESTIGATE:
 			if _target != null:
 				_zombie_state = ZombieState.CHASE
@@ -72,8 +87,33 @@ func _physics_process(delta: float) -> void:
 			velocity = Vector2.ZERO
 			if _attack_cooldown <= 0:
 				if _target.has_method("take_damage"):
-					_target.take_damage(ATTACK_DAMAGE)
+					_target.take_damage(ATTACK_DAMAGE, self)
 				_attack_cooldown = ATTACK_PERIOD
+
+
+func _tick_wander(delta: float) -> void:
+	if _wandering:
+		if global_position.distance_to(_wander_target) <= WANDER_ARRIVE_RANGE or _nav.is_navigation_finished():
+			_wandering = false
+			_wander_timer = randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
+			velocity = Vector2.ZERO
+		else:
+			_follow_navigation()
+	else:
+		velocity = Vector2.ZERO
+		_wander_timer -= delta
+		if _wander_timer <= 0.0:
+			_start_wander()
+
+
+func _start_wander() -> void:
+	var offset := Vector2(randf_range(-WANDER_RADIUS, WANDER_RADIUS), randf_range(-WANDER_RADIUS, WANDER_RADIUS))
+	var target := global_position + offset
+	target.x = clamp(target.x, 50.0, 2510.0)
+	target.y = clamp(target.y, 50.0, 2510.0)
+	_wander_target = target
+	_wandering = true
+	_nav.target_position = _wander_target
 
 
 func _update_target() -> void:

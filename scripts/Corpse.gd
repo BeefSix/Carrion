@@ -1,11 +1,11 @@
 extends Node2D
 
-const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
 const SIZE := Vector2(16, 16)
 const ENHANCED_BODY_COLOR := Color(0.5, 0.28, 0.18, 1)
 
 @export var original_max_hp: int = 60
 @export var return_delay: float = 42.0
+@export var was_military: bool = false
 
 var _timer := 0.0
 var _initial_delay := 0.0
@@ -27,10 +27,15 @@ func _process(delta: float) -> void:
 
 
 func _rise() -> void:
-	var z = SHAMBLER_SCENE.instantiate()
+	var shambler_scene: PackedScene = load("res://scenes/units/Shambler.tscn")
+	if shambler_scene == null:
+		queue_free()
+		return
+	var z = shambler_scene.instantiate()
 	z.position = position
 	z.max_hp = original_max_hp
-	z.body_color = ENHANCED_BODY_COLOR
+	if was_military:
+		z.body_color = ENHANCED_BODY_COLOR
 	get_parent().add_child(z)
 	queue_free()
 

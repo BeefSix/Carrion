@@ -1,6 +1,6 @@
 extends "res://scripts/Unit.gd"
 
-const ATTACK_RANGE := 192.0
+const ATTACK_RANGE := 213.0
 const ATTACK_DAMAGE := 12
 const ATTACK_PERIOD := 1.0
 const NOISE_PER_SHOT := 10.0
@@ -25,7 +25,7 @@ func _physics_process(delta: float) -> void:
 	if _target != null and is_instance_valid(_target):
 		var dist := global_position.distance_to(_target.global_position)
 		if dist <= ATTACK_RANGE and _attack_cooldown <= 0:
-			_target.take_damage(ATTACK_DAMAGE)
+			_target.take_damage(ATTACK_DAMAGE, self)
 			_attack_cooldown = ATTACK_PERIOD
 			_emit_shot_noise()
 

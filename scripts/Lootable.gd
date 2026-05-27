@@ -2,7 +2,7 @@ class_name Lootable
 extends "res://scripts/Building.gd"
 
 const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
-const SHAMBLER_SPAWN_INTERVAL := 60.0
+const SHAMBLER_SPAWN_INTERVAL := 90.0
 const FIRST_SPAWN_MIN_DELAY := 30.0
 const INFESTED_BODY_COLOR := Color(0.42, 0.5, 0.3, 1)
 
