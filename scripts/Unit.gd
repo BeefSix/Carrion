@@ -6,6 +6,8 @@ enum Command { IDLE, MOVE, ATTACK, GATHER, CONSTRUCT, FLEE }
 
 const MIN_CORPSE_CHANCE := 0.05
 const ENGAGEMENT_RANGE := 256.0
+const LEVEL2_XP := 50.0
+const LEVEL3_XP := 200.0
 
 @export var faction: Faction = Faction.MILITARY
 @export var max_hp: int = 100
@@ -67,6 +69,28 @@ func _process(delta: float) -> void:
 		return
 	if _is_engaged():
 		combat_time += delta
+	_update_veterancy()
+
+
+func _level_for_xp(xp: float) -> int:
+	if xp >= LEVEL3_XP:
+		return 3
+	if xp >= LEVEL2_XP:
+		return 2
+	return 1
+
+
+func _update_veterancy() -> void:
+	var new_level: int = _level_for_xp(get_xp_total())
+	if new_level == veterancy_level:
+		return
+	var old_level: int = veterancy_level
+	veterancy_level = new_level
+	_on_level_up(old_level, new_level)
+
+
+func _on_level_up(old_level: int, new_level: int) -> void:
+	print("[%s] Level up: %d -> %d" % [name, old_level, new_level])
 
 
 func _is_engaged() -> bool:
