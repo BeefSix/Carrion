@@ -1,10 +1,9 @@
 extends Node2D
 
-const CELL_SIZE := 512.0
-const GRID_DIM := 5
+const CELL_SIZE := 256.0
+const GRID_DIM := 10
 const MAP_SIZE := Vector2(2560, 2560)
 const NOISE_DECAY_RATE := 5.0
-const NOISE_AOE_RADIUS := 1600.0
 const HORDE_THRESHOLD := 200.0
 const HORDE_SIZE := 15
 const HORDE_COOLDOWN := 30.0
@@ -13,6 +12,7 @@ const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
 var _cells: Array = []
 var _cell_cooldowns: Array = []
 var _debug_visible := false
+var _debug_font: Font
 
 
 func _ready() -> void:
@@ -25,14 +25,15 @@ func _ready() -> void:
 			col_cd.append(0.0)
 		_cells.append(col)
 		_cell_cooldowns.append(col_cd)
+	_debug_font = ThemeDB.fallback_font
 
 
 func add_noise(world_pos: Vector2, magnitude: float) -> void:
-	for x in range(GRID_DIM):
-		for y in range(GRID_DIM):
-			var cell_center := Vector2(x * CELL_SIZE + CELL_SIZE * 0.5, y * CELL_SIZE + CELL_SIZE * 0.5)
-			if cell_center.distance_to(world_pos) <= NOISE_AOE_RADIUS:
-				_cells[x][y] += magnitude
+	var cx: int = int(world_pos.x / CELL_SIZE)
+	var cy: int = int(world_pos.y / CELL_SIZE)
+	cx = clamp(cx, 0, GRID_DIM - 1)
+	cy = clamp(cy, 0, GRID_DIM - 1)
+	_cells[cx][cy] += magnitude
 
 
 func _input(event: InputEvent) -> void:
@@ -94,6 +95,12 @@ func _draw() -> void:
 			var noise: float = _cells[x][y]
 			var rect := Rect2(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE)
 			if noise > 0.0:
-				var intensity: float = clamp(noise / HORDE_THRESHOLD, 0.0, 1.0)
-				draw_rect(rect, Color(1, 0.4, 0.1, intensity * 0.45), true)
-			draw_rect(rect, Color(1, 0.4, 0.1, 0.25), false, 1.0)
+				var ratio: float = clamp(noise / HORDE_THRESHOLD, 0.0, 1.0)
+				draw_rect(rect, Color(1, 0.4, 0.1, ratio * 0.5), true)
+			var border_alpha: float = 0.25
+			if noise >= HORDE_THRESHOLD * 0.75:
+				border_alpha = 0.9
+			draw_rect(rect, Color(1, 0.4, 0.1, border_alpha), false, 1.0)
+			if noise >= 10.0 and _debug_font != null:
+				var text := "%d" % int(noise)
+				draw_string(_debug_font, rect.position + Vector2(8, 20), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 0.9, 0.6, 0.95))
