@@ -53,4 +53,4 @@ func _fire_aoe(center: Vector2) -> void:
 		if not is_instance_valid(u) or u.faction != Faction.ZOMBIE:
 			continue
 		if u.global_position.distance_to(center) <= AOE_RADIUS:
-			u.take_damage(ATTACK_DAMAGE, self)
+			u.take_damage(get_effective_damage(ATTACK_DAMAGE), self)

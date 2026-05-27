@@ -25,7 +25,7 @@ func _physics_process(delta: float) -> void:
 	if _target != null and is_instance_valid(_target):
 		var dist := global_position.distance_to(_target.global_position)
 		if dist <= ATTACK_RANGE and _attack_cooldown <= 0:
-			_target.take_damage(ATTACK_DAMAGE, self)
+			_target.take_damage(get_effective_damage(ATTACK_DAMAGE), self)
 			_attack_cooldown = ATTACK_PERIOD
 			_emit_shot_noise()
 

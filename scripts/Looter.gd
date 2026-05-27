@@ -166,7 +166,7 @@ func _tick_hunt_fire() -> void:
 		_attack_cooldown = MAGNUM_PERIOD
 		_emit_magnum_noise()
 		var was_alive: bool = _target_zombie.current_hp > 0
-		_target_zombie.take_damage(MAGNUM_DAMAGE, self)
+		_target_zombie.take_damage(get_effective_damage(MAGNUM_DAMAGE), self)
 		if was_alive and (not is_instance_valid(_target_zombie) or _target_zombie.current_hp <= 0):
 			_carrying = min(_carrying + SALVAGE_PER_KILL, CARRY_CAP)
 			_last_kill_pos = global_position
@@ -200,7 +200,7 @@ func _try_defensive_fire() -> void:
 	_attack_cooldown = MAGNUM_PERIOD
 	_emit_magnum_noise()
 	# Defensive kills don't increase carry — already at cap.
-	z.take_damage(MAGNUM_DAMAGE, self)
+	z.take_damage(get_effective_damage(MAGNUM_DAMAGE), self)
 
 
 func _tick_return_to_hunt() -> void:
@@ -303,11 +303,12 @@ func _deposit_at_home() -> void:
 func _avoidant_move_to(target_pos: Vector2) -> void:
 	var to_target: Vector2 = (target_pos - global_position).normalized()
 	var threat = _find_nearest_zombie_in_range(AVOID_RANGE)
+	var spd: float = get_effective_move_speed()
 	if threat != null:
 		var away: Vector2 = (global_position - threat.global_position).normalized()
-		velocity = (to_target + away * 1.5).normalized() * move_speed
+		velocity = (to_target + away * 1.5).normalized() * spd
 	else:
-		velocity = to_target * move_speed
+		velocity = to_target * spd
 	move_and_slide()
 
 

@@ -87,7 +87,7 @@ func _physics_process(delta: float) -> void:
 			velocity = Vector2.ZERO
 			if _attack_cooldown <= 0:
 				if _target.has_method("take_damage"):
-					_target.take_damage(ATTACK_DAMAGE, self)
+					_target.take_damage(get_effective_damage(ATTACK_DAMAGE), self)
 				_attack_cooldown = ATTACK_PERIOD
 
 

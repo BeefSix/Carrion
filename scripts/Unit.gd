@@ -8,6 +8,9 @@ const MIN_CORPSE_CHANCE := 0.05
 const ENGAGEMENT_RANGE := 256.0
 const LEVEL2_XP := 50.0
 const LEVEL3_XP := 200.0
+const HP_MULT_BY_LEVEL := [1.0, 1.0, 1.10, 1.20]
+const DAMAGE_MULT_BY_LEVEL := [1.0, 1.0, 1.10, 1.20]
+const SPEED_MULT_BY_LEVEL := [1.0, 1.0, 1.0, 1.05]
 
 @export var faction: Faction = Faction.MILITARY
 @export var max_hp: int = 100
@@ -25,6 +28,9 @@ var kills_count: int = 0
 var damage_dealt: float = 0.0
 var combat_time: float = 0.0
 var veterancy_level: int = 1
+var hp_mult: float = 1.0
+var damage_mult: float = 1.0
+var speed_mult: float = 1.0
 
 @onready var _nav: NavigationAgent2D = $NavigationAgent
 
@@ -90,7 +96,27 @@ func _update_veterancy() -> void:
 
 
 func _on_level_up(old_level: int, new_level: int) -> void:
-	print("[%s] Level up: %d -> %d" % [name, old_level, new_level])
+	var old_hp_mult: float = hp_mult
+	hp_mult = HP_MULT_BY_LEVEL[new_level]
+	damage_mult = DAMAGE_MULT_BY_LEVEL[new_level]
+	speed_mult = SPEED_MULT_BY_LEVEL[new_level]
+	# Scale current_hp proportionally - no free heal, no caught-at-low-effective-HP.
+	if old_hp_mult > 0.0:
+		current_hp = int(round(float(current_hp) * (hp_mult / old_hp_mult)))
+	queue_redraw()
+	print("[%s] Level up: %d -> %d (HP x%.2f, DMG x%.2f, SPD x%.2f)" % [name, old_level, new_level, hp_mult, damage_mult, speed_mult])
+
+
+func get_effective_max_hp() -> int:
+	return int(max_hp * hp_mult)
+
+
+func get_effective_move_speed() -> float:
+	return move_speed * speed_mult
+
+
+func get_effective_damage(base_damage: int) -> int:
+	return int(round(base_damage * damage_mult))
 
 
 func _is_engaged() -> bool:
@@ -138,7 +164,7 @@ func _follow_navigation() -> bool:
 		return false
 	var next_pos := _nav.get_next_path_position()
 	var to_next := next_pos - global_position
-	velocity = to_next.normalized() * move_speed
+	velocity = to_next.normalized() * get_effective_move_speed()
 	move_and_slide()
 	return true
 
@@ -178,5 +204,6 @@ func _draw() -> void:
 	var bar_y := -20.0
 	var x := -bar_width / 2.0
 	draw_rect(Rect2(x, bar_y, bar_width, bar_height), Color(0.15, 0.05, 0.05))
-	var fill_ratio: float = float(current_hp) / float(max_hp) if max_hp > 0 else 0.0
+	var max_eff: int = get_effective_max_hp()
+	var fill_ratio: float = float(current_hp) / float(max_eff) if max_eff > 0 else 0.0
 	draw_rect(Rect2(x, bar_y, bar_width * fill_ratio, bar_height), Color(0.3, 0.8, 0.3))
