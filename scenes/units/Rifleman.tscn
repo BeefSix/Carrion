@@ -10,6 +10,8 @@ script = ExtResource("1_rifle")
 max_hp = 70
 move_speed = 80.0
 body_color = Color(0.4, 0.55, 0.3, 1)
+corpse_base_chance = 0.3
+xp_reduction_per_xp = 0.01
 
 [node name="Body" type="Polygon2D" parent="."]
 color = Color(1, 1, 1, 1)

@@ -4,15 +4,20 @@ extends CharacterBody2D
 enum Faction { MILITARY, TRIBAL, ZOMBIE, NEUTRAL }
 enum Command { IDLE, MOVE, ATTACK, GATHER, CONSTRUCT, FLEE }
 
+const MIN_CORPSE_CHANCE := 0.05
+
 @export var faction: Faction = Faction.MILITARY
 @export var max_hp: int = 100
 @export var body_color: Color = Color.WHITE
 @export var move_speed: float = 96.0
 @export var clean_kills: bool = false
+@export var corpse_base_chance: float = 1.0
+@export var xp_reduction_per_xp: float = 0.0
 
 var current_hp: int
 var current_command: Command = Command.IDLE
 var selected: bool = false
+var xp: int = 0
 
 @onready var _nav: NavigationAgent2D = $NavigationAgent
 
@@ -33,6 +38,10 @@ func take_damage(amount: int, attacker = null) -> void:
 	current_hp = max(0, current_hp - amount)
 	queue_redraw()
 	if current_hp == 0:
+		if attacker != null and is_instance_valid(attacker) and "xp" in attacker:
+			attacker.xp += 1
+			if attacker.has_method("queue_redraw"):
+				attacker.queue_redraw()
 		_die(attacker)
 
 
@@ -52,7 +61,10 @@ func _die(attacker = null) -> void:
 func _should_leave_corpse(attacker) -> bool:
 	if attacker != null and "clean_kills" in attacker and attacker.clean_kills:
 		return false
-	return faction == Faction.MILITARY or faction == Faction.ZOMBIE
+	if faction != Faction.MILITARY and faction != Faction.ZOMBIE:
+		return false
+	var chance: float = max(MIN_CORPSE_CHANCE, corpse_base_chance - float(xp) * xp_reduction_per_xp)
+	return randf() < chance
 
 
 func _spawn_corpse() -> void:
@@ -115,3 +127,9 @@ func _draw() -> void:
 	draw_rect(Rect2(x, bar_y, bar_width, bar_height), Color(0.15, 0.05, 0.05))
 	var fill_ratio: float = float(current_hp) / float(max_hp) if max_hp > 0 else 0.0
 	draw_rect(Rect2(x, bar_y, bar_width * fill_ratio, bar_height), Color(0.3, 0.8, 0.3))
+	var rank: int = min(int(xp / 5), 5)
+	if rank > 0:
+		var dot_y := -26.0
+		for i in range(rank):
+			var dot_x: float = -bar_width / 2.0 + 2.0 + i * 4.5
+			draw_circle(Vector2(dot_x, dot_y), 1.5, Color(1, 0.95, 0.4))
