@@ -6,6 +6,7 @@ enum GatherState { NONE, APPROACH_LOOTABLE, CHANNELING, RETURN_HOME, DEPOSIT }
 const CHANNEL_TIME := 3.0
 const SALVAGE_PER_TRIP := 25
 const INTERACTION_RANGE := 48.0
+const FLEE_DETECT_RANGE := 160.0
 
 var _gather_state: int = GatherState.NONE
 var _target_lootable = null
@@ -47,7 +48,42 @@ func _find_nearest_command_post():
 	return nearest
 
 
+func _find_nearest_zombie_in_range(range_px: float):
+	var best = null
+	var best_dist := range_px
+	for u in get_tree().get_nodes_in_group("units"):
+		if u == self or not is_instance_valid(u):
+			continue
+		if u.faction != Faction.ZOMBIE:
+			continue
+		var d: float = global_position.distance_to(u.global_position)
+		if d <= best_dist:
+			best_dist = d
+			best = u
+	return best
+
+
+func _flee_from(threat) -> void:
+	var away: Vector2 = global_position - threat.global_position
+	if away.length_squared() < 0.01:
+		away = Vector2.RIGHT
+	velocity = away.normalized() * move_speed
+	move_and_slide()
+
+
 func _physics_process(delta: float) -> void:
+	var threat = _find_nearest_zombie_in_range(FLEE_DETECT_RANGE)
+	if threat != null and is_instance_valid(threat):
+		if current_command != Command.FLEE:
+			_stop_gather()
+		current_command = Command.FLEE
+		_flee_from(threat)
+		return
+
+	if current_command == Command.FLEE:
+		current_command = Command.IDLE
+		velocity = Vector2.ZERO
+
 	if current_command == Command.MOVE:
 		if not _follow_navigation():
 			current_command = Command.IDLE
@@ -84,7 +120,6 @@ func _physics_process(delta: float) -> void:
 			else:
 				_follow_navigation()
 		GatherState.DEPOSIT:
-			# Single-frame transitional state; deposit happens in _deposit_and_continue
 			pass
 
 

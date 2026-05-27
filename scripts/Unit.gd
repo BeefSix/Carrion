@@ -2,7 +2,9 @@ class_name Unit
 extends CharacterBody2D
 
 enum Faction { MILITARY, TRIBAL, ZOMBIE, NEUTRAL }
-enum Command { IDLE, MOVE, ATTACK, GATHER, CONSTRUCT }
+enum Command { IDLE, MOVE, ATTACK, GATHER, CONSTRUCT, FLEE }
+
+const CORPSE_SCENE := preload("res://scenes/Corpse.tscn")
 
 @export var faction: Faction = Faction.MILITARY
 @export var max_hp: int = 100
@@ -43,7 +45,19 @@ func set_selected(value: bool) -> void:
 
 
 func _die() -> void:
+	if faction == Faction.MILITARY:
+		_spawn_corpse()
 	queue_free()
+
+
+func _spawn_corpse() -> void:
+	if CORPSE_SCENE == null:
+		return
+	var c = CORPSE_SCENE.instantiate()
+	c.position = global_position
+	c.original_max_hp = max_hp
+	c.return_delay = 30.0 + float(max_hp) / 5.0
+	get_parent().add_child(c)
 
 
 func _follow_navigation() -> bool:
