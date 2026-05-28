@@ -8,15 +8,18 @@ func _ready() -> void:
 
 
 func _on_military_pressed() -> void:
-	GameState.player_faction = GameState.Faction.MILITARY
-	get_tree().change_scene_to_file("res://scenes/Main.tscn")
+	_start(GameState.Faction.MILITARY)
 
 
 func _on_tribal_pressed() -> void:
-	GameState.player_faction = GameState.Faction.TRIBAL
-	get_tree().change_scene_to_file("res://scenes/Main.tscn")
+	_start(GameState.Faction.TRIBAL)
 
 
 func _on_survivor_pressed() -> void:
-	GameState.player_faction = GameState.Faction.SURVIVOR
+	_start(GameState.Faction.SURVIVOR)
+
+
+func _start(faction: int) -> void:
+	GameState.player_faction = faction
+	GameState.ai_enabled = $VBox/AICheck.button_pressed
 	get_tree().change_scene_to_file("res://scenes/Main.tscn")

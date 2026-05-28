@@ -5,7 +5,7 @@
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_hg"]
 size = Vector2(26, 26)
 
-[node name="HeavyGunner" type="CharacterBody2D" groups=["units", "player_units"]]
+[node name="HeavyGunner" type="CharacterBody2D" groups=["units", "player_units", "combat_units"]]
 script = ExtResource("1_hg")
 max_hp = 100
 move_speed = 64.0

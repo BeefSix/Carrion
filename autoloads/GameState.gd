@@ -12,6 +12,7 @@ var salvage: int = STARTING_SALVAGE:
 		salvage_changed.emit(value)
 
 var player_faction: Faction = Faction.MILITARY
+var ai_enabled: bool = false
 
 
 func reset_match() -> void:

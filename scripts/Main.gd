@@ -83,6 +83,33 @@ func _ready() -> void:
 	_spawn_lootables()
 	_rebake_navigation()
 	_center_camera_on_spawn()
+	if GameState.ai_enabled:
+		_spawn_ai_opponent()
+
+
+func _spawn_ai_opponent() -> void:
+	# Phase 1: AI is always Military, spawns at the corner opposite the player.
+	var ai_scene := load("res://scripts/ai/AIController.gd") as Script
+	if ai_scene == null:
+		return
+	var ai = ai_scene.new()
+	ai.faction = GameState.Faction.MILITARY
+	ai.spawn_position = _get_ai_spawn_position()
+	ai.enemy_hq_position = _get_spawn_position()
+	add_child(ai)
+
+
+func _get_ai_spawn_position() -> Vector2:
+	# Mirror across the map - AI takes the corner opposite the player's.
+	match GameState.player_faction:
+		GameState.Faction.MILITARY:
+			return SPAWN_SE
+		GameState.Faction.TRIBAL:
+			return SPAWN_NW
+		GameState.Faction.SURVIVOR:
+			return SPAWN_NE
+		_:
+			return SPAWN_SE
 
 
 func _process(delta: float) -> void:

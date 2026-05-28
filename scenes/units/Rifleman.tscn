@@ -5,7 +5,7 @@
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_rifle"]
 size = Vector2(22, 22)
 
-[node name="Rifleman" type="CharacterBody2D" groups=["units", "player_units"]]
+[node name="Rifleman" type="CharacterBody2D" groups=["units", "player_units", "combat_units"]]
 script = ExtResource("1_rifle")
 max_hp = 70
 move_speed = 80.0

@@ -39,12 +39,13 @@ func _physics_process(delta: float) -> void:
 
 
 func _find_nearest_zombie():
+	# Same cross-faction targeting as Rifleman.
 	var best = null
 	var best_dist := ATTACK_RANGE
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction != Faction.ZOMBIE:
+		if u.faction == Faction.MILITARY or u.faction == Faction.NEUTRAL:
 			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d <= best_dist:
@@ -59,7 +60,7 @@ func _find_nearest_threat_in_range(range_px: float):
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction != Faction.ZOMBIE:
+		if u.faction == Faction.MILITARY or u.faction == Faction.NEUTRAL:
 			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d <= best_dist:

@@ -220,7 +220,12 @@ func _tick_search(delta: float) -> void:
 
 func _deposit_at_home() -> void:
 	if _carrying > 0:
-		GameState.add_salvage(_carrying)
+		if is_in_group("ai_units"):
+			var ai = get_tree().get_first_node_in_group("ai_controller")
+			if ai != null and ai.has_method("add_salvage"):
+				ai.add_salvage(_carrying)
+		else:
+			GameState.add_salvage(_carrying)
 	_carrying = 0
 
 
