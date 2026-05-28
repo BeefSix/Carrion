@@ -6,13 +6,13 @@ const SHAMBLER_SPAWN_INTERVAL := 90.0
 const FIRST_SPAWN_MIN_DELAY := 30.0
 const INFESTED_BODY_COLOR := Color("3f4a2f")
 
-# Footprint per neighborhood type (px). residential 2x2, commercial 3x2, industrial/institutional 3x3.
 const FOOTPRINTS := {
 	"residential": Vector2(64, 64),
 	"commercial": Vector2(96, 64),
 	"industrial": Vector2(96, 96),
 	"medical": Vector2(96, 96),
 	"security": Vector2(96, 96),
+	"civic": Vector2(96, 96),
 }
 const NEIGHBORHOOD_COLORS := {
 	"residential": Color("6a5a44"),
@@ -20,6 +20,7 @@ const NEIGHBORHOOD_COLORS := {
 	"industrial": Color("44423e"),
 	"medical": Color("6e6e68"),
 	"security": Color("3a4250"),
+	"civic": Color("7a705a"),
 }
 
 @export var starting_salvage: int = 200
@@ -75,10 +76,27 @@ func _draw_building_icon() -> void:
 	var icon_color: Color = PALETTE_ICON_NEUTRAL
 	match neighborhood_type:
 		"commercial":
+			# small filled square — shopfront
 			var s := Vector2(10.0, 10.0)
 			draw_rect(Rect2(-s / 2.0, s), icon_color)
 		"medical":
+			# cross
 			draw_line(Vector2(-6, 0), Vector2(6, 0), icon_color, 2.0, true)
 			draw_line(Vector2(0, -6), Vector2(0, 6), icon_color, 2.0, true)
+		"industrial":
+			# small rectangle with a smokestack stub
+			draw_rect(Rect2(Vector2(-7, -3), Vector2(14, 8)), icon_color)
+			draw_rect(Rect2(Vector2(3, -8), Vector2(3, 5)), icon_color)
+		"security":
+			# diamond
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(0, -7), Vector2(7, 0), Vector2(0, 7), Vector2(-7, 0)
+			]), icon_color)
+		"civic":
+			# small upward triangle — gable
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(0, -7), Vector2(7, 6), Vector2(-7, 6)
+			]), icon_color)
 		_:
+			# residential — filled circle
 			draw_circle(Vector2.ZERO, 5.0, icon_color)

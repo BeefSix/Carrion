@@ -5,17 +5,56 @@ const CP_SCENE := preload("res://scenes/buildings/CommandPost.tscn")
 const TC_SCENE := preload("res://scenes/buildings/TribalCamp.tscn")
 const SH_SCENE := preload("res://scenes/buildings/SettlementHub.tscn")
 const HQ_POSITION := Vector2(3072, 3072)
-const LOOTABLE_COUNT := 70
-const INFESTED_FRACTION := 0.5
-const INFESTED_KEEPOUT_RADIUS := 1000.0
 const MAP_SIZE := Vector2(6144, 6144)
-const MARGIN := 140.0
-const HQ_KEEPOUT_RADIUS := 450.0
-const MIN_SEPARATION := 140.0
-const MAX_ATTEMPTS := 6000
 const DEV_SPEED := 4.0
 const DEV_NOISE_INJECT := 100.0
-const NEIGHBORHOOD_POOL := ["residential", "residential", "residential", "commercial", "commercial", "medical"]
+
+# Hand-designed neighborhood layout. Each district packs its buildings tightly
+# (close center-to-center spacing within the district); districts sit in the
+# four quadrants + north-center civic, with open corridors between them and
+# the HQ in the middle.
+const NEIGHBORHOOD_LAYOUT := [
+	# NW Residential — 3x3 grid of small 2x2 houses, tight 128 px spacing
+	{ "pos": Vector2(1088, 1088), "type": "residential" },
+	{ "pos": Vector2(1216, 1088), "type": "residential" },
+	{ "pos": Vector2(1344, 1088), "type": "residential" },
+	{ "pos": Vector2(1088, 1216), "type": "residential" },
+	{ "pos": Vector2(1216, 1216), "type": "residential" },
+	{ "pos": Vector2(1344, 1216), "type": "residential" },
+	{ "pos": Vector2(1088, 1344), "type": "residential" },
+	{ "pos": Vector2(1216, 1344), "type": "residential" },
+	{ "pos": Vector2(1344, 1344), "type": "residential" },
+
+	# NE Commercial — strip of 5 wide 3x2 buildings along a main street
+	{ "pos": Vector2(4384, 1088), "type": "commercial" },
+	{ "pos": Vector2(4528, 1088), "type": "commercial" },
+	{ "pos": Vector2(4672, 1088), "type": "commercial" },
+	{ "pos": Vector2(4816, 1088), "type": "commercial" },
+	{ "pos": Vector2(4960, 1088), "type": "commercial" },
+
+	# SW Industrial — 2x2 grid of 3x3 warehouses, wider 160 px spacing
+	{ "pos": Vector2(1200, 4528), "type": "industrial" },
+	{ "pos": Vector2(1360, 4528), "type": "industrial" },
+	{ "pos": Vector2(1200, 4688), "type": "industrial" },
+	{ "pos": Vector2(1360, 4688), "type": "industrial" },
+
+	# SE Medical/Security — 2 institutional 3x3 buildings
+	{ "pos": Vector2(4572, 4672), "type": "medical" },
+	{ "pos": Vector2(4772, 4672), "type": "security" },
+
+	# N Civic plaza — 2 institutional 3x3 buildings north of the HQ
+	{ "pos": Vector2(2952, 896), "type": "civic" },
+	{ "pos": Vector2(3192, 896), "type": "civic" },
+]
+
+const INFESTED_RATE_BY_TYPE := {
+	"residential": 0.4,
+	"commercial": 0.3,
+	"industrial": 0.5,
+	"medical": 1.0,
+	"security": 1.0,
+	"civic": 0.5,
+}
 
 
 func _ready() -> void:
@@ -54,28 +93,11 @@ func _spawn_hq() -> void:
 func _spawn_lootables() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1
-	var placed: Array = []
-	var attempts := 0
-	while placed.size() < LOOTABLE_COUNT and attempts < MAX_ATTEMPTS:
-		attempts += 1
-		var pos := Vector2(
-			rng.randf_range(MARGIN, MAP_SIZE.x - MARGIN),
-			rng.randf_range(MARGIN, MAP_SIZE.y - MARGIN)
-		)
-		var dist_from_hq := pos.distance_to(HQ_POSITION)
-		if dist_from_hq < HQ_KEEPOUT_RADIUS:
-			continue
-		var too_close := false
-		for p in placed:
-			if pos.distance_to(p) < MIN_SEPARATION:
-				too_close = true
-				break
-		if too_close:
-			continue
-		placed.append(pos)
+	for entry in NEIGHBORHOOD_LAYOUT:
 		var lootable = LOOTABLE_SCENE.instantiate()
-		lootable.position = pos
-		lootable.neighborhood_type = NEIGHBORHOOD_POOL[rng.randi() % NEIGHBORHOOD_POOL.size()]
-		if dist_from_hq >= INFESTED_KEEPOUT_RADIUS and rng.randf() < INFESTED_FRACTION:
+		lootable.position = entry["pos"]
+		lootable.neighborhood_type = entry["type"]
+		var infest_rate: float = INFESTED_RATE_BY_TYPE.get(entry["type"], 0.4)
+		if rng.randf() < infest_rate:
 			lootable.is_infested = true
 		add_child(lootable)
