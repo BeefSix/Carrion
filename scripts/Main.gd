@@ -1,6 +1,9 @@
 extends Node2D
 
 const LOOTABLE_SCENE := preload("res://scenes/buildings/Lootable.tscn")
+const CP_SCENE := preload("res://scenes/buildings/CommandPost.tscn")
+const TC_SCENE := preload("res://scenes/buildings/TribalCamp.tscn")
+const HQ_POSITION := Vector2(1280, 1280)
 const LOOTABLE_COUNT := 30
 const INFESTED_FRACTION := 0.5
 const INFESTED_KEEPOUT_RADIUS := 700.0
@@ -18,6 +21,8 @@ const STREET_AVOID_RADIUS := 40.0
 
 
 func _ready() -> void:
+	GameState.reset_match()
+	_spawn_hq()
 	_spawn_lootables()
 
 
@@ -31,12 +36,25 @@ func _input(event: InputEvent) -> void:
 			var nf := get_tree().get_first_node_in_group("noise_field")
 			if nf != null:
 				nf.add_noise(get_global_mouse_position(), DEV_NOISE_INJECT)
+		KEY_ESCAPE:
+			get_tree().change_scene_to_file("res://scenes/TitleScreen.tscn")
+
+
+func _spawn_hq() -> void:
+	var hq: Node2D
+	match GameState.player_faction:
+		GameState.Faction.TRIBAL:
+			hq = TC_SCENE.instantiate()
+		_:
+			hq = CP_SCENE.instantiate()
+	hq.position = HQ_POSITION
+	add_child(hq)
 
 
 func _spawn_lootables() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1
-	var cp_pos := Vector2(1280, 1280)
+	var cp_pos := HQ_POSITION
 	var placed: Array = []
 	var attempts := 0
 	while placed.size() < LOOTABLE_COUNT and attempts < MAX_ATTEMPTS:

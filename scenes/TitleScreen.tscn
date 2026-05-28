@@ -1,0 +1,57 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/TitleScreen.gd" id="1_title"]
+
+[node name="TitleScreen" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_title")
+
+[node name="Background" type="ColorRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.1, 0.082, 0.062, 1)
+
+[node name="VBox" type="VBoxContainer" parent="."]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -180.0
+offset_top = -180.0
+offset_right = 180.0
+offset_bottom = 180.0
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="VBox"]
+layout_mode = 2
+text = "CARRION"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 56
+theme_override_colors/font_color = Color(0.72, 0.46, 0.32, 1)
+
+[node name="Subtitle" type="Label" parent="VBox"]
+layout_mode = 2
+text = "Choose your faction"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.65, 0.6, 0.5, 1)
+
+[node name="Spacer1" type="Control" parent="VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 24)
+
+[node name="MilitaryButton" type="Button" parent="VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(320, 56)
+text = "MILITARY
+loud, lethal, ammo-dependent"
+
+[node name="Spacer2" type="Control" parent="VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 8)
+
+[node name="TribalButton" type="Button" parent="VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(320, 56)
+text = "TRIBAL
+silent, slow, zombie-friendly"
