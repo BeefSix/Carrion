@@ -6,6 +6,7 @@
 [ext_resource type="PackedScene" path="res://scenes/HUD.tscn" id="4_hud"]
 [ext_resource type="Script" path="res://scripts/NoiseField.gd" id="7_noise"]
 [ext_resource type="Script" path="res://scripts/GroundTiles.gd" id="8_ground"]
+[ext_resource type="Script" path="res://scripts/DecayField.gd" id="9_decay"]
 
 [sub_resource type="NavigationPolygon" id="NavigationPolygon_main"]
 vertices = PackedVector2Array(0, 0, 6144, 0, 6144, 6144, 0, 6144)
@@ -21,6 +22,9 @@ polygon = PackedVector2Array(0, 0, 6144, 0, 6144, 6144, 0, 6144)
 
 [node name="GroundTiles" type="TileMapLayer" parent="."]
 script = ExtResource("8_ground")
+
+[node name="DecayField" type="Node2D" parent="."]
+script = ExtResource("9_decay")
 
 [node name="MapBorder" type="Line2D" parent="."]
 width = 4.0

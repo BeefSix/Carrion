@@ -65,10 +65,23 @@ func take_salvage(amount: int) -> int:
 func _process(delta: float) -> void:
 	if not is_infested:
 		return
-	_spawn_timer -= delta
+	# Spawn rate scales with local decay: 2x at 50+, 3x at 100+ (item 33).
+	_spawn_timer -= delta * _decay_multiplier()
 	if _spawn_timer <= 0:
 		_spawn_timer = SHAMBLER_SPAWN_INTERVAL
 		_spawn_shambler()
+
+
+func _decay_multiplier() -> float:
+	var df := get_tree().get_first_node_in_group("decay_field")
+	if df == null or not df.has_method("get_value_at"):
+		return 1.0
+	var v: float = df.get_value_at(global_position)
+	if v >= 100.0:
+		return 3.0
+	if v >= 50.0:
+		return 2.0
+	return 1.0
 
 
 func _spawn_shambler() -> void:

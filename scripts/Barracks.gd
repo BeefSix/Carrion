@@ -15,6 +15,22 @@ var _produce_timer := 0.0
 var _produce_what := ""
 var _queue: Array = []
 
+# Decay emission (see CommandPost.gd for the same constants and notes).
+const DECAY_RADIUS_BASE := 4.0
+const DECAY_RADIUS_CAP := 12.0
+const DECAY_RADIUS_GROWTH_PER_MIN := 0.5
+var _time_alive: float = 0.0
+
+
+func _ready() -> void:
+	super._ready()
+	add_to_group("decay_emitter")
+
+
+func get_decay_radius() -> float:
+	var grown: float = DECAY_RADIUS_BASE + (_time_alive / 60.0) * DECAY_RADIUS_GROWTH_PER_MIN
+	return clamp(grown, DECAY_RADIUS_BASE, DECAY_RADIUS_CAP)
+
 
 func get_action_count() -> int:
 	return 2
@@ -70,6 +86,7 @@ func _start_production(item: String) -> void:
 
 
 func _process(delta: float) -> void:
+	_time_alive += delta
 	if _producing:
 		_produce_timer -= delta
 		if _produce_timer <= 0:
