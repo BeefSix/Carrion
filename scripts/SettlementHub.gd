@@ -24,6 +24,7 @@ func _ready() -> void:
 	super._ready()
 	add_to_group("settlement_hub")
 	add_to_group("depot")
+	add_to_group("hq")
 
 
 func _available_items() -> Array:

@@ -39,18 +39,37 @@ func _physics_process(delta: float) -> void:
 
 
 func _find_nearest_zombie():
-	# Same cross-faction targeting as Rifleman.
+	# Cross-faction: anything not own faction or Neutral. Falls back to opposing
+	# HQ when no hostile unit is in range. See Rifleman.gd for full notes.
 	var best = null
 	var best_dist := ATTACK_RANGE
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction == Faction.MILITARY or u.faction == Faction.NEUTRAL:
+		if u.faction == faction or u.faction == Faction.NEUTRAL:
 			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d <= best_dist:
 			best_dist = d
 			best = u
+	if best != null:
+		return best
+	return _find_nearest_hostile_hq(ATTACK_RANGE)
+
+
+func _find_nearest_hostile_hq(range_px: float):
+	var enemy_group: String = "player_buildings" if is_in_group("ai_units") else "ai_buildings"
+	var best = null
+	var best_dist := range_px
+	for b in get_tree().get_nodes_in_group(enemy_group):
+		if not is_instance_valid(b):
+			continue
+		if not b.is_in_group("hq"):
+			continue
+		var d: float = global_position.distance_to(b.global_position)
+		if d <= best_dist:
+			best_dist = d
+			best = b
 	return best
 
 
@@ -60,7 +79,7 @@ func _find_nearest_threat_in_range(range_px: float):
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction == Faction.MILITARY or u.faction == Faction.NEUTRAL:
+		if u.faction == faction or u.faction == Faction.NEUTRAL:
 			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d <= best_dist:
@@ -89,7 +108,16 @@ func _fire_aoe(center: Vector2) -> void:
 	if nf != null:
 		nf.add_noise(global_position, NOISE_PER_SHOT)
 	for u in get_tree().get_nodes_in_group("units"):
-		if not is_instance_valid(u) or u.faction != Faction.ZOMBIE:
+		if not is_instance_valid(u):
+			continue
+		if u.faction == faction or u.faction == Faction.NEUTRAL:
 			continue
 		if u.global_position.distance_to(center) <= AOE_RADIUS:
 			u.take_damage(get_effective_damage(ATTACK_DAMAGE), self)
+	# Splash damage to opposing HQ if in AOE radius
+	var enemy_group: String = "player_buildings" if is_in_group("ai_units") else "ai_buildings"
+	for b in get_tree().get_nodes_in_group(enemy_group):
+		if not is_instance_valid(b) or not b.is_in_group("hq"):
+			continue
+		if b.global_position.distance_to(center) <= AOE_RADIUS:
+			b.take_damage(get_effective_damage(ATTACK_DAMAGE))

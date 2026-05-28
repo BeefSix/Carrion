@@ -20,6 +20,7 @@ var _queue: Array = []
 func _ready() -> void:
 	super._ready()
 	add_to_group("command_post")
+	add_to_group("hq")
 
 
 func get_action_count() -> int:

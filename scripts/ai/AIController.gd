@@ -128,6 +128,10 @@ func _spawn_hq() -> void:
 	_hq.position = spawn_position
 	get_parent().add_child(_hq)
 	_hq.add_to_group("ai_buildings")
+	# Register with Main so its win-condition scan tracks our HQ.
+	var main := get_parent()
+	if main != null and main.has_method("set_opposing_hq"):
+		main.set_opposing_hq(_hq)
 
 
 func _tick_production(delta: float) -> void:

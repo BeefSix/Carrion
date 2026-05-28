@@ -53,4 +53,23 @@ func _find_nearest_hostile():
 		if d <= best_dist:
 			best_dist = d
 			best = u
+	if best != null:
+		return best
+	return _find_nearest_hostile_hq(ENGAGE_RANGE)
+
+
+func _find_nearest_hostile_hq(range_px: float):
+	# Survivor Brawler engages anything non-Survivor, including opposing HQs.
+	var enemy_group: String = "player_buildings" if is_in_group("ai_units") else "ai_buildings"
+	var best = null
+	var best_dist := range_px
+	for b in get_tree().get_nodes_in_group(enemy_group):
+		if not is_instance_valid(b):
+			continue
+		if not b.is_in_group("hq"):
+			continue
+		var d: float = global_position.distance_to(b.global_position)
+		if d <= best_dist:
+			best_dist = d
+			best = b
 	return best

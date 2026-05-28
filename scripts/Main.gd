@@ -5,6 +5,7 @@ const CP_SCENE := preload("res://scenes/buildings/CommandPost.tscn")
 const TC_SCENE := preload("res://scenes/buildings/TribalCamp.tscn")
 const SH_SCENE := preload("res://scenes/buildings/SettlementHub.tscn")
 const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
+const WIN_OVERLAY_SCENE := preload("res://scenes/WinOverlay.tscn")
 const MAP_SIZE := Vector2(6144, 6144)
 const DEV_SPEED := 4.0
 const DEV_NOISE_INJECT := 100.0
@@ -75,6 +76,10 @@ const INFESTED_RATE_BY_TYPE := {
 
 
 var _edge_timer := 0.0
+var _player_hq: Node2D = null
+var _opposing_hq: Node2D = null
+var _match_ended: bool = false
+var _win_overlay: CanvasLayer = null
 
 
 func _ready() -> void:
@@ -85,6 +90,9 @@ func _ready() -> void:
 	_center_camera_on_spawn()
 	if GameState.ai_enabled:
 		_spawn_ai_opponent()
+	else:
+		_spawn_inert_opposing_hq()
+	_install_win_overlay()
 
 
 func _spawn_ai_opponent() -> void:
@@ -97,6 +105,59 @@ func _spawn_ai_opponent() -> void:
 	ai.spawn_position = _get_ai_spawn_position()
 	ai.enemy_hq_position = _get_spawn_position()
 	add_child(ai)
+
+
+func _spawn_inert_opposing_hq() -> void:
+	# Week 4 inert opposing faction - HQ exists at the opposite corner, no units,
+	# does nothing. Lets the player walk over and "win" the match. Faction picked
+	# to be different from the player's so the win condition is meaningful.
+	var scene: PackedScene = _opposing_inert_scene()
+	if scene == null:
+		return
+	var hq: Node2D = scene.instantiate()
+	hq.position = _get_ai_spawn_position()
+	add_child(hq)
+	hq.add_to_group("ai_buildings")
+	_opposing_hq = hq
+
+
+func _opposing_inert_scene() -> PackedScene:
+	match GameState.player_faction:
+		GameState.Faction.MILITARY:
+			return TC_SCENE
+		GameState.Faction.TRIBAL:
+			return CP_SCENE
+		GameState.Faction.SURVIVOR:
+			return CP_SCENE
+		_:
+			return CP_SCENE
+
+
+func set_opposing_hq(hq: Node2D) -> void:
+	# Called by AIController after it spawns its CP so Main can monitor it.
+	_opposing_hq = hq
+
+
+func _install_win_overlay() -> void:
+	_win_overlay = WIN_OVERLAY_SCENE.instantiate()
+	add_child(_win_overlay)
+
+
+func _check_win_conditions() -> void:
+	if _match_ended:
+		return
+	# Player HQ gone -> defeat. Opposing HQ gone -> victory. We resolve via
+	# is_instance_valid because queue_free has already fired by the time we get
+	# here in the frame after destroyed.emit.
+	if _player_hq != null and not is_instance_valid(_player_hq):
+		_match_ended = true
+		if _win_overlay != null:
+			_win_overlay.show_defeat()
+		return
+	if _opposing_hq != null and not is_instance_valid(_opposing_hq):
+		_match_ended = true
+		if _win_overlay != null:
+			_win_overlay.show_victory()
 
 
 func _get_ai_spawn_position() -> Vector2:
@@ -117,6 +178,7 @@ func _process(delta: float) -> void:
 	if _edge_timer >= EDGE_SPAWN_INTERVAL:
 		_edge_timer = 0.0
 		_spawn_edge_wanderer()
+	_check_win_conditions()
 
 
 func _spawn_edge_wanderer() -> void:
@@ -219,6 +281,8 @@ func _spawn_hq() -> void:
 			hq = CP_SCENE.instantiate()
 	hq.position = _get_spawn_position()
 	add_child(hq)
+	hq.add_to_group("player_buildings")
+	_player_hq = hq
 
 
 func _spawn_lootables() -> void:

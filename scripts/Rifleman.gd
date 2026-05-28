@@ -39,17 +39,41 @@ func _physics_process(delta: float) -> void:
 
 
 func _find_nearest_zombie():
+	# Despite the legacy name, this targets ANY hostile - any unit not of our own
+	# faction or Neutral. Lets AI Military shoot player Tribal/Survivor (and the
+	# reverse if the player picks Military without AI on). If no hostile unit is
+	# in range, falls back to the nearest opposing HQ so units posted at the enemy
+	# base auto-attack the HQ for the win condition.
 	var best = null
 	var best_dist := ATTACK_RANGE
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction != Faction.ZOMBIE:
+		if u.faction == faction or u.faction == Faction.NEUTRAL:
 			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d <= best_dist:
 			best_dist = d
 			best = u
+	if best != null:
+		return best
+	return _find_nearest_hostile_hq(ATTACK_RANGE)
+
+
+func _find_nearest_hostile_hq(range_px: float):
+	# Opposing HQ = HQ tagged with the ownership group opposite to ours.
+	var enemy_group: String = "player_buildings" if is_in_group("ai_units") else "ai_buildings"
+	var best = null
+	var best_dist := range_px
+	for b in get_tree().get_nodes_in_group(enemy_group):
+		if not is_instance_valid(b):
+			continue
+		if not b.is_in_group("hq"):
+			continue
+		var d: float = global_position.distance_to(b.global_position)
+		if d <= best_dist:
+			best_dist = d
+			best = b
 	return best
 
 
@@ -59,7 +83,7 @@ func _find_nearest_threat_in_range(range_px: float):
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction == Faction.MILITARY or u.faction == Faction.NEUTRAL:
+		if u.faction == faction or u.faction == Faction.NEUTRAL:
 			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d <= best_dist:

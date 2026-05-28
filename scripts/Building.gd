@@ -7,6 +7,8 @@ const PALETTE_SURVIVOR := Color("7a5c3c")
 const PALETTE_TRIBAL := Color("8a6a3a")
 const PALETTE_ICON_NEUTRAL := Color("8a857a")
 
+signal destroyed(building)
+
 @export var max_hp: int = 1000
 @export var body_color: Color = Color.WHITE
 @export var size_pixels: Vector2 = Vector2(64, 64)
@@ -55,6 +57,9 @@ func get_status_text() -> String:
 
 
 func _die() -> void:
+	# Emit before freeing so Main's win-condition listener fires with us still
+	# referenceable (queue_free is deferred to end-of-frame anyway).
+	destroyed.emit(self)
 	queue_free()
 
 
