@@ -4,6 +4,20 @@ const LOOTABLE_SCENE := preload("res://scenes/buildings/Lootable.tscn")
 const CP_SCENE := preload("res://scenes/buildings/CommandPost.tscn")
 const TC_SCENE := preload("res://scenes/buildings/TribalCamp.tscn")
 const SH_SCENE := preload("res://scenes/buildings/SettlementHub.tscn")
+const DECORATION_SCENE := preload("res://scenes/buildings/Decoration.tscn")
+
+# Duplicated from Decoration.PALETTES because GDScript's headless parse can't
+# resolve cross-script class consts before class_name globals are indexed
+# (see project memory: "class_name cold-load resolution error"). Keep in sync
+# with scripts/Decoration.gd if either side changes.
+const DECORATION_PALETTES := {
+	"residential": [Color("8e6e4a"), Color("a07840"), Color("7a5e3a"), Color("946a38")],
+	"commercial": [Color("c47a4b"), Color("5a8a85"), Color("a45040"), Color("8a7a3f")],
+	"industrial": [Color("4a4540"), Color("5a4030"), Color("3a352e"), Color("4e4842")],
+	"medical": [Color("9aaaaa"), Color("8aa0a8"), Color("aab6b8"), Color("9ca6a4")],
+	"security": [Color("3a4a68"), Color("2e3a55"), Color("46587a"), Color("3a3e58")],
+	"civic": [Color("a4a08e"), Color("7a8270"), Color("c0bba2"), Color("8e8a78")],
+}
 const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
 const WIN_OVERLAY_SCENE := preload("res://scenes/WinOverlay.tscn")
 const MAP_SIZE := Vector2(6144, 6144)
@@ -74,6 +88,37 @@ const INFESTED_RATE_BY_TYPE := {
 	"civic": 0.5,
 }
 
+# Decoration fill regions (tile coordinates within the 192x192 grid). Decorations
+# spawn procedurally inside each region, avoiding road/sidewalk bands (the
+# regions already sit between the roads at x=65, x=126, y=65, y=126) and
+# avoiding the hand-placed Lootables. Each district uses a mix of two footprint
+# sizes for visual variety inside the cohesive palette.
+const DECORATION_REGIONS := [
+	{
+		"region": Rect2(10, 10, 53, 53), "type": "residential",
+		"target_count": 26, "footprints": [Vector2(64, 64), Vector2(32, 32)],
+	},
+	{
+		"region": Rect2(128, 10, 54, 53), "type": "commercial",
+		"target_count": 18, "footprints": [Vector2(96, 64), Vector2(64, 64)],
+	},
+	{
+		"region": Rect2(10, 128, 53, 54), "type": "industrial",
+		"target_count": 14, "footprints": [Vector2(96, 96), Vector2(64, 96)],
+	},
+	{
+		"region": Rect2(128, 128, 54, 54), "type": "medical",
+		"target_count": 12, "footprints": [Vector2(96, 96), Vector2(64, 64)],
+	},
+	{
+		"region": Rect2(68, 10, 55, 53), "type": "civic",
+		"target_count": 16, "footprints": [Vector2(96, 96), Vector2(64, 64)],
+	},
+]
+
+const PLACEMENT_ATTEMPTS_PER_TARGET := 8
+const SPAWN_KEEPOUT_PX := 384.0
+
 
 var _edge_timer := 0.0
 var _player_hq: Node2D = null
@@ -86,6 +131,7 @@ func _ready() -> void:
 	GameState.reset_match()
 	_spawn_hq()
 	_spawn_lootables()
+	_spawn_decorations()
 	_rebake_navigation()
 	_center_camera_on_spawn()
 	if GameState.ai_enabled:
@@ -93,6 +139,78 @@ func _ready() -> void:
 	else:
 		_spawn_inert_opposing_hq()
 	_install_win_overlay()
+
+
+func _spawn_decorations() -> void:
+	# Procedural fill within each district region. Snap to a 32-px grid (tile
+	# resolution) so decorations align cleanly with the ground. Reject placements
+	# that collide with any existing building (Lootables already spawned) or fall
+	# inside a spawn-corner keepout (so HQs and starting units have breathing
+	# room). Each district pulls colors from Decoration.PALETTES.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 42
+	for entry in DECORATION_REGIONS:
+		var region: Rect2 = entry["region"]
+		var district_type: String = entry["type"]
+		var target: int = entry["target_count"]
+		var footprints: Array = entry["footprints"]
+		var palette: Array = DECORATION_PALETTES.get(district_type, [Color("5a4530")])
+		var attempts: int = target * PLACEMENT_ATTEMPTS_PER_TARGET
+		var placed: int = 0
+		while placed < target and attempts > 0:
+			attempts -= 1
+			var footprint: Vector2 = footprints[rng.randi() % footprints.size()]
+			var tw: int = int(footprint.x / 32.0)
+			var th: int = int(footprint.y / 32.0)
+			var max_x: int = int(region.size.x) - tw - 1
+			var max_y: int = int(region.size.y) - th - 1
+			if max_x <= 1 or max_y <= 1:
+				continue
+			var tx: int = int(region.position.x) + rng.randi_range(1, max_x)
+			var ty: int = int(region.position.y) + rng.randi_range(1, max_y)
+			var pos := Vector2(
+				float(tx * 32) + footprint.x * 0.5,
+				float(ty * 32) + footprint.y * 0.5,
+			)
+			if _spawn_keepout(pos):
+				continue
+			if _building_collides(pos, footprint):
+				continue
+			var deco = DECORATION_SCENE.instantiate()
+			deco.position = pos
+			# set() rather than direct property assignment - sidesteps the cold-
+			# load typed-export check that fires in headless before class globals
+			# are indexed.
+			deco.set("district_type", district_type)
+			deco.set("size_pixels", footprint)
+			deco.set("body_color", palette[rng.randi() % palette.size()])
+			add_child(deco)
+			placed += 1
+
+
+func _spawn_keepout(pos: Vector2) -> bool:
+	# Reject if too close to any potential player/AI spawn corner.
+	for spawn in [SPAWN_NW, SPAWN_NE, SPAWN_SW, SPAWN_SE]:
+		if pos.distance_to(spawn) < SPAWN_KEEPOUT_PX:
+			return true
+	return false
+
+
+func _building_collides(pos: Vector2, footprint: Vector2) -> bool:
+	# Padded AABB intersection against every building already in the tree. Pad
+	# by 16 px so adjacent buildings still leave a 1-tile gap for unit movement.
+	var pad := Vector2(16, 16)
+	var rect := Rect2(pos - footprint * 0.5 - pad, footprint + pad * 2.0)
+	for b in get_tree().get_nodes_in_group("buildings"):
+		if not is_instance_valid(b):
+			continue
+		if not ("size_pixels" in b):
+			continue
+		var bhalf: Vector2 = b.size_pixels * 0.5
+		var brect := Rect2(b.position - bhalf, b.size_pixels)
+		if rect.intersects(brect):
+			return true
+	return false
 
 
 func _spawn_ai_opponent() -> void:

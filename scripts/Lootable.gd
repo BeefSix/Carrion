@@ -21,12 +21,16 @@ const FOOTPRINTS := {
 	"civic": Vector2(96, 96),
 }
 const NEIGHBORHOOD_COLORS := {
-	"residential": Color("6a5a44"),
-	"commercial": Color("5e5a4a"),
-	"industrial": Color("44423e"),
-	"medical": Color("6e6e68"),
-	"security": Color("3a4250"),
-	"civic": Color("7a705a"),
+	# Brightened from the previous muted palette so Lootables contrast with the
+	# new dark-asphalt ground and read distinctly from each other. Each color
+	# anchors its district's palette family (Decoration.PALETTES picks variants
+	# from a similar hue, so a Lootable sits visually inside its neighborhood).
+	"residential": Color("8e6e4a"),
+	"commercial": Color("8a6a3e"),
+	"industrial": Color("4a4640"),
+	"medical": Color("9aaaaa"),
+	"security": Color("3e4a68"),
+	"civic": Color("a4a08e"),
 }
 
 @export var starting_salvage: int = 200
