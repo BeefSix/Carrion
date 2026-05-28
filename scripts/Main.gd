@@ -4,10 +4,21 @@ const LOOTABLE_SCENE := preload("res://scenes/buildings/Lootable.tscn")
 const CP_SCENE := preload("res://scenes/buildings/CommandPost.tscn")
 const TC_SCENE := preload("res://scenes/buildings/TribalCamp.tscn")
 const SH_SCENE := preload("res://scenes/buildings/SettlementHub.tscn")
-const HQ_POSITION := Vector2(3072, 3072)
 const MAP_SIZE := Vector2(6144, 6144)
 const DEV_SPEED := 4.0
 const DEV_NOISE_INJECT := 100.0
+
+# Per-faction corner spawns. Tile (18, 18) center inside the rubble edge band; clear zone
+# is the surrounding 12x12 tiles, big enough to drop HQ + a few small buildings + walls.
+# Each corner sits closest to a different neighborhood so the three factions experience
+# a different first-encounter when they leave their spawn:
+#   Military NW -> Residential cluster
+#   Tribal  SE -> Medical / Security institutional pair
+#   Survivor SW -> Industrial warehouse complex
+const SPAWN_NW := Vector2(576, 576)
+const SPAWN_NE := Vector2(5568, 576)
+const SPAWN_SW := Vector2(576, 5568)
+const SPAWN_SE := Vector2(5568, 5568)
 
 # Hand-designed neighborhood layout. Each district packs its buildings tightly
 # (close center-to-center spacing within the district); districts sit in the
@@ -62,6 +73,24 @@ func _ready() -> void:
 	_spawn_hq()
 	_spawn_lootables()
 	_rebake_navigation()
+	_center_camera_on_spawn()
+
+
+func _get_spawn_position() -> Vector2:
+	match GameState.player_faction:
+		GameState.Faction.MILITARY:
+			return SPAWN_NW
+		GameState.Faction.TRIBAL:
+			return SPAWN_SE
+		GameState.Faction.SURVIVOR:
+			return SPAWN_SW
+		_:
+			return SPAWN_NW
+
+
+func _center_camera_on_spawn() -> void:
+	if has_node("Camera"):
+		$Camera.position = _get_spawn_position()
 
 
 func rebake_navigation() -> void:
@@ -124,7 +153,7 @@ func _spawn_hq() -> void:
 			hq = SH_SCENE.instantiate()
 		_:
 			hq = CP_SCENE.instantiate()
-	hq.position = HQ_POSITION
+	hq.position = _get_spawn_position()
 	add_child(hq)
 
 
