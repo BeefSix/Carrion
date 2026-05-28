@@ -6,6 +6,7 @@ signal selection_changed(units: Array, building)
 const DRAG_THRESHOLD_PX := 8.0
 const WALL_GRID := 32.0
 const WALL_COST := 25
+const RUBBLE_TILE := 2
 
 var _dragging := false
 var _drag_start_world: Vector2
@@ -37,16 +38,40 @@ func _confirm_wall_placement(world_pos: Vector2) -> void:
 	if _wall_builder == null or not is_instance_valid(_wall_builder) or not _wall_builder.has_method("build_wall_at"):
 		_cancel_wall_placement()
 		return
+	var snapped := _snap_to_grid(world_pos)
+	if not _is_wall_placement_valid(snapped):
+		return  # keep placement mode active so the player can pick another spot
 	if not GameState.can_spend(WALL_COST):
 		_cancel_wall_placement()
 		return
 	GameState.spend(WALL_COST)
-	_wall_builder.build_wall_at(_snap_to_grid(world_pos))
+	_wall_builder.build_wall_at(snapped)
 	_cancel_wall_placement()
 
 
 func _snap_to_grid(p: Vector2) -> Vector2:
 	return (p / WALL_GRID).floor() * WALL_GRID + Vector2(WALL_GRID, WALL_GRID) * 0.5
+
+
+func _is_wall_placement_valid(center: Vector2) -> bool:
+	# Tile-type check: rubble is non-buildable; everything else (street, sidewalk, vegetation, dirt) is fine.
+	var ground := get_tree().get_first_node_in_group("ground_tiles")
+	if ground != null and ground.has_method("get_tile_type_at"):
+		var t: int = ground.get_tile_type_at(center)
+		if t == -1 or t == RUBBLE_TILE:
+			return false
+	# Building-overlap check: no overlap with any existing building footprint (adjacent edge contact is fine).
+	var wall_rect := Rect2(center - Vector2(WALL_GRID, WALL_GRID) * 0.5, Vector2(WALL_GRID, WALL_GRID))
+	for b in get_tree().get_nodes_in_group("buildings"):
+		if not is_instance_valid(b):
+			continue
+		if not ("size_pixels" in b):
+			continue
+		var bhalf: Vector2 = b.size_pixels * 0.5
+		var brect := Rect2(b.position - bhalf, b.size_pixels)
+		if wall_rect.intersects(brect):
+			return false
+	return true
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -201,10 +226,11 @@ func _draw() -> void:
 	if _placing_wall:
 		var center := _snap_to_grid(get_global_mouse_position())
 		var half := Vector2(WALL_GRID, WALL_GRID) * 0.5
-		var affordable: bool = GameState.can_spend(WALL_COST)
-		var fill: Color = Color(0.5, 0.7, 0.9, 0.35) if affordable else Color(0.9, 0.4, 0.3, 0.35)
+		var valid: bool = _is_wall_placement_valid(center) and GameState.can_spend(WALL_COST)
+		var fill: Color = Color(0.4, 0.8, 0.4, 0.35) if valid else Color(0.9, 0.35, 0.3, 0.35)
+		var border: Color = Color(0.6, 1.0, 0.6, 0.85) if valid else Color(1.0, 0.45, 0.4, 0.85)
 		draw_rect(Rect2(center - half, Vector2(WALL_GRID, WALL_GRID)), fill, true)
-		draw_rect(Rect2(center - half, Vector2(WALL_GRID, WALL_GRID)), Color(0.8, 0.9, 1.0, 0.8), false, 2.0)
+		draw_rect(Rect2(center - half, Vector2(WALL_GRID, WALL_GRID)), border, false, 2.0)
 	if _dragging:
 		var current_world := get_global_mouse_position()
 		var rect := Rect2(_drag_start_world, current_world - _drag_start_world).abs()

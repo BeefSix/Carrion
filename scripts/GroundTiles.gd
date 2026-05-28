@@ -26,8 +26,19 @@ const EDGE_MARGIN := 6
 
 
 func _ready() -> void:
+	add_to_group("ground_tiles")
 	_build_tileset()
 	_populate()
+
+
+func get_tile_type_at(world_pos: Vector2) -> int:
+	# Returns the atlas-column index of the tile under world_pos, or -1 if outside the map.
+	var local_pos := to_local(world_pos)
+	var cell := local_to_map(local_pos)
+	if cell.x < 0 or cell.y < 0 or cell.x >= MAP_TILES or cell.y >= MAP_TILES:
+		return -1
+	var atlas := get_cell_atlas_coords(cell)
+	return atlas.x
 
 
 func _build_tileset() -> void:
