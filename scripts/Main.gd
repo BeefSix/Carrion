@@ -195,8 +195,11 @@ func _get_spawn_position() -> Vector2:
 
 
 func _center_camera_on_spawn() -> void:
+	# Camera lives in iso screen-space (tiles now render iso via TileMapLayer's
+	# TILE_SHAPE_ISOMETRIC). Project the world-coord spawn to its iso position
+	# so the camera frames the correct corner of the angled map.
 	if has_node("Camera"):
-		$Camera.position = _get_spawn_position()
+		$Camera.position = IsoView.world_to_screen(_get_spawn_position())
 
 
 func rebake_navigation() -> void:

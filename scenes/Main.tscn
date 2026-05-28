@@ -35,11 +35,11 @@ points = PackedVector2Array(0, 0, 6144, 0, 6144, 6144, 0, 6144, 0, 0)
 navigation_polygon = SubResource("NavigationPolygon_main")
 
 [node name="Camera" type="Camera2D" parent="."]
-position = Vector2(3072, 3072)
-limit_left = 0
-limit_top = 0
-limit_right = 6144
-limit_bottom = 6144
+position = Vector2(0, 3072)
+limit_left = -6500
+limit_top = -300
+limit_right = 6500
+limit_bottom = 6500
 script = ExtResource("1_camera")
 
 [node name="NoiseField" type="Node2D" parent="."]
