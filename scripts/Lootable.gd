@@ -6,6 +6,12 @@ const SHAMBLER_SPAWN_INTERVAL := 90.0
 const FIRST_SPAWN_MIN_DELAY := 30.0
 const INFESTED_BODY_COLOR := Color("3f4a2f")
 
+# Themed shambler variants per neighborhood. Visual is the primary tell; security
+# and industrial also get modest stat bumps per the design's "tougher zombies" intent.
+const MEDIC_COLOR := Color("9a9590")    # pale gray-white
+const POLICE_COLOR := Color("394d6e")   # desaturated dark blue
+const BRUTE_COLOR := Color("2f3a2a")    # darker green-brown
+
 const FOOTPRINTS := {
 	"residential": Vector2(64, 64),
 	"commercial": Vector2(96, 64),
@@ -69,7 +75,28 @@ func _spawn_shambler() -> void:
 	var s = SHAMBLER_SCENE.instantiate()
 	var jitter := Vector2(randf_range(-30, 30), randf_range(-30, 30))
 	s.position = global_position + jitter
+	_configure_variant(s)
 	get_parent().add_child(s)
+
+
+func _configure_variant(s) -> void:
+	# Set body_color / max_hp / damage_mult BEFORE add_child so Unit._ready picks them up
+	# (current_hp = max_hp, body draw uses body_color, attack uses damage_mult).
+	match neighborhood_type:
+		"medical":
+			s.body_color = MEDIC_COLOR
+		"security":
+			s.body_color = POLICE_COLOR
+			s.max_hp = 50
+			if "damage_mult" in s:
+				s.damage_mult = 1.15
+		"industrial":
+			s.body_color = BRUTE_COLOR
+			s.max_hp = 60
+			if "damage_mult" in s:
+				s.damage_mult = 1.20
+		_:
+			pass  # residential / commercial / civic: baseline Shambler
 
 
 func _draw_building_icon() -> void:

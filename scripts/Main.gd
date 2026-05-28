@@ -4,9 +4,15 @@ const LOOTABLE_SCENE := preload("res://scenes/buildings/Lootable.tscn")
 const CP_SCENE := preload("res://scenes/buildings/CommandPost.tscn")
 const TC_SCENE := preload("res://scenes/buildings/TribalCamp.tscn")
 const SH_SCENE := preload("res://scenes/buildings/SettlementHub.tscn")
+const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
 const MAP_SIZE := Vector2(6144, 6144)
 const DEV_SPEED := 4.0
 const DEV_NOISE_INJECT := 100.0
+
+# Edge wanderer: low-rate ambient zombie drift in from off-map.
+const EDGE_SPAWN_INTERVAL := 90.0
+const EDGE_INSET := 60.0
+const EDGE_SPAWN_KEEPOUT := 1200.0  # avoid dumping wanderers on top of the player corner
 
 # Per-faction corner spawns. Tile (18, 18) center inside the rubble edge band; clear zone
 # is the surrounding 12x12 tiles, big enough to drop HQ + a few small buildings + walls.
@@ -68,12 +74,43 @@ const INFESTED_RATE_BY_TYPE := {
 }
 
 
+var _edge_timer := 0.0
+
+
 func _ready() -> void:
 	GameState.reset_match()
 	_spawn_hq()
 	_spawn_lootables()
 	_rebake_navigation()
 	_center_camera_on_spawn()
+
+
+func _process(delta: float) -> void:
+	_edge_timer += delta
+	if _edge_timer >= EDGE_SPAWN_INTERVAL:
+		_edge_timer = 0.0
+		_spawn_edge_wanderer()
+
+
+func _spawn_edge_wanderer() -> void:
+	var spawn_pos := _get_spawn_position()
+	var pos := Vector2.ZERO
+	for attempt in range(8):
+		var edge: int = randi() % 4
+		match edge:
+			0:
+				pos = Vector2(randf_range(EDGE_INSET, MAP_SIZE.x - EDGE_INSET), EDGE_INSET)
+			1:
+				pos = Vector2(MAP_SIZE.x - EDGE_INSET, randf_range(EDGE_INSET, MAP_SIZE.y - EDGE_INSET))
+			2:
+				pos = Vector2(randf_range(EDGE_INSET, MAP_SIZE.x - EDGE_INSET), MAP_SIZE.y - EDGE_INSET)
+			_:
+				pos = Vector2(EDGE_INSET, randf_range(EDGE_INSET, MAP_SIZE.y - EDGE_INSET))
+		if pos.distance_to(spawn_pos) >= EDGE_SPAWN_KEEPOUT:
+			break
+	var s = SHAMBLER_SCENE.instantiate()
+	s.position = pos
+	add_child(s)
 
 
 func _get_spawn_position() -> Vector2:
