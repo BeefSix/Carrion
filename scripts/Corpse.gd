@@ -1,9 +1,9 @@
 extends Node2D
 
 const SIZE := Vector2(16, 16)
-const BASELINE_ENHANCED_COLOR := Color(0.5, 0.28, 0.18, 1)
-const L2_ENHANCED_COLOR := Color(0.78, 0.22, 0.14, 1)
-const L3_ENHANCED_COLOR := Color(0.95, 0.18, 0.08, 1)
+const BASELINE_ENHANCED_COLOR := Color("6a3a3a")
+const L2_ENHANCED_COLOR := Color("583030")
+const L3_ENHANCED_COLOR := Color("452626")
 
 const VETERAN_HP_SCALE := { 1: 1.0, 2: 1.25, 3: 1.5 }
 const VETERAN_DAMAGE_SCALE := { 1: 1.0, 2: 1.15, 3: 1.25 }
@@ -61,16 +61,16 @@ func _color_for_level(level: int) -> Color:
 
 func _draw() -> void:
 	var half := SIZE / 2.0
-	draw_rect(Rect2(-half, SIZE), Color(0.18, 0.1, 0.08))
+	draw_rect(Rect2(-half, SIZE), Color(0.14, 0.09, 0.07))
 	var bar_width: float = 16.0
 	var bar_height := 2.0
 	var bar_y := -14.0
 	var x: float = -bar_width / 2.0
 	var fill_ratio: float = clamp(_timer / _initial_delay, 0.0, 1.0) if _initial_delay > 0.0 else 0.0
-	draw_rect(Rect2(x, bar_y, bar_width, bar_height), Color(0.25, 0.05, 0.05))
-	var bar_color: Color = Color(0.7, 0.3, 0.18)
+	draw_rect(Rect2(x, bar_y, bar_width, bar_height), Color(0.2, 0.05, 0.05))
+	var bar_color: Color = Color(0.55, 0.28, 0.22)
 	if veterancy_at_death == 2:
-		bar_color = Color(0.85, 0.3, 0.15)
+		bar_color = Color(0.48, 0.24, 0.2)
 	elif veterancy_at_death >= 3:
-		bar_color = Color(1.0, 0.3, 0.1)
+		bar_color = Color(0.4, 0.2, 0.18)
 	draw_rect(Rect2(x, bar_y, bar_width * fill_ratio, bar_height), bar_color)

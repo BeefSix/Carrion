@@ -80,6 +80,11 @@ func _process(delta: float) -> void:
 				_start_production(next_item)
 
 
+func _draw_building_icon() -> void:
+	var inner_size := Vector2(40.0, 26.0)
+	draw_rect(Rect2(-inner_size / 2.0, inner_size), PALETTE_MILITARY)
+
+
 func _spawn_item(item: String) -> void:
 	var scene: PackedScene = null
 	if item == "rifleman":

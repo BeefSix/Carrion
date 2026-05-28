@@ -2,24 +2,21 @@
 
 [ext_resource type="Script" path="res://scripts/Shambler.gd" id="1_shambler"]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_shambler"]
-size = Vector2(24, 24)
+[sub_resource type="CircleShape2D" id="CircleShape2D_shambler"]
+radius = 11.0
 
 [node name="Shambler" type="CharacterBody2D" groups=["units"]]
 script = ExtResource("1_shambler")
 faction = 2
 max_hp = 40
 move_speed = 48.0
-body_color = Color(0.42, 0.5, 0.22, 1)
-
-[node name="Body" type="Polygon2D" parent="."]
-color = Color(1, 1, 1, 1)
-polygon = PackedVector2Array(-12, -12, 12, -12, 12, 12, -12, 12)
+body_color = Color(0.29, 0.353, 0.29, 1)
+size_px = 22
 
 [node name="CollisionShape" type="CollisionShape2D" parent="."]
-shape = SubResource("RectangleShape2D_shambler")
+shape = SubResource("CircleShape2D_shambler")
 
 [node name="NavigationAgent" type="NavigationAgent2D" parent="."]
 path_desired_distance = 8.0
 target_desired_distance = 8.0
-radius = 12.0
+radius = 11.0

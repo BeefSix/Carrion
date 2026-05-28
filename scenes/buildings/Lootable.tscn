@@ -7,12 +7,8 @@ size = Vector2(32, 32)
 
 [node name="Lootable" type="StaticBody2D" groups=["buildings", "lootable"]]
 script = ExtResource("1_lootable")
-body_color = Color(0.62, 0.55, 0.38, 1)
+body_color = Color(0.29, 0.263, 0.224, 1)
 size_pixels = Vector2(32, 32)
-
-[node name="Body" type="Polygon2D" parent="."]
-color = Color(1, 1, 1, 1)
-polygon = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
 [node name="CollisionShape" type="CollisionShape2D" parent="."]
 shape = SubResource("RectangleShape2D_lootable")

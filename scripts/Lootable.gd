@@ -4,10 +4,11 @@ extends "res://scripts/Building.gd"
 const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
 const SHAMBLER_SPAWN_INTERVAL := 90.0
 const FIRST_SPAWN_MIN_DELAY := 30.0
-const INFESTED_BODY_COLOR := Color(0.42, 0.5, 0.3, 1)
+const INFESTED_BODY_COLOR := Color("3f4a2f")
 
 @export var starting_salvage: int = 200
 @export var is_infested: bool = false
+@export var neighborhood_type: String = "residential"
 
 var remaining_salvage: int = 0
 var _spawn_timer := 0.0
@@ -19,9 +20,8 @@ func _ready() -> void:
 	add_to_group("lootable")
 	if is_infested:
 		body_color = INFESTED_BODY_COLOR
-		if has_node("Body"):
-			($Body as Polygon2D).color = body_color
 		_spawn_timer = randf_range(FIRST_SPAWN_MIN_DELAY, SHAMBLER_SPAWN_INTERVAL)
+	queue_redraw()
 
 
 func take_salvage(amount: int) -> int:
@@ -46,3 +46,16 @@ func _spawn_shambler() -> void:
 	var jitter := Vector2(randf_range(-30, 30), randf_range(-30, 30))
 	s.position = global_position + jitter
 	get_parent().add_child(s)
+
+
+func _draw_building_icon() -> void:
+	var icon_color: Color = PALETTE_ICON_NEUTRAL
+	match neighborhood_type:
+		"commercial":
+			var s := Vector2(10.0, 10.0)
+			draw_rect(Rect2(-s / 2.0, s), icon_color)
+		"medical":
+			draw_line(Vector2(-6, 0), Vector2(6, 0), icon_color, 2.0, true)
+			draw_line(Vector2(0, -6), Vector2(0, 6), icon_color, 2.0, true)
+		_:
+			draw_circle(Vector2.ZERO, 5.0, icon_color)

@@ -11,6 +11,7 @@ const MIN_SEPARATION := 100.0
 const MAX_ATTEMPTS := 2000
 const DEV_SPEED := 4.0
 const DEV_NOISE_INJECT := 100.0
+const NEIGHBORHOOD_POOL := ["residential", "residential", "residential", "commercial", "commercial", "medical"]
 
 
 func _ready() -> void:
@@ -54,6 +55,7 @@ func _spawn_lootables() -> void:
 		placed.append(pos)
 		var lootable = LOOTABLE_SCENE.instantiate()
 		lootable.position = pos
+		lootable.neighborhood_type = NEIGHBORHOOD_POOL[rng.randi() % NEIGHBORHOOD_POOL.size()]
 		if dist_from_cp >= INFESTED_KEEPOUT_RADIUS and rng.randf() < INFESTED_FRACTION:
 			lootable.is_infested = true
 		add_child(lootable)

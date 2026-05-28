@@ -12,18 +12,27 @@ const HP_MULT_BY_LEVEL := [1.0, 1.0, 1.10, 1.20]
 const DAMAGE_MULT_BY_LEVEL := [1.0, 1.0, 1.10, 1.20]
 const SPEED_MULT_BY_LEVEL := [1.0, 1.0, 1.0, 1.05]
 
+# Faction palette (muted/desaturated; constrained to a grim shared world)
+const PALETTE_MILITARY := Color("5a6644")
+const PALETTE_SURVIVOR := Color("7a5c3c")
+const PALETTE_TRIBAL := Color("8a6a3a")
+const PALETTE_ZOMBIE := Color("4a5a4a")
+const PALETTE_STRUCTURE := Color("4a4339")
+
 @export var faction: Faction = Faction.MILITARY
 @export var max_hp: int = 100
 @export var body_color: Color = Color.WHITE
 @export var move_speed: float = 96.0
 @export var clean_kills: bool = false
 @export var corpse_base_chance: float = 1.0
+@export var size_px: int = 22
 
 var current_hp: int
 var current_command: Command = Command.IDLE
 var selected: bool = false
+var facing_dir: Vector2 = Vector2.DOWN
 
-# Veterancy data (W2 veterancy system)
+# Veterancy data
 var kills_count: int = 0
 var damage_dealt: float = 0.0
 var combat_time: float = 0.0
@@ -37,7 +46,6 @@ var speed_mult: float = 1.0
 
 func _ready() -> void:
 	current_hp = max_hp
-	($Body as Polygon2D).color = body_color
 
 
 func move_to(world_pos: Vector2) -> void:
@@ -71,11 +79,27 @@ func get_xp_total() -> float:
 
 
 func _process(delta: float) -> void:
+	if velocity.length_squared() > 1.0:
+		facing_dir = velocity.normalized()
+		queue_redraw()
 	if faction == Faction.ZOMBIE:
 		return
 	if _is_engaged():
 		combat_time += delta
 	_update_veterancy()
+
+
+func _is_engaged() -> bool:
+	for u in get_tree().get_nodes_in_group("units"):
+		if u == self or not is_instance_valid(u):
+			continue
+		if u.faction == faction:
+			continue
+		if u.faction == Faction.NEUTRAL:
+			continue
+		if global_position.distance_to(u.global_position) <= ENGAGEMENT_RANGE:
+			return true
+	return false
 
 
 func _level_for_xp(xp: float) -> int:
@@ -100,7 +124,6 @@ func _on_level_up(old_level: int, new_level: int) -> void:
 	hp_mult = HP_MULT_BY_LEVEL[new_level]
 	damage_mult = DAMAGE_MULT_BY_LEVEL[new_level]
 	speed_mult = SPEED_MULT_BY_LEVEL[new_level]
-	# Scale current_hp proportionally - no free heal, no caught-at-low-effective-HP.
 	if old_hp_mult > 0.0:
 		current_hp = int(round(float(current_hp) * (hp_mult / old_hp_mult)))
 	queue_redraw()
@@ -117,19 +140,6 @@ func get_effective_move_speed() -> float:
 
 func get_effective_damage(base_damage: int) -> int:
 	return int(round(base_damage * damage_mult))
-
-
-func _is_engaged() -> bool:
-	for u in get_tree().get_nodes_in_group("units"):
-		if u == self or not is_instance_valid(u):
-			continue
-		if u.faction == faction:
-			continue
-		if u.faction == Faction.NEUTRAL:
-			continue
-		if global_position.distance_to(u.global_position) <= ENGAGEMENT_RANGE:
-			return true
-	return false
 
 
 func _die(attacker = null) -> void:
@@ -198,26 +208,49 @@ func get_status_text() -> String:
 
 
 func _draw() -> void:
+	var half: float = float(size_px) / 2.0
+
 	if selected:
-		draw_circle(Vector2.ZERO, 18.0, Color(1, 1, 0.4), false, 2.0, true)
-	var bar_width := 24.0
-	var bar_height := 4.0
-	var bar_y := -20.0
-	var x := -bar_width / 2.0
-	draw_rect(Rect2(x, bar_y, bar_width, bar_height), Color(0.15, 0.05, 0.05))
+		draw_arc(Vector2.ZERO, half + 4.0, 0.0, TAU, 32, Color(1, 1, 0.4), 1.8, true)
+
+	if faction == Faction.ZOMBIE:
+		draw_circle(Vector2.ZERO, half, body_color)
+	else:
+		var size_v := Vector2(size_px, size_px)
+		draw_rect(Rect2(-Vector2(half, half), size_v), body_color)
+		_draw_facing_triangle(half)
+
+	# HP bar
+	var bar_width: float = max(20.0, float(size_px))
+	var bar_height := 3.0
+	var bar_y: float = -half - 7.0
+	var bar_x: float = -bar_width / 2.0
+	draw_rect(Rect2(bar_x, bar_y, bar_width, bar_height), Color(0.12, 0.05, 0.05))
 	var max_eff: int = get_effective_max_hp()
 	var fill_ratio: float = float(current_hp) / float(max_eff) if max_eff > 0 else 0.0
-	draw_rect(Rect2(x, bar_y, bar_width * fill_ratio, bar_height), Color(0.3, 0.8, 0.3))
-	_draw_veterancy_chevrons()
+	draw_rect(Rect2(bar_x, bar_y, bar_width * fill_ratio, bar_height), Color(0.35, 0.65, 0.3))
+
+	_draw_veterancy_chevrons(half)
 
 
-func _draw_veterancy_chevrons() -> void:
+func _draw_facing_triangle(half: float) -> void:
+	var tip: Vector2 = facing_dir * (half * 0.85)
+	var base_center: Vector2 = facing_dir * (half * 0.2)
+	var perp: Vector2 = facing_dir.rotated(PI / 2.0)
+	var base_half_width: float = half * 0.35
+	var corner_a: Vector2 = base_center + perp * base_half_width
+	var corner_b: Vector2 = base_center - perp * base_half_width
+	var tri_color: Color = body_color.lightened(0.35)
+	draw_colored_polygon(PackedVector2Array([tip, corner_a, corner_b]), tri_color)
+
+
+func _draw_veterancy_chevrons(half: float) -> void:
 	if veterancy_level < 2:
 		return
 	var count: int = veterancy_level - 1
-	var color: Color = Color(0.85, 0.55, 0.2) if veterancy_level == 2 else Color(0.85, 0.85, 0.92)
-	var base_x := 14.0
-	var base_y := -22.0
+	var color: Color = Color(0.82, 0.55, 0.22) if veterancy_level == 2 else Color(0.85, 0.85, 0.92)
+	var base_x: float = half + 3.0
+	var base_y: float = -half - 9.0
 	for i in range(count):
 		var y: float = base_y - i * 4.0
 		var pts := PackedVector2Array([

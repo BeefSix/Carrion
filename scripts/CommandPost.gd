@@ -86,6 +86,10 @@ func _process(delta: float) -> void:
 				_start_production(next_item)
 
 
+func _draw_building_icon() -> void:
+	draw_circle(Vector2.ZERO, 14.0, PALETTE_MILITARY)
+
+
 func _spawn_item(item: String) -> void:
 	if item == "looter":
 		if looter_scene != null:

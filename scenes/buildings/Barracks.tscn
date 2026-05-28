@@ -10,14 +10,10 @@ size = Vector2(80, 64)
 [node name="Barracks" type="StaticBody2D" groups=["buildings", "barracks"]]
 script = ExtResource("1_bar")
 max_hp = 1500
-body_color = Color(0.4, 0.45, 0.22, 1)
+body_color = Color(0.29, 0.263, 0.224, 1)
 size_pixels = Vector2(80, 64)
 rifleman_scene = ExtResource("2_rifle")
 heavy_gunner_scene = ExtResource("3_hg")
-
-[node name="Body" type="Polygon2D" parent="."]
-color = Color(1, 1, 1, 1)
-polygon = PackedVector2Array(-40, -32, 40, -32, 40, 32, -40, 32)
 
 [node name="CollisionShape" type="CollisionShape2D" parent="."]
 shape = SubResource("RectangleShape2D_bar")

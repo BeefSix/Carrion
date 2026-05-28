@@ -1,4 +1,4 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/CommandPost.gd" id="1_cp"]
 [ext_resource type="PackedScene" path="res://scenes/units/Looter.tscn" id="2_looter"]
@@ -9,13 +9,9 @@ size = Vector2(64, 64)
 
 [node name="CommandPost" type="StaticBody2D" groups=["buildings"]]
 script = ExtResource("1_cp")
-body_color = Color(0.18, 0.32, 0.55, 1)
+body_color = Color(0.29, 0.263, 0.224, 1)
 looter_scene = ExtResource("2_looter")
 barracks_scene = ExtResource("3_bar")
-
-[node name="Body" type="Polygon2D" parent="."]
-color = Color(1, 1, 1, 1)
-polygon = PackedVector2Array(-32, -32, 32, -32, 32, 32, -32, 32)
 
 [node name="CollisionShape" type="CollisionShape2D" parent="."]
 shape = SubResource("RectangleShape2D_cp")
