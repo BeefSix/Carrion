@@ -34,17 +34,38 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _handle_right_click(world_pos: Vector2) -> void:
-	var target_lootable = _find_lootable_at(world_pos)
+	var target_building = _find_building_at(world_pos)
+	var target_lootable = null
+	if target_building != null and target_building.is_in_group("lootable"):
+		target_lootable = target_building
 	var is_infested: bool = (target_lootable != null) and ("is_infested" in target_lootable) and target_lootable.is_infested
+	var is_damaged: bool = (target_building != null) and ("current_hp" in target_building) and ("max_hp" in target_building) and target_building.current_hp < target_building.max_hp
+
 	for u in _selected_units:
 		if not is_instance_valid(u):
 			continue
-		if target_lootable != null and is_infested and u.has_method("force_spawn_at"):
+		if target_building != null and is_damaged and u.has_method("repair_at"):
+			u.repair_at(target_building)
+		elif target_lootable != null and is_infested and u.has_method("force_spawn_at"):
 			u.force_spawn_at(target_lootable)
 		elif target_lootable != null and u.has_method("gather_from"):
 			u.gather_from(target_lootable)
 		elif u.has_method("move_to"):
 			u.move_to(world_pos)
+
+
+func _find_building_at(world_pos: Vector2):
+	var space := get_world_2d().direct_space_state
+	var params := PhysicsPointQueryParameters2D.new()
+	params.position = world_pos
+	params.collide_with_areas = false
+	params.collide_with_bodies = true
+	var hits := space.intersect_point(params)
+	for hit in hits:
+		var collider = hit.collider
+		if collider != null and collider.is_in_group("buildings"):
+			return collider
+	return null
 
 
 func _find_lootable_at(world_pos: Vector2):

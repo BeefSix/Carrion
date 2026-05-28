@@ -1,0 +1,25 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/Engineer.gd" id="1_eng"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_eng"]
+size = Vector2(22, 22)
+
+[node name="Engineer" type="CharacterBody2D" groups=["units", "player_units"]]
+script = ExtResource("1_eng")
+faction = 4
+max_hp = 60
+move_speed = 80.0
+body_color = Color(0.478, 0.361, 0.235, 1)
+corpse_base_chance = 0.3
+size_px = 22
+
+[node name="CollisionShape" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_eng")
+
+[node name="NavigationAgent" type="NavigationAgent2D" parent="."]
+path_desired_distance = 8.0
+target_desired_distance = 24.0
+radius = 11.0
+max_speed = 80.0
+avoidance_enabled = true
