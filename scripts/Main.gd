@@ -5,6 +5,7 @@ const CP_SCENE := preload("res://scenes/buildings/CommandPost.tscn")
 const TC_SCENE := preload("res://scenes/buildings/TribalCamp.tscn")
 const SH_SCENE := preload("res://scenes/buildings/SettlementHub.tscn")
 const DECORATION_SCENE := preload("res://scenes/buildings/Decoration.tscn")
+const PROP_SCENE := preload("res://scenes/Prop.tscn")
 
 # Duplicated from Decoration.PALETTES because GDScript's headless parse can't
 # resolve cross-script class consts before class_name globals are indexed
@@ -119,6 +120,22 @@ const DECORATION_REGIONS := [
 const PLACEMENT_ATTEMPTS_PER_TARGET := 8
 const SPAWN_KEEPOUT_PX := 384.0
 
+# Road centerlines mirrored from GroundTiles.ROAD_LANES_*. Used by prop placement
+# so cars and dumpsters sit on sidewalks adjacent to actual streets.
+const ROAD_LANES_X := [65, 126]
+const ROAD_LANES_Y := [65, 126]
+const ROAD_HALF_WIDTH := 1
+const SIDEWALK_BAND := 2
+const TILE_PX := 32
+const PROPS_PER_ROAD := 30
+const CAR_COLORS := [
+	Color("2a2a2a"), Color("3a2a25"), Color("2e2e3a"),
+	Color("443028"), Color("38333a"), Color("3a3a2c"),
+]
+const DUMPSTER_COLORS := [Color("3a4838"), Color("3a3a3a"), Color("452820")]
+const RUBBLE_COLOR := Color("4a4540")
+const PLANTER_COLOR := Color("5a3e2a")
+
 
 var _edge_timer := 0.0
 var _player_hq: Node2D = null
@@ -132,6 +149,7 @@ func _ready() -> void:
 	_spawn_hq()
 	_spawn_lootables()
 	_spawn_decorations()
+	_spawn_props()
 	_rebake_navigation()
 	_center_camera_on_spawn()
 	if GameState.ai_enabled:
@@ -139,6 +157,81 @@ func _ready() -> void:
 	else:
 		_spawn_inert_opposing_hq()
 	_install_win_overlay()
+
+
+func _spawn_props() -> void:
+	# Cars and dumpsters lined along roads; rubble piles around the rubble edge
+	# band. Deterministic seed; placement avoids HQ keepouts so props don't
+	# crowd starting positions.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 13
+	# Cars along E-W roads
+	for lane_y in ROAD_LANES_Y:
+		_spawn_road_props(rng, lane_y, true)
+	# Cars along N-S roads
+	for lane_x in ROAD_LANES_X:
+		_spawn_road_props(rng, lane_x, false)
+	# Rubble piles around the inner rim
+	_spawn_rubble_ring(rng)
+
+
+func _spawn_road_props(rng: RandomNumberGenerator, lane: int, horizontal: bool) -> void:
+	# Walk the road, every ~150 px try a prop (mostly car, occasional dumpster).
+	# Place on the sidewalk band (2 tiles either side of the road body).
+	const STEP_PX := 150.0
+	const MAP_SIZE_PX := 6144.0
+	const SIDEWALK_DIST_PX := float((ROAD_HALF_WIDTH + 1) * TILE_PX)
+	var along: float = 320.0
+	while along < MAP_SIZE_PX - 320.0:
+		along += STEP_PX + rng.randf_range(-40.0, 40.0)
+		var side: int = -1 if rng.randf() < 0.5 else 1
+		var lane_px: float = float(lane) * TILE_PX + TILE_PX * 0.5
+		var pos: Vector2
+		if horizontal:
+			pos = Vector2(along, lane_px + side * SIDEWALK_DIST_PX)
+		else:
+			pos = Vector2(lane_px + side * SIDEWALK_DIST_PX, along)
+		if _spawn_keepout(pos):
+			continue
+		if _building_collides(pos, Vector2(40, 40)):
+			continue
+		var roll: float = rng.randf()
+		var prop = PROP_SCENE.instantiate()
+		prop.position = pos
+		if roll < 0.78:
+			prop.set("kind", 0)  # CAR
+			prop.set("body_color", CAR_COLORS[rng.randi() % CAR_COLORS.size()])
+			prop.set("orientation", 0 if horizontal else 1)
+		else:
+			prop.set("kind", 1)  # DUMPSTER
+			prop.set("body_color", DUMPSTER_COLORS[rng.randi() % DUMPSTER_COLORS.size()])
+		add_child(prop)
+
+
+func _spawn_rubble_ring(rng: RandomNumberGenerator) -> void:
+	# Scatter rubble piles around the inner perimeter (just inside the rubble
+	# tile edge band). Visual signal of the city's outer decay.
+	const INNER := 256.0
+	const OUTER := 480.0
+	for i in range(80):
+		var edge: int = i % 4
+		var t: float = rng.randf()
+		var dist: float = rng.randf_range(INNER, OUTER)
+		var pos: Vector2
+		match edge:
+			0: pos = Vector2(t * 6144.0, dist)
+			1: pos = Vector2(6144.0 - dist, t * 6144.0)
+			2: pos = Vector2(t * 6144.0, 6144.0 - dist)
+			_: pos = Vector2(dist, t * 6144.0)
+		if _spawn_keepout(pos):
+			continue
+		if _building_collides(pos, Vector2(24, 24)):
+			continue
+		var prop = PROP_SCENE.instantiate()
+		prop.position = pos
+		prop.set("kind", 3)  # RUBBLE_PILE
+		prop.set("body_color", RUBBLE_COLOR)
+		add_child(prop)
 
 
 func _spawn_decorations() -> void:
