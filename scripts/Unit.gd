@@ -2,10 +2,12 @@ class_name Unit
 extends CharacterBody2D
 
 enum Faction { MILITARY, TRIBAL, ZOMBIE, NEUTRAL, SURVIVOR }
-enum Command { IDLE, MOVE, ATTACK, GATHER, CONSTRUCT, FLEE }
+enum Command { IDLE, MOVE, ATTACK, GATHER, CONSTRUCT, FLEE, CREMATE }
 
 const MIN_CORPSE_CHANCE := 0.05
 const ENGAGEMENT_RANGE := 256.0
+const CREMATION_RANGE := 48.0
+const CREMATION_CHANNEL := 4.0
 const LEVEL2_XP := 50.0
 const LEVEL3_XP := 200.0
 const HP_MULT_BY_LEVEL := [1.0, 1.0, 1.10, 1.20]
@@ -39,6 +41,12 @@ var hp_mult: float = 1.0
 var damage_mult: float = 1.0
 var speed_mult: float = 1.0
 
+# Cremation state - set by cremate_target(), ticked in _process. While
+# current_command == CREMATE the subclass _physics_process bails out so the
+# unit holds position; the actual countdown lives here in the base class.
+var _cremation_target = null
+var _cremation_timer: float = 0.0
+
 @onready var _nav: NavigationAgent2D = $NavigationAgent
 
 
@@ -52,6 +60,42 @@ func _ready() -> void:
 func move_to(world_pos: Vector2) -> void:
 	_nav.target_position = world_pos
 	current_command = Command.MOVE
+
+
+func cremate_target(corpse) -> void:
+	# Walk to the corpse, channel for CREMATION_CHANNEL seconds, then destroy it.
+	# Combat-unit-only behavior (Looters/Walkers don't channel) - the dispatcher
+	# in SelectionManager already filters by selection.
+	if corpse == null or not is_instance_valid(corpse):
+		return
+	_cremation_target = corpse
+	move_to(corpse.global_position)
+
+
+func _tick_cremation(delta: float) -> void:
+	if _cremation_target == null:
+		return
+	if not is_instance_valid(_cremation_target):
+		# Corpse already destroyed (rose, cremated by another unit, etc.) - bail out.
+		_cremation_target = null
+		if current_command == Command.CREMATE:
+			current_command = Command.IDLE
+		return
+	if current_command == Command.CREMATE:
+		_cremation_timer -= delta
+		if _cremation_timer <= 0.0:
+			if _cremation_target.has_method("cremate"):
+				_cremation_target.cremate()
+			_cremation_target = null
+			current_command = Command.IDLE
+		return
+	# Not yet channeling - if we've finished moving and we're in range, start.
+	if current_command == Command.IDLE:
+		var dist: float = global_position.distance_to(_cremation_target.global_position)
+		if dist <= CREMATION_RANGE:
+			current_command = Command.CREMATE
+			_cremation_timer = CREMATION_CHANNEL
+			velocity = Vector2.ZERO
 
 
 func take_damage(amount: int, attacker = null) -> void:
@@ -85,6 +129,7 @@ func _process(delta: float) -> void:
 		queue_redraw()
 	if faction == Faction.ZOMBIE:
 		return
+	_tick_cremation(delta)
 	if _is_engaged():
 		combat_time += delta
 	_update_veterancy()

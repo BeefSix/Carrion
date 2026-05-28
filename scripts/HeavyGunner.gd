@@ -16,6 +16,9 @@ var _retarget_timer := 0.0
 
 func _physics_process(delta: float) -> void:
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
+	if current_command == Command.CREMATE:
+		velocity = Vector2.ZERO
+		return
 	if current_command == Command.MOVE:
 		if not _follow_navigation():
 			current_command = Command.IDLE

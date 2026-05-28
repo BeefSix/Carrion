@@ -17,6 +17,9 @@ var _timer := 0.0
 var _initial_delay := 0.0
 
 
+var _cremated: bool = false
+
+
 func _ready() -> void:
 	_initial_delay = return_delay
 	_timer = return_delay
@@ -24,7 +27,16 @@ func _ready() -> void:
 	queue_redraw()
 
 
+func cremate() -> void:
+	# Called when a combat unit finishes its 4-sec channel on this corpse.
+	# Cancels the return cycle outright - no shambler spawns.
+	_cremated = true
+	queue_free()
+
+
 func _process(delta: float) -> void:
+	if _cremated:
+		return
 	_timer -= delta
 	if _timer <= 0.0:
 		_rise()

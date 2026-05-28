@@ -102,6 +102,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _handle_right_click(world_pos: Vector2) -> void:
+	var target_corpse = _find_corpse_at(world_pos)
 	var target_building = _find_building_at(world_pos)
 	var target_lootable = null
 	if target_building != null and target_building.is_in_group("lootable"):
@@ -112,7 +113,11 @@ func _handle_right_click(world_pos: Vector2) -> void:
 	for u in _selected_units:
 		if not is_instance_valid(u):
 			continue
-		if target_building != null and is_damaged and u.has_method("repair_at"):
+		# Cremation is highest priority when the click landed on a corpse and the
+		# unit can channel it (combat units inherit cremate_target from Unit.gd).
+		if target_corpse != null and u.has_method("cremate_target"):
+			u.cremate_target(target_corpse)
+		elif target_building != null and is_damaged and u.has_method("repair_at"):
 			u.repair_at(target_building)
 		elif target_lootable != null and is_infested and u.has_method("force_spawn_at"):
 			u.force_spawn_at(target_lootable)
@@ -120,6 +125,22 @@ func _handle_right_click(world_pos: Vector2) -> void:
 			u.gather_from(target_lootable)
 		elif u.has_method("move_to"):
 			u.move_to(world_pos)
+
+
+func _find_corpse_at(world_pos: Vector2):
+	# Corpses are Node2D (no collider), so a physics point query won't hit them.
+	# Iterate the corpses group and check a small radius around the click.
+	const CORPSE_CLICK_RADIUS := 14.0
+	var nearest = null
+	var nearest_d := CORPSE_CLICK_RADIUS
+	for c in get_tree().get_nodes_in_group("corpses"):
+		if not is_instance_valid(c):
+			continue
+		var d: float = world_pos.distance_to(c.global_position)
+		if d <= nearest_d:
+			nearest_d = d
+			nearest = c
+	return nearest
 
 
 func _find_building_at(world_pos: Vector2):
