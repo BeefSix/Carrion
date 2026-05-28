@@ -18,5 +18,7 @@ shape = SubResource("RectangleShape2D_hg")
 
 [node name="NavigationAgent" type="NavigationAgent2D" parent="."]
 path_desired_distance = 8.0
-target_desired_distance = 8.0
+target_desired_distance = 24.0
 radius = 13.0
+max_speed = 64.0
+avoidance_enabled = true

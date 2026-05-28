@@ -12,7 +12,6 @@ const HP_MULT_BY_LEVEL := [1.0, 1.0, 1.10, 1.20]
 const DAMAGE_MULT_BY_LEVEL := [1.0, 1.0, 1.10, 1.20]
 const SPEED_MULT_BY_LEVEL := [1.0, 1.0, 1.0, 1.05]
 
-# Faction palette (muted/desaturated; constrained to a grim shared world)
 const PALETTE_MILITARY := Color("5a6644")
 const PALETTE_SURVIVOR := Color("7a5c3c")
 const PALETTE_TRIBAL := Color("8a6a3a")
@@ -32,7 +31,6 @@ var current_command: Command = Command.IDLE
 var selected: bool = false
 var facing_dir: Vector2 = Vector2.DOWN
 
-# Veterancy data
 var kills_count: int = 0
 var damage_dealt: float = 0.0
 var combat_time: float = 0.0
@@ -46,6 +44,9 @@ var speed_mult: float = 1.0
 
 func _ready() -> void:
 	current_hp = max_hp
+	if _nav != null and _nav.avoidance_enabled:
+		if not _nav.velocity_computed.is_connected(_on_safe_velocity):
+			_nav.velocity_computed.connect(_on_safe_velocity)
 
 
 func move_to(world_pos: Vector2) -> void:
@@ -175,9 +176,19 @@ func _follow_navigation() -> bool:
 		return false
 	var next_pos := _nav.get_next_path_position()
 	var to_next := next_pos - global_position
-	velocity = to_next.normalized() * get_effective_move_speed()
-	move_and_slide()
+	var desired: Vector2 = to_next.normalized() * get_effective_move_speed()
+	if _nav.avoidance_enabled:
+		_nav.set_velocity(desired)
+		# move_and_slide() happens in _on_safe_velocity callback after RVO compute.
+	else:
+		velocity = desired
+		move_and_slide()
 	return true
+
+
+func _on_safe_velocity(safe_v: Vector2) -> void:
+	velocity = safe_v
+	move_and_slide()
 
 
 func _physics_process(_delta: float) -> void:
@@ -220,7 +231,6 @@ func _draw() -> void:
 		draw_rect(Rect2(-Vector2(half, half), size_v), body_color)
 		_draw_facing_triangle(half)
 
-	# HP bar
 	var bar_width: float = max(20.0, float(size_px))
 	var bar_height := 3.0
 	var bar_y: float = -half - 7.0

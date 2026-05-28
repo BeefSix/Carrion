@@ -5,7 +5,7 @@ enum Sub { NONE, APPROACH, CHANNEL }
 const FORCE_SPAWN_COST := 25
 const FORCE_SPAWN_CHANNEL_TIME := 5.0
 const FORCE_SPAWN_COUNT := 4
-const INTERACTION_RANGE := 56.0
+const INTERACTION_RANGE := 80.0
 const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
 
 var _sub: Sub = Sub.NONE

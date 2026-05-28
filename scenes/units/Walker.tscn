@@ -17,6 +17,8 @@ size_px = 18
 shape = SubResource("RectangleShape2D_walker")
 
 [node name="NavigationAgent" type="NavigationAgent2D" parent="."]
-path_desired_distance = 6.0
-target_desired_distance = 6.0
+path_desired_distance = 8.0
+target_desired_distance = 24.0
 radius = 9.0
+max_speed = 80.0
+avoidance_enabled = true
