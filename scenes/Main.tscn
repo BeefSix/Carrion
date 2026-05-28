@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/Main.gd" id="0_main"]
 [ext_resource type="Script" path="res://scripts/RTSCamera.gd" id="1_camera"]
@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" path="res://scenes/buildings/CommandPost.tscn" id="5_cp"]
 [ext_resource type="Script" path="res://scripts/NoiseField.gd" id="7_noise"]
 [ext_resource type="PackedScene" path="res://scenes/buildings/TribalCamp.tscn" id="8_tc"]
+[ext_resource type="Script" path="res://scripts/Decoration.gd" id="9_decor"]
 
 [sub_resource type="NavigationPolygon" id="NavigationPolygon_main"]
 vertices = PackedVector2Array(0, 0, 2560, 0, 2560, 2560, 0, 2560)
@@ -17,8 +18,11 @@ agent_radius = 12.0
 script = ExtResource("0_main")
 
 [node name="Ground" type="Polygon2D" parent="."]
-color = Color(0.35, 0.3, 0.22, 1)
+color = Color(0.27, 0.235, 0.182, 1)
 polygon = PackedVector2Array(0, 0, 2560, 0, 2560, 2560, 0, 2560)
+
+[node name="Decoration" type="Node2D" parent="."]
+script = ExtResource("9_decor")
 
 [node name="MapBorder" type="Line2D" parent="."]
 width = 4.0
@@ -40,7 +44,7 @@ script = ExtResource("1_camera")
 position = Vector2(1280, 1280)
 
 [node name="TribalCamp" parent="." instance=ExtResource("8_tc")]
-position = Vector2(1280, 600)
+position = Vector2(1280, 768)
 
 [node name="NoiseField" type="Node2D" parent="."]
 script = ExtResource("7_noise")

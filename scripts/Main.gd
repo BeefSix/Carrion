@@ -13,6 +13,9 @@ const DEV_SPEED := 4.0
 const DEV_NOISE_INJECT := 100.0
 const NEIGHBORHOOD_POOL := ["residential", "residential", "residential", "commercial", "commercial", "medical"]
 
+const STREET_POSITIONS := [512.0, 1024.0, 1536.0, 2048.0]
+const STREET_AVOID_RADIUS := 40.0
+
 
 func _ready() -> void:
 	_spawn_lootables()
@@ -45,6 +48,8 @@ func _spawn_lootables() -> void:
 		var dist_from_cp := pos.distance_to(cp_pos)
 		if dist_from_cp < CP_KEEPOUT_RADIUS:
 			continue
+		if _is_on_street(pos):
+			continue
 		var too_close := false
 		for p in placed:
 			if pos.distance_to(p) < MIN_SEPARATION:
@@ -59,3 +64,13 @@ func _spawn_lootables() -> void:
 		if dist_from_cp >= INFESTED_KEEPOUT_RADIUS and rng.randf() < INFESTED_FRACTION:
 			lootable.is_infested = true
 		add_child(lootable)
+
+
+func _is_on_street(pos: Vector2) -> bool:
+	for sx in STREET_POSITIONS:
+		if abs(pos.x - sx) < STREET_AVOID_RADIUS:
+			return true
+	for sy in STREET_POSITIONS:
+		if abs(pos.y - sy) < STREET_AVOID_RADIUS:
+			return true
+	return false
