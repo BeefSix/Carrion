@@ -13,6 +13,9 @@ const WANDER_RADIUS := 96.0
 const WANDER_ARRIVE_RANGE := 30.0
 const WANDER_INTERVAL_MIN := 4.0
 const WANDER_INTERVAL_MAX := 10.0
+const TRIBAL_ALIGNED_COLOR := Color("5a5530")
+
+@export var is_tribal_aligned: bool = false
 
 var _zombie_state: int = ZombieState.IDLE
 var _target = null
@@ -27,6 +30,9 @@ var _wander_timer := 0.0
 func _ready() -> void:
 	super._ready()
 	_wander_timer = randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
+	if is_tribal_aligned:
+		body_color = TRIBAL_ALIGNED_COLOR
+		queue_redraw()
 
 
 func investigate(world_pos: Vector2) -> void:

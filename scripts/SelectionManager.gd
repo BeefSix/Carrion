@@ -35,10 +35,13 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _handle_right_click(world_pos: Vector2) -> void:
 	var target_lootable = _find_lootable_at(world_pos)
+	var is_infested: bool = (target_lootable != null) and ("is_infested" in target_lootable) and target_lootable.is_infested
 	for u in _selected_units:
 		if not is_instance_valid(u):
 			continue
-		if target_lootable != null and u.has_method("gather_from"):
+		if target_lootable != null and is_infested and u.has_method("force_spawn_at"):
+			u.force_spawn_at(target_lootable)
+		elif target_lootable != null and u.has_method("gather_from"):
 			u.gather_from(target_lootable)
 		elif u.has_method("move_to"):
 			u.move_to(world_pos)

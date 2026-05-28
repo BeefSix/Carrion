@@ -41,7 +41,7 @@ anchor_bottom = 0.0
 offset_left = -304.0
 offset_top = 16.0
 offset_right = -16.0
-offset_bottom = 220.0
+offset_bottom = 260.0
 grow_horizontal = 0
 
 [node name="VBox" type="VBoxContainer" parent="BuildingPanel"]
@@ -55,6 +55,9 @@ text = "Action 1"
 
 [node name="ActionButton2" type="Button" parent="BuildingPanel/VBox"]
 text = "Action 2"
+
+[node name="ActionButton3" type="Button" parent="BuildingPanel/VBox"]
+text = "Action 3"
 
 [node name="StatusLabel" type="Label" parent="BuildingPanel/VBox"]
 text = ""

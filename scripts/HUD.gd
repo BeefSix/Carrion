@@ -5,6 +5,7 @@ extends CanvasLayer
 @onready var _actor_title: Label = $BuildingPanel/VBox/Title
 @onready var _action_button1: Button = $BuildingPanel/VBox/ActionButton
 @onready var _action_button2: Button = $BuildingPanel/VBox/ActionButton2
+@onready var _action_button3: Button = $BuildingPanel/VBox/ActionButton3
 @onready var _status_label: Label = $BuildingPanel/VBox/StatusLabel
 @onready var _speed_label: Label = $SpeedIndicator
 
@@ -19,6 +20,7 @@ func _ready() -> void:
 	_speed_label.visible = false
 	_action_button1.pressed.connect(_on_action_pressed.bind(0))
 	_action_button2.pressed.connect(_on_action_pressed.bind(1))
+	_action_button3.pressed.connect(_on_action_pressed.bind(2))
 	var sel_mgr := get_tree().get_first_node_in_group("selection_manager")
 	if sel_mgr != null:
 		sel_mgr.selection_changed.connect(_on_selection_changed)
@@ -70,6 +72,7 @@ func _process(_delta: float) -> void:
 
 	_action_button1.visible = count >= 1
 	_action_button2.visible = count >= 2
+	_action_button3.visible = count >= 3
 
 	if count >= 1:
 		_action_button1.text = _current_actor.get_action_text(0)
@@ -77,6 +80,9 @@ func _process(_delta: float) -> void:
 	if count >= 2:
 		_action_button2.text = _current_actor.get_action_text(1)
 		_action_button2.disabled = not _current_actor.get_action_available(1)
+	if count >= 3:
+		_action_button3.text = _current_actor.get_action_text(2)
+		_action_button3.disabled = not _current_actor.get_action_available(2)
 
 	if _current_actor.has_method("get_status_text"):
 		var status: String = _current_actor.get_status_text()

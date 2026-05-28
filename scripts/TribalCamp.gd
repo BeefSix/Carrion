@@ -5,11 +5,15 @@ const WALKER_COST := 50
 const WALKER_BUILD_TIME := 20.0
 const HUNTING_LODGE_COST := 175
 const HUNTING_LODGE_BUILD_TIME := 45.0
+const RITUAL_SITE_COST := 175
+const RITUAL_SITE_BUILD_TIME := 50.0
 const WALKER_SPAWN_OFFSET := Vector2(0, 80)
 const HUNTING_LODGE_SPAWN_OFFSET := Vector2(-140, 0)
+const RITUAL_SITE_SPAWN_OFFSET := Vector2(140, 0)
 
 @export var walker_scene: PackedScene
 @export var hunting_lodge_scene: PackedScene
+@export var ritual_site_scene: PackedScene
 
 var _producing := false
 var _produce_timer := 0.0
@@ -23,7 +27,7 @@ func _ready() -> void:
 
 
 func get_action_count() -> int:
-	return 2
+	return 3
 
 
 func get_action_text(idx: int) -> String:
@@ -31,6 +35,8 @@ func get_action_text(idx: int) -> String:
 		return "Build Walker (%d Salvage)" % WALKER_COST
 	if idx == 1:
 		return "Build Hunting Lodge (%d Salvage)" % HUNTING_LODGE_COST
+	if idx == 2:
+		return "Build Ritual Site (%d Salvage)" % RITUAL_SITE_COST
 	return ""
 
 
@@ -39,6 +45,8 @@ func get_action_available(idx: int) -> bool:
 		return GameState.can_spend(WALKER_COST)
 	if idx == 1:
 		return GameState.can_spend(HUNTING_LODGE_COST)
+	if idx == 2:
+		return GameState.can_spend(RITUAL_SITE_COST)
 	return false
 
 
@@ -47,12 +55,19 @@ func do_action(idx: int) -> void:
 		_queue_item("walker", WALKER_COST)
 	elif idx == 1:
 		_queue_item("hunting_lodge", HUNTING_LODGE_COST)
+	elif idx == 2:
+		_queue_item("ritual_site", RITUAL_SITE_COST)
 
 
 func get_status_text() -> String:
 	if not _producing:
 		return ""
-	var pretty_name: String = "Walker" if _produce_what == "walker" else "Hunting Lodge"
+	var pretty_name := "Walker"
+	match _produce_what:
+		"hunting_lodge":
+			pretty_name = "Hunting Lodge"
+		"ritual_site":
+			pretty_name = "Ritual Site"
 	var t := "Building %s... %.0fs" % [pretty_name, _produce_timer]
 	if _queue.size() > 0:
 		t += "  •  Queued: %d" % _queue.size()
@@ -72,7 +87,15 @@ func _queue_item(item: String, cost: int) -> void:
 func _start_production(item: String) -> void:
 	_producing = true
 	_produce_what = item
-	_produce_timer = WALKER_BUILD_TIME if item == "walker" else HUNTING_LODGE_BUILD_TIME
+	match item:
+		"walker":
+			_produce_timer = WALKER_BUILD_TIME
+		"hunting_lodge":
+			_produce_timer = HUNTING_LODGE_BUILD_TIME
+		"ritual_site":
+			_produce_timer = RITUAL_SITE_BUILD_TIME
+		_:
+			_produce_timer = WALKER_BUILD_TIME
 
 
 func _process(delta: float) -> void:
@@ -87,16 +110,22 @@ func _process(delta: float) -> void:
 
 
 func _spawn_item(item: String) -> void:
-	if item == "walker":
-		if walker_scene != null:
-			var w = walker_scene.instantiate()
-			w.position = global_position + WALKER_SPAWN_OFFSET
-			get_parent().add_child(w)
-	elif item == "hunting_lodge":
-		if hunting_lodge_scene != null:
-			var hl = hunting_lodge_scene.instantiate()
-			hl.position = global_position + HUNTING_LODGE_SPAWN_OFFSET
-			get_parent().add_child(hl)
+	match item:
+		"walker":
+			if walker_scene != null:
+				var w = walker_scene.instantiate()
+				w.position = global_position + WALKER_SPAWN_OFFSET
+				get_parent().add_child(w)
+		"hunting_lodge":
+			if hunting_lodge_scene != null:
+				var hl = hunting_lodge_scene.instantiate()
+				hl.position = global_position + HUNTING_LODGE_SPAWN_OFFSET
+				get_parent().add_child(hl)
+		"ritual_site":
+			if ritual_site_scene != null:
+				var rs = ritual_site_scene.instantiate()
+				rs.position = global_position + RITUAL_SITE_SPAWN_OFFSET
+				get_parent().add_child(rs)
 
 
 func _draw_building_icon() -> void:
