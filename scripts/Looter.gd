@@ -8,9 +8,6 @@ enum Sub {
 	RETURN_HOME,
 	RETURN_TO_HUNT,
 	SEARCH,
-	GATHER_APPROACH,
-	GATHER_CHANNEL,
-	GATHER_RETURN,
 }
 
 const MAGNUM_DAMAGE := 22
@@ -18,10 +15,8 @@ const MAGNUM_PERIOD := 2.5
 const MAGNUM_RANGE := 128.0
 const MAGNUM_NOISE := 20.0
 const HUNT_VISION := 384.0
-const SALVAGE_PER_KILL := 12
-const SALVAGE_PER_LOOT_TRIP := 25
-const CARRY_CAP := 12
-const CHANNEL_TIME := 3.0
+const SALVAGE_PER_KILL := 25
+const CARRY_CAP := 25
 const INTERACTION_RANGE := 80.0
 const KILL_AREA_ARRIVE_RANGE := 80.0
 const AVOID_RANGE := 160.0
@@ -32,11 +27,9 @@ const SEARCH_WANDER_INTERVAL := 1.5
 
 var _sub: Sub = Sub.NONE
 var _target_zombie = null
-var _target_lootable = null
 var _home_base = null
 var _carrying := 0
 var _attack_cooldown := 0.0
-var _channel_timer := 0.0
 var _retarget_timer := 0.0
 
 var _last_kill_pos: Vector2 = Vector2.ZERO
@@ -44,22 +37,11 @@ var _search_timer := 0.0
 var _search_wander_timer := 0.0
 
 
-func gather_from(lootable) -> void:
-	if lootable == null or not is_instance_valid(lootable):
-		return
-	_target_lootable = lootable
-	_target_zombie = null
-	_sub = Sub.GATHER_APPROACH
-	current_command = Command.GATHER
-	_nav.target_position = lootable.position
-
-
 func move_to(world_pos: Vector2) -> void:
 	super.move_to(world_pos)
 	# Preserve _last_kill_pos so the cycle resumes after the manual detour.
 	_sub = Sub.NONE
 	_target_zombie = null
-	_target_lootable = null
 
 
 func _physics_process(delta: float) -> void:
@@ -85,12 +67,6 @@ func _physics_process(delta: float) -> void:
 			_tick_return_to_hunt()
 		Sub.SEARCH:
 			_tick_search(delta)
-		Sub.GATHER_APPROACH:
-			_tick_gather_approach()
-		Sub.GATHER_CHANNEL:
-			_tick_gather_channel(delta)
-		Sub.GATHER_RETURN:
-			_tick_gather_return()
 		_:
 			velocity = Vector2.ZERO
 
@@ -240,58 +216,6 @@ func _tick_search(delta: float) -> void:
 		_follow_navigation()
 	else:
 		velocity = Vector2.ZERO
-
-
-func _tick_gather_approach() -> void:
-	if _target_lootable == null or not is_instance_valid(_target_lootable):
-		_sub = Sub.NONE
-		current_command = Command.IDLE
-		return
-	if global_position.distance_to(_target_lootable.position) <= INTERACTION_RANGE:
-		_sub = Sub.GATHER_CHANNEL
-		_channel_timer = CHANNEL_TIME
-		velocity = Vector2.ZERO
-	else:
-		_follow_navigation()
-
-
-func _tick_gather_channel(delta: float) -> void:
-	velocity = Vector2.ZERO
-	_channel_timer -= delta
-	if _channel_timer <= 0.0:
-		if _target_lootable != null and is_instance_valid(_target_lootable) and _target_lootable.has_method("take_salvage"):
-			var taken: int = _target_lootable.take_salvage(SALVAGE_PER_LOOT_TRIP)
-			_carrying += taken
-			var nf := get_tree().get_first_node_in_group("noise_field")
-			if nf != null:
-				nf.add_noise(global_position, 25.0)
-		_home_base = _find_nearest_command_post()
-		if _home_base == null:
-			_sub = Sub.NONE
-			current_command = Command.IDLE
-			return
-		_sub = Sub.GATHER_RETURN
-		_nav.target_position = _home_base.position
-
-
-func _tick_gather_return() -> void:
-	if _home_base == null or not is_instance_valid(_home_base):
-		_home_base = _find_nearest_command_post()
-		if _home_base == null:
-			_sub = Sub.NONE
-			current_command = Command.IDLE
-			return
-		_nav.target_position = _home_base.position
-	if global_position.distance_to(_home_base.position) <= INTERACTION_RANGE:
-		_deposit_at_home()
-		if _target_lootable != null and is_instance_valid(_target_lootable) and _target_lootable.remaining_salvage > 0:
-			_sub = Sub.GATHER_APPROACH
-			_nav.target_position = _target_lootable.position
-		else:
-			_sub = Sub.NONE
-			current_command = Command.IDLE
-	else:
-		_avoidant_move_to(_home_base.position)
 
 
 func _deposit_at_home() -> void:
