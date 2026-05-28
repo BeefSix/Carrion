@@ -1,7 +1,8 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/TribalCamp.gd" id="1_tc"]
 [ext_resource type="PackedScene" path="res://scenes/units/Walker.tscn" id="2_walker"]
+[ext_resource type="PackedScene" path="res://scenes/buildings/HuntingLodge.tscn" id="3_hl"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_tc"]
 size = Vector2(64, 64)
@@ -11,6 +12,7 @@ script = ExtResource("1_tc")
 body_color = Color(0.29, 0.263, 0.224, 1)
 size_pixels = Vector2(64, 64)
 walker_scene = ExtResource("2_walker")
+hunting_lodge_scene = ExtResource("3_hl")
 
 [node name="CollisionShape" type="CollisionShape2D" parent="."]
 shape = SubResource("RectangleShape2D_tc")

@@ -1,0 +1,23 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/Hunter.gd" id="1_hunter"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_hunter"]
+size = Vector2(22, 22)
+
+[node name="Hunter" type="CharacterBody2D" groups=["units", "player_units"]]
+script = ExtResource("1_hunter")
+faction = 1
+max_hp = 50
+move_speed = 96.0
+body_color = Color(0.541, 0.416, 0.227, 1)
+corpse_base_chance = 0.3
+size_px = 22
+
+[node name="CollisionShape" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_hunter")
+
+[node name="NavigationAgent" type="NavigationAgent2D" parent="."]
+path_desired_distance = 8.0
+target_desired_distance = 8.0
+radius = 11.0
