@@ -209,8 +209,8 @@ func _tick_search(delta: float) -> void:
 		_search_wander_timer = SEARCH_WANDER_INTERVAL
 		var offset := Vector2(randf_range(-SEARCH_RADIUS, SEARCH_RADIUS), randf_range(-SEARCH_RADIUS, SEARCH_RADIUS))
 		var t: Vector2 = _last_kill_pos + offset
-		t.x = clamp(t.x, 50.0, 2510.0)
-		t.y = clamp(t.y, 50.0, 2510.0)
+		t.x = clamp(t.x, 50.0, 4046.0)
+		t.y = clamp(t.y, 50.0, 4046.0)
 		_nav.target_position = t
 	if not _nav.is_navigation_finished():
 		_follow_navigation()

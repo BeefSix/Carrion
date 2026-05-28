@@ -4,24 +4,18 @@ const LOOTABLE_SCENE := preload("res://scenes/buildings/Lootable.tscn")
 const CP_SCENE := preload("res://scenes/buildings/CommandPost.tscn")
 const TC_SCENE := preload("res://scenes/buildings/TribalCamp.tscn")
 const SH_SCENE := preload("res://scenes/buildings/SettlementHub.tscn")
-const BRAWLER_SCENE := preload("res://scenes/units/Brawler.tscn")
-const ENGINEER_SCENE := preload("res://scenes/units/Engineer.tscn")
-const SCOUT_SCENE := preload("res://scenes/units/Scout.tscn")
-const HQ_POSITION := Vector2(1280, 1280)
-const LOOTABLE_COUNT := 30
+const HQ_POSITION := Vector2(2048, 2048)
+const LOOTABLE_COUNT := 45
 const INFESTED_FRACTION := 0.5
-const INFESTED_KEEPOUT_RADIUS := 700.0
-const MAP_SIZE := Vector2(2560, 2560)
-const MARGIN := 100.0
-const CP_KEEPOUT_RADIUS := 250.0
-const MIN_SEPARATION := 100.0
-const MAX_ATTEMPTS := 2000
+const INFESTED_KEEPOUT_RADIUS := 900.0
+const MAP_SIZE := Vector2(4096, 4096)
+const MARGIN := 120.0
+const HQ_KEEPOUT_RADIUS := 400.0
+const MIN_SEPARATION := 120.0
+const MAX_ATTEMPTS := 4000
 const DEV_SPEED := 4.0
 const DEV_NOISE_INJECT := 100.0
 const NEIGHBORHOOD_POOL := ["residential", "residential", "residential", "commercial", "commercial", "medical"]
-
-const STREET_POSITIONS := [512.0, 1024.0, 1536.0, 2048.0]
-const STREET_AVOID_RADIUS := 40.0
 
 
 func _ready() -> void:
@@ -55,28 +49,11 @@ func _spawn_hq() -> void:
 			hq = CP_SCENE.instantiate()
 	hq.position = HQ_POSITION
 	add_child(hq)
-	if GameState.player_faction == GameState.Faction.SURVIVOR:
-		_spawn_survivor_starting_units()
-
-
-func _spawn_survivor_starting_units() -> void:
-	# Spec-mandated Survivor opener: 2 Brawlers, 1 Engineer, 1 Scout.
-	for off in [Vector2(-70, 90), Vector2(70, 90)]:
-		var b = BRAWLER_SCENE.instantiate()
-		b.position = HQ_POSITION + off
-		add_child(b)
-	var e = ENGINEER_SCENE.instantiate()
-	e.position = HQ_POSITION + Vector2(0, 120)
-	add_child(e)
-	var s = SCOUT_SCENE.instantiate()
-	s.position = HQ_POSITION + Vector2(-120, 40)
-	add_child(s)
 
 
 func _spawn_lootables() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1
-	var cp_pos := HQ_POSITION
 	var placed: Array = []
 	var attempts := 0
 	while placed.size() < LOOTABLE_COUNT and attempts < MAX_ATTEMPTS:
@@ -85,10 +62,8 @@ func _spawn_lootables() -> void:
 			rng.randf_range(MARGIN, MAP_SIZE.x - MARGIN),
 			rng.randf_range(MARGIN, MAP_SIZE.y - MARGIN)
 		)
-		var dist_from_cp := pos.distance_to(cp_pos)
-		if dist_from_cp < CP_KEEPOUT_RADIUS:
-			continue
-		if _is_on_street(pos):
+		var dist_from_hq := pos.distance_to(HQ_POSITION)
+		if dist_from_hq < HQ_KEEPOUT_RADIUS:
 			continue
 		var too_close := false
 		for p in placed:
@@ -101,16 +76,6 @@ func _spawn_lootables() -> void:
 		var lootable = LOOTABLE_SCENE.instantiate()
 		lootable.position = pos
 		lootable.neighborhood_type = NEIGHBORHOOD_POOL[rng.randi() % NEIGHBORHOOD_POOL.size()]
-		if dist_from_cp >= INFESTED_KEEPOUT_RADIUS and rng.randf() < INFESTED_FRACTION:
+		if dist_from_hq >= INFESTED_KEEPOUT_RADIUS and rng.randf() < INFESTED_FRACTION:
 			lootable.is_infested = true
 		add_child(lootable)
-
-
-func _is_on_street(pos: Vector2) -> bool:
-	for sx in STREET_POSITIONS:
-		if abs(pos.x - sx) < STREET_AVOID_RADIUS:
-			return true
-	for sy in STREET_POSITIONS:
-		if abs(pos.y - sy) < STREET_AVOID_RADIUS:
-			return true
-	return false

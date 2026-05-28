@@ -6,7 +6,7 @@ const MAX_REACH := 480.0
 const MERGE_RADIUS := 96.0
 const MIN_INTENSITY := 1.0
 const ATTRACT_INTERVAL := 0.4
-const MAP_SIZE := Vector2(2560, 2560)
+const MAP_SIZE := Vector2(4096, 4096)
 const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
 
 const SMALL_THRESHOLD := 150.0
