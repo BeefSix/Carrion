@@ -22,6 +22,10 @@ const TIER_MEDIUM := 1
 const TIER_LARGE := 2
 const TIER_CAT := 3
 
+const HORDE_COOLDOWN := 30.0
+const WAVE_SIZE_MULTIPLIER := 0.5
+const MAX_WAVE := 4
+
 
 class Emitter:
 	var position: Vector2
@@ -37,6 +41,8 @@ var _emitters: Array = []
 var _debug_visible := false
 var _attract_timer := 0.0
 var _debug_font: Font
+var _last_horde_time: float = -1000.0
+var _wave_count: int = 0
 
 
 func _ready() -> void:
@@ -68,23 +74,21 @@ func _process(delta: float) -> void:
 		var e = _emitters[i]
 		e.intensity = max(0.0, e.intensity - decay)
 
-		# When intensity falls below the lowest threshold, allow the tiers to re-arm.
 		if e.intensity < SMALL_THRESHOLD:
 			e.tiers_fired = [false, false, false, false]
 
-		# Fire whichever highest unfired tier the intensity has reached.
 		if e.intensity >= CATASTROPHIC_THRESHOLD and not e.tiers_fired[TIER_CAT]:
 			e.tiers_fired[TIER_CAT] = true
-			_trigger_horde(e.position, CATASTROPHIC_SIZE)
+			_maybe_trigger_horde(e.position, CATASTROPHIC_SIZE, "catastrophic")
 		elif e.intensity >= LARGE_THRESHOLD and not e.tiers_fired[TIER_LARGE]:
 			e.tiers_fired[TIER_LARGE] = true
-			_trigger_horde(e.position, LARGE_SIZE)
+			_maybe_trigger_horde(e.position, LARGE_SIZE, "large")
 		elif e.intensity >= MEDIUM_THRESHOLD and not e.tiers_fired[TIER_MEDIUM]:
 			e.tiers_fired[TIER_MEDIUM] = true
-			_trigger_horde(e.position, MEDIUM_SIZE)
+			_maybe_trigger_horde(e.position, MEDIUM_SIZE, "medium")
 		elif e.intensity >= SMALL_THRESHOLD and not e.tiers_fired[TIER_SMALL]:
 			e.tiers_fired[TIER_SMALL] = true
-			_trigger_horde(e.position, SMALL_SIZE)
+			_maybe_trigger_horde(e.position, SMALL_SIZE, "small")
 
 		if e.intensity < MIN_INTENSITY:
 			to_remove.append(i)
@@ -93,6 +97,10 @@ func _process(delta: float) -> void:
 	for i in to_remove:
 		_emitters.remove_at(i)
 
+	# Earned silence: when all noise sources fade, reset the wave count.
+	if _emitters.is_empty() and _wave_count > 0:
+		_wave_count = 0
+
 	_attract_timer -= delta
 	if _attract_timer <= 0.0:
 		_attract_timer = ATTRACT_INTERVAL
@@ -100,6 +108,20 @@ func _process(delta: float) -> void:
 
 	if _debug_visible:
 		queue_redraw()
+
+
+func _maybe_trigger_horde(pos: Vector2, base_size: int, tier_label: String) -> void:
+	var now: float = Time.get_ticks_msec() / 1000.0
+	var time_since_last: float = now - _last_horde_time
+	if time_since_last < HORDE_COOLDOWN:
+		print("[NoiseField] %s horde suppressed (cooldown %.1fs remaining)" % [tier_label, HORDE_COOLDOWN - time_since_last])
+		return
+	_last_horde_time = now
+	var size_mult: float = 1.0 + float(min(_wave_count, MAX_WAVE)) * WAVE_SIZE_MULTIPLIER
+	var actual_size: int = int(round(base_size * size_mult))
+	print("[NoiseField] %s horde fires: wave %d, %d Shamblers (base %d x %.1f)" % [tier_label, _wave_count + 1, actual_size, base_size, size_mult])
+	_wave_count += 1
+	_trigger_horde(pos, actual_size)
 
 
 func _attract_zombies() -> void:
@@ -153,6 +175,8 @@ func _pick_edge_spawn(target: Vector2) -> Vector2:
 func _draw() -> void:
 	if not _debug_visible:
 		return
+	var now: float = Time.get_ticks_msec() / 1000.0
+	var cooldown_remaining: float = max(0.0, HORDE_COOLDOWN - (now - _last_horde_time))
 	for e in _emitters:
 		var reach: float = e.intensity * REACH_PER_NOISE
 		var ratio: float = clamp(e.intensity / SMALL_THRESHOLD, 0.0, 1.0)
@@ -169,5 +193,9 @@ func _draw() -> void:
 				tier_label = " MED"
 			elif e.intensity >= SMALL_THRESHOLD:
 				tier_label = " SML"
-			var label := "%d%s" % [int(e.intensity), tier_label]
-			draw_string(_debug_font, e.position + Vector2(-16, -reach - 6), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 0.9, 0.6, 0.95))
+			var status := "%d%s" % [int(e.intensity), tier_label]
+			if cooldown_remaining > 0.0:
+				status += " | CD %.0fs" % cooldown_remaining
+			if _wave_count > 0:
+				status += " | W%d" % _wave_count
+			draw_string(_debug_font, e.position + Vector2(-32, -reach - 6), status, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 0.9, 0.6, 0.95))
