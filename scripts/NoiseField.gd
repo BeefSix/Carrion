@@ -1,21 +1,32 @@
 extends Node2D
 
-const NOISE_DECAY_RATE := 5.0
+const NOISE_DECAY_RATE := 10.0
 const REACH_PER_NOISE := 2.0
 const MERGE_RADIUS := 96.0
-const HORDE_THRESHOLD := 200.0
-const HORDE_SIZE := 15
-const HORDE_COOLDOWN := 3.0
 const MIN_INTENSITY := 1.0
 const ATTRACT_INTERVAL := 0.4
 const MAP_SIZE := Vector2(2560, 2560)
 const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
 
+const SMALL_THRESHOLD := 150.0
+const MEDIUM_THRESHOLD := 400.0
+const LARGE_THRESHOLD := 800.0
+const CATASTROPHIC_THRESHOLD := 1600.0
+const SMALL_SIZE := 10
+const MEDIUM_SIZE := 25
+const LARGE_SIZE := 50
+const CATASTROPHIC_SIZE := 75
+
+const TIER_SMALL := 0
+const TIER_MEDIUM := 1
+const TIER_LARGE := 2
+const TIER_CAT := 3
+
 
 class Emitter:
 	var position: Vector2
 	var intensity: float = 0.0
-	var horde_cooldown: float = 0.0
+	var tiers_fired: Array = [false, false, false, false]
 
 	func _init(p: Vector2, m: float) -> void:
 		position = p
@@ -56,11 +67,25 @@ func _process(delta: float) -> void:
 	for i in range(_emitters.size()):
 		var e = _emitters[i]
 		e.intensity = max(0.0, e.intensity - decay)
-		e.horde_cooldown = max(0.0, e.horde_cooldown - delta)
-		if e.intensity >= HORDE_THRESHOLD and e.horde_cooldown <= 0.0:
-			_trigger_horde(e.position)
-			e.intensity = 0.0
-			e.horde_cooldown = HORDE_COOLDOWN
+
+		# When intensity falls below the lowest threshold, allow the tiers to re-arm.
+		if e.intensity < SMALL_THRESHOLD:
+			e.tiers_fired = [false, false, false, false]
+
+		# Fire whichever highest unfired tier the intensity has reached.
+		if e.intensity >= CATASTROPHIC_THRESHOLD and not e.tiers_fired[TIER_CAT]:
+			e.tiers_fired[TIER_CAT] = true
+			_trigger_horde(e.position, CATASTROPHIC_SIZE)
+		elif e.intensity >= LARGE_THRESHOLD and not e.tiers_fired[TIER_LARGE]:
+			e.tiers_fired[TIER_LARGE] = true
+			_trigger_horde(e.position, LARGE_SIZE)
+		elif e.intensity >= MEDIUM_THRESHOLD and not e.tiers_fired[TIER_MEDIUM]:
+			e.tiers_fired[TIER_MEDIUM] = true
+			_trigger_horde(e.position, MEDIUM_SIZE)
+		elif e.intensity >= SMALL_THRESHOLD and not e.tiers_fired[TIER_SMALL]:
+			e.tiers_fired[TIER_SMALL] = true
+			_trigger_horde(e.position, SMALL_SIZE)
+
 		if e.intensity < MIN_INTENSITY:
 			to_remove.append(i)
 
@@ -81,7 +106,7 @@ func _attract_zombies() -> void:
 	for u in get_tree().get_nodes_in_group("units"):
 		if not is_instance_valid(u):
 			continue
-		if u.faction != 2:  # Faction.ZOMBIE = 2
+		if u.faction != 2:
 			continue
 		if not u.has_method("investigate"):
 			continue
@@ -97,9 +122,9 @@ func _attract_zombies() -> void:
 			u.investigate(best_emitter.position)
 
 
-func _trigger_horde(target: Vector2) -> void:
+func _trigger_horde(target: Vector2, size: int) -> void:
 	var spawn_pos := _pick_edge_spawn(target)
-	for i in range(HORDE_SIZE):
+	for i in range(size):
 		var jitter := Vector2(randf_range(-60, 60), randf_range(-60, 60))
 		var s = SHAMBLER_SCENE.instantiate()
 		s.position = spawn_pos + jitter
@@ -130,10 +155,19 @@ func _draw() -> void:
 		return
 	for e in _emitters:
 		var reach: float = e.intensity * REACH_PER_NOISE
-		var ratio: float = clamp(e.intensity / HORDE_THRESHOLD, 0.0, 1.0)
+		var ratio: float = clamp(e.intensity / SMALL_THRESHOLD, 0.0, 1.0)
 		draw_circle(e.position, reach, Color(1, 0.4, 0.1, 0.13), true, -1, true)
 		var ring_alpha: float = 0.45 + 0.5 * ratio
 		draw_arc(e.position, reach, 0.0, TAU, 56, Color(1, 0.4, 0.1, ring_alpha), 2.5, true)
 		if _debug_font != null:
-			var label := "%d" % int(e.intensity)
-			draw_string(_debug_font, e.position + Vector2(-12, -reach - 6), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 0.9, 0.6, 0.95))
+			var tier_label := ""
+			if e.intensity >= CATASTROPHIC_THRESHOLD:
+				tier_label = " CAT"
+			elif e.intensity >= LARGE_THRESHOLD:
+				tier_label = " LRG"
+			elif e.intensity >= MEDIUM_THRESHOLD:
+				tier_label = " MED"
+			elif e.intensity >= SMALL_THRESHOLD:
+				tier_label = " SML"
+			var label := "%d%s" % [int(e.intensity), tier_label]
+			draw_string(_debug_font, e.position + Vector2(-16, -reach - 6), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 0.9, 0.6, 0.95))
