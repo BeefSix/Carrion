@@ -1,0 +1,22 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/Walker.gd" id="1_walker"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_walker"]
+size = Vector2(18, 18)
+
+[node name="Walker" type="CharacterBody2D" groups=["units", "player_units"]]
+script = ExtResource("1_walker")
+faction = 1
+max_hp = 30
+move_speed = 80.0
+body_color = Color(0.541, 0.416, 0.227, 1)
+size_px = 18
+
+[node name="CollisionShape" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_walker")
+
+[node name="NavigationAgent" type="NavigationAgent2D" parent="."]
+path_desired_distance = 6.0
+target_desired_distance = 6.0
+radius = 9.0
