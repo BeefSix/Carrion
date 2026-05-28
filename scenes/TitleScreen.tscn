@@ -55,3 +55,13 @@ layout_mode = 2
 custom_minimum_size = Vector2(320, 56)
 text = "TRIBAL
 silent, slow, zombie-friendly"
+
+[node name="Spacer3" type="Control" parent="VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 8)
+
+[node name="SurvivorButton" type="Button" parent="VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(320, 56)
+text = "SURVIVORS
+root, fortify, outlast"

@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/WaterCollection.gd" id="1_wc"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_wc"]
+size = Vector2(32, 32)
+
+[node name="WaterCollection" type="StaticBody2D" groups=["buildings"]]
+script = ExtResource("1_wc")
+max_hp = 150
+body_color = Color(0.29, 0.263, 0.224, 1)
+size_pixels = Vector2(32, 32)
+
+[node name="CollisionShape" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_wc")

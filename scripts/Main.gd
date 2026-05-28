@@ -3,6 +3,10 @@ extends Node2D
 const LOOTABLE_SCENE := preload("res://scenes/buildings/Lootable.tscn")
 const CP_SCENE := preload("res://scenes/buildings/CommandPost.tscn")
 const TC_SCENE := preload("res://scenes/buildings/TribalCamp.tscn")
+const SH_SCENE := preload("res://scenes/buildings/SettlementHub.tscn")
+const BRAWLER_SCENE := preload("res://scenes/units/Brawler.tscn")
+const ENGINEER_SCENE := preload("res://scenes/units/Engineer.tscn")
+const SCOUT_SCENE := preload("res://scenes/units/Scout.tscn")
 const HQ_POSITION := Vector2(1280, 1280)
 const LOOTABLE_COUNT := 30
 const INFESTED_FRACTION := 0.5
@@ -45,10 +49,28 @@ func _spawn_hq() -> void:
 	match GameState.player_faction:
 		GameState.Faction.TRIBAL:
 			hq = TC_SCENE.instantiate()
+		GameState.Faction.SURVIVOR:
+			hq = SH_SCENE.instantiate()
 		_:
 			hq = CP_SCENE.instantiate()
 	hq.position = HQ_POSITION
 	add_child(hq)
+	if GameState.player_faction == GameState.Faction.SURVIVOR:
+		_spawn_survivor_starting_units()
+
+
+func _spawn_survivor_starting_units() -> void:
+	# Spec-mandated Survivor opener: 2 Brawlers, 1 Engineer, 1 Scout.
+	for off in [Vector2(-70, 90), Vector2(70, 90)]:
+		var b = BRAWLER_SCENE.instantiate()
+		b.position = HQ_POSITION + off
+		add_child(b)
+	var e = ENGINEER_SCENE.instantiate()
+	e.position = HQ_POSITION + Vector2(0, 120)
+	add_child(e)
+	var s = SCOUT_SCENE.instantiate()
+	s.position = HQ_POSITION + Vector2(-120, 40)
+	add_child(s)
 
 
 func _spawn_lootables() -> void:

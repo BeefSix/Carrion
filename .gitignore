@@ -7,6 +7,9 @@
 .import/
 *.import
 
+# Godot script UID sidecars (regenerated locally; solo project doesn't need them in VCS)
+*.uid
+
 # Export configuration (may contain paths or secrets)
 export.cfg
 export_presets.cfg

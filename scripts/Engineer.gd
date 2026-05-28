@@ -1,6 +1,6 @@
 extends "res://scripts/Unit.gd"
 
-enum Sub { NONE, REPAIR_APPROACH, REPAIR_CHANNEL, FLEE }
+enum Sub { NONE, REPAIR_APPROACH, REPAIR_CHANNEL, CONSTRUCTING, FLEE }
 
 const ATTACK_RANGE := 36.0
 const ATTACK_DAMAGE := 8
@@ -11,6 +11,17 @@ const REPAIR_HP_PER_SEC := 5.0
 const FLEE_HP_FRACTION := 0.5
 const FLEE_THREAT_RANGE := 200.0
 const RETARGET_INTERVAL := 0.3
+const CONSTRUCTION_SPAWN_OFFSET := Vector2(80, 0)
+
+const BUILDABLE_ORDER := ["workshop", "safehouse", "greenhouse", "water_collection"]
+const BUILDABLE_COSTS := { "workshop": 150, "safehouse": 150, "greenhouse": 100, "water_collection": 75 }
+const BUILDABLE_TIMES := { "workshop": 40.0, "safehouse": 50.0, "greenhouse": 30.0, "water_collection": 25.0 }
+const BUILDABLE_PATHS := {
+	"workshop": "res://scenes/buildings/Workshop.tscn",
+	"safehouse": "res://scenes/buildings/Safehouse.tscn",
+	"greenhouse": "res://scenes/buildings/Greenhouse.tscn",
+	"water_collection": "res://scenes/buildings/WaterCollection.tscn",
+}
 
 var _target_enemy = null
 var _repair_target = null
@@ -18,6 +29,8 @@ var _attack_cooldown := 0.0
 var _retarget_timer := 0.0
 var _sub: Sub = Sub.NONE
 var _repair_accumulator := 0.0
+var _construction_what := ""
+var _construction_timer := 0.0
 
 
 func repair_at(building) -> void:
@@ -35,8 +48,75 @@ func repair_at(building) -> void:
 
 func move_to(world_pos: Vector2) -> void:
 	super.move_to(world_pos)
+	if _sub != Sub.CONSTRUCTING:
+		_sub = Sub.NONE
+		_repair_target = null
+
+
+func get_action_count() -> int:
+	return BUILDABLE_ORDER.size()
+
+
+func get_action_text(idx: int) -> String:
+	if idx < 0 or idx >= BUILDABLE_ORDER.size():
+		return ""
+	var item: String = BUILDABLE_ORDER[idx]
+	return "Build %s (%d Salvage)" % [_pretty_name(item), BUILDABLE_COSTS[item]]
+
+
+func _pretty_name(item: String) -> String:
+	match item:
+		"workshop": return "Workshop"
+		"safehouse": return "Safehouse"
+		"greenhouse": return "Greenhouse"
+		"water_collection": return "Water Collection"
+		_: return item.capitalize()
+
+
+func get_action_available(idx: int) -> bool:
+	if _sub == Sub.CONSTRUCTING:
+		return false
+	if idx < 0 or idx >= BUILDABLE_ORDER.size():
+		return false
+	return GameState.can_spend(BUILDABLE_COSTS[BUILDABLE_ORDER[idx]])
+
+
+func do_action(idx: int) -> void:
+	if _sub == Sub.CONSTRUCTING:
+		return
+	if idx < 0 or idx >= BUILDABLE_ORDER.size():
+		return
+	var item: String = BUILDABLE_ORDER[idx]
+	if not GameState.can_spend(BUILDABLE_COSTS[item]):
+		return
+	GameState.spend(BUILDABLE_COSTS[item])
+	_start_construction(item)
+
+
+func get_status_text() -> String:
+	if _sub == Sub.CONSTRUCTING:
+		return "Constructing %s... %.0fs" % [_pretty_name(_construction_what), _construction_timer]
+	return ""
+
+
+func _start_construction(item: String) -> void:
+	_construction_what = item
+	_construction_timer = BUILDABLE_TIMES[item]
+	_sub = Sub.CONSTRUCTING
+	current_command = Command.CONSTRUCT
+
+
+func _spawn_construction() -> void:
+	var path: String = BUILDABLE_PATHS.get(_construction_what, "")
+	if path != "":
+		var scene: PackedScene = load(path) as PackedScene
+		if scene != null:
+			var b = scene.instantiate()
+			b.position = global_position + CONSTRUCTION_SPAWN_OFFSET
+			get_parent().add_child(b)
+	_construction_what = ""
 	_sub = Sub.NONE
-	_repair_target = null
+	current_command = Command.IDLE
 
 
 func _physics_process(delta: float) -> void:
@@ -44,7 +124,7 @@ func _physics_process(delta: float) -> void:
 
 	var max_eff: int = get_effective_max_hp()
 	var low_hp: bool = max_eff > 0 and float(current_hp) / float(max_eff) < FLEE_HP_FRACTION
-	if low_hp:
+	if low_hp and _sub != Sub.CONSTRUCTING:
 		var threat = _find_nearest_hostile_in_range(FLEE_THREAT_RANGE)
 		if threat != null:
 			_sub = Sub.FLEE
@@ -63,6 +143,8 @@ func _physics_process(delta: float) -> void:
 			_tick_repair_approach()
 		Sub.REPAIR_CHANNEL:
 			_tick_repair_channel(delta)
+		Sub.CONSTRUCTING:
+			_tick_constructing(delta)
 		_:
 			_tick_combat(delta)
 
@@ -117,6 +199,13 @@ func _tick_repair_channel(delta: float) -> void:
 		_repair_target.current_hp = min(_repair_target.max_hp, _repair_target.current_hp + heal)
 		if _repair_target.has_method("queue_redraw"):
 			_repair_target.queue_redraw()
+
+
+func _tick_constructing(delta: float) -> void:
+	velocity = Vector2.ZERO
+	_construction_timer -= delta
+	if _construction_timer <= 0.0:
+		_spawn_construction()
 
 
 func _flee_from(threat) -> void:

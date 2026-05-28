@@ -2,7 +2,7 @@ extends Node
 
 signal salvage_changed(new_value: int)
 
-enum Faction { MILITARY, TRIBAL }
+enum Faction { MILITARY, TRIBAL, SURVIVOR }
 
 const STARTING_SALVAGE := 200
 
