@@ -8,7 +8,7 @@ size = Vector2(64, 64)
 
 [node name="RitualSite" type="StaticBody2D" groups=["buildings", "ritual_site"]]
 script = ExtResource("1_rs")
-max_hp = 1200
+max_hp = 350
 body_color = Color(0.29, 0.263, 0.224, 1)
 size_pixels = Vector2(64, 64)
 shaman_scene = ExtResource("2_shaman")

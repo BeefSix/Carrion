@@ -8,7 +8,7 @@ size = Vector2(80, 64)
 
 [node name="HuntingLodge" type="StaticBody2D" groups=["buildings", "hunting_lodge"]]
 script = ExtResource("1_hl")
-max_hp = 1500
+max_hp = 350
 body_color = Color(0.29, 0.263, 0.224, 1)
 size_pixels = Vector2(80, 64)
 hunter_scene = ExtResource("2_hunter")

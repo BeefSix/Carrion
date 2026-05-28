@@ -10,6 +10,7 @@ size = Vector2(64, 64)
 
 [node name="TribalCamp" type="StaticBody2D" groups=["buildings"]]
 script = ExtResource("1_tc")
+max_hp = 500
 body_color = Color(0.29, 0.263, 0.224, 1)
 size_pixels = Vector2(64, 64)
 walker_scene = ExtResource("2_walker")

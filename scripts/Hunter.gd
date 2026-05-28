@@ -29,7 +29,7 @@ func _physics_process(delta: float) -> void:
 	_retarget_timer -= delta
 	if _retarget_timer <= 0:
 		_retarget_timer = RETARGET_INTERVAL
-		_target = _find_nearest_zombie()
+		_target = _find_nearest_enemy()
 	if _target != null and is_instance_valid(_target):
 		var dist := global_position.distance_to(_target.global_position)
 		if dist <= ATTACK_RANGE and _attack_cooldown <= 0:
@@ -38,13 +38,17 @@ func _physics_process(delta: float) -> void:
 			_emit_shot_noise()
 
 
-func _find_nearest_zombie():
+# Tribal Hunters fight survivors and military, NOT zombies.
+# Zombies ignore tribal units per the faction filter in Shambler._update_target,
+# so there's no reason for Hunters to engage them either. The Tribal strategic
+# identity is "let the zombies be; hunt the humans."
+func _find_nearest_enemy():
 	var best = null
 	var best_dist := ATTACK_RANGE
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction != Faction.ZOMBIE:
+		if u.faction == Faction.TRIBAL or u.faction == Faction.ZOMBIE:
 			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d <= best_dist:
@@ -59,19 +63,12 @@ func _find_nearest_threat_in_range(range_px: float):
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction != Faction.ZOMBIE:
+		if u.faction == Faction.TRIBAL or u.faction == Faction.ZOMBIE:
 			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d <= best_dist:
 			best_dist = d
 			best = u
-	for c in get_tree().get_nodes_in_group("corpses"):
-		if not is_instance_valid(c):
-			continue
-		var d: float = global_position.distance_to(c.global_position)
-		if d <= best_dist:
-			best_dist = d
-			best = c
 	return best
 
 

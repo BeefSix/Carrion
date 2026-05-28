@@ -1,7 +1,7 @@
 class_name HuntingLodge
 extends "res://scripts/Building.gd"
 
-const HUNTER_COST := 60
+const HUNTER_COST := 50
 const HUNTER_BUILD_TIME := 30.0
 const SPAWN_OFFSET := Vector2(0, 80)
 

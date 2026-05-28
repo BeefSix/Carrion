@@ -3,9 +3,9 @@ extends "res://scripts/Building.gd"
 
 const WALKER_COST := 50
 const WALKER_BUILD_TIME := 20.0
-const HUNTING_LODGE_COST := 175
+const HUNTING_LODGE_COST := 150
 const HUNTING_LODGE_BUILD_TIME := 45.0
-const RITUAL_SITE_COST := 175
+const RITUAL_SITE_COST := 200
 const RITUAL_SITE_BUILD_TIME := 50.0
 const WALKER_SPAWN_OFFSET := Vector2(0, 80)
 const HUNTING_LODGE_SPAWN_OFFSET := Vector2(-140, 0)

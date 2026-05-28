@@ -11,7 +11,7 @@ faction = 1
 max_hp = 50
 move_speed = 96.0
 body_color = Color(0.541, 0.416, 0.227, 1)
-corpse_base_chance = 0.3
+corpse_base_chance = 0.0
 size_px = 22
 
 [node name="CollisionShape" type="CollisionShape2D" parent="."]
