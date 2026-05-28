@@ -1,7 +1,7 @@
 class_name Unit
 extends CharacterBody2D
 
-enum Faction { MILITARY, TRIBAL, ZOMBIE, NEUTRAL }
+enum Faction { MILITARY, TRIBAL, ZOMBIE, NEUTRAL, SURVIVOR }
 enum Command { IDLE, MOVE, ATTACK, GATHER, CONSTRUCT, FLEE }
 
 const MIN_CORPSE_CHANCE := 0.05

@@ -1,0 +1,17 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/Workshop.gd" id="1_ws"]
+[ext_resource type="PackedScene" path="res://scenes/units/Brawler.tscn" id="2_brawler"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ws"]
+size = Vector2(80, 64)
+
+[node name="Workshop" type="StaticBody2D" groups=["buildings", "workshop"]]
+script = ExtResource("1_ws")
+max_hp = 400
+body_color = Color(0.29, 0.263, 0.224, 1)
+size_pixels = Vector2(80, 64)
+brawler_scene = ExtResource("2_brawler")
+
+[node name="CollisionShape" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_ws")
