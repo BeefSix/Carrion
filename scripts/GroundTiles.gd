@@ -6,7 +6,7 @@ extends TileMapLayer
 # is layered on in a later step.
 
 const TILE_PX := 32
-const MAP_TILES := 128
+const MAP_TILES := 192
 
 const STREET := 0
 const SIDEWALK := 1

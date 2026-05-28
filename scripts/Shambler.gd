@@ -115,8 +115,8 @@ func _tick_wander(delta: float) -> void:
 func _start_wander() -> void:
 	var offset := Vector2(randf_range(-WANDER_RADIUS, WANDER_RADIUS), randf_range(-WANDER_RADIUS, WANDER_RADIUS))
 	var target := global_position + offset
-	target.x = clamp(target.x, 50.0, 4046.0)
-	target.y = clamp(target.y, 50.0, 4046.0)
+	target.x = clamp(target.x, 50.0, 6094.0)
+	target.y = clamp(target.y, 50.0, 6094.0)
 	_wander_target = target
 	_wandering = true
 	_nav.target_position = _wander_target

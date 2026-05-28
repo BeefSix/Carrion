@@ -6,13 +6,13 @@
 [ext_resource type="PackedScene" path="res://scenes/units/Brawler.tscn" id="4_brawler"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_sh"]
-size = Vector2(64, 64)
+size = Vector2(96, 96)
 
 [node name="SettlementHub" type="StaticBody2D" groups=["buildings"]]
 script = ExtResource("1_sh")
 max_hp = 600
 body_color = Color(0.29, 0.263, 0.224, 1)
-size_pixels = Vector2(64, 64)
+size_pixels = Vector2(96, 96)
 scout_scene = ExtResource("2_scout")
 engineer_scene = ExtResource("3_eng")
 brawler_scene = ExtResource("4_brawler")

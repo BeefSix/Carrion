@@ -8,7 +8,7 @@
 [ext_resource type="Script" path="res://scripts/GroundTiles.gd" id="8_ground"]
 
 [sub_resource type="NavigationPolygon" id="NavigationPolygon_main"]
-vertices = PackedVector2Array(0, 0, 4096, 0, 4096, 4096, 0, 4096)
+vertices = PackedVector2Array(0, 0, 6144, 0, 6144, 6144, 0, 6144)
 polygons = [PackedInt32Array(0, 1, 2, 3)]
 agent_radius = 12.0
 
@@ -17,7 +17,7 @@ script = ExtResource("0_main")
 
 [node name="Ground" type="Polygon2D" parent="."]
 color = Color(0.16, 0.15, 0.13, 1)
-polygon = PackedVector2Array(0, 0, 4096, 0, 4096, 4096, 0, 4096)
+polygon = PackedVector2Array(0, 0, 6144, 0, 6144, 6144, 0, 6144)
 
 [node name="GroundTiles" type="TileMapLayer" parent="."]
 script = ExtResource("8_ground")
@@ -25,17 +25,17 @@ script = ExtResource("8_ground")
 [node name="MapBorder" type="Line2D" parent="."]
 width = 4.0
 default_color = Color(0.7, 0.65, 0.55, 1)
-points = PackedVector2Array(0, 0, 4096, 0, 4096, 4096, 0, 4096, 0, 0)
+points = PackedVector2Array(0, 0, 6144, 0, 6144, 6144, 0, 6144, 0, 0)
 
 [node name="NavRegion" type="NavigationRegion2D" parent="."]
 navigation_polygon = SubResource("NavigationPolygon_main")
 
 [node name="Camera" type="Camera2D" parent="."]
-position = Vector2(2048, 2048)
+position = Vector2(3072, 3072)
 limit_left = 0
 limit_top = 0
-limit_right = 4096
-limit_bottom = 4096
+limit_right = 6144
+limit_bottom = 6144
 script = ExtResource("1_camera")
 
 [node name="NoiseField" type="Node2D" parent="."]

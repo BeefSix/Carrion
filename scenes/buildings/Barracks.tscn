@@ -5,13 +5,13 @@
 [ext_resource type="PackedScene" path="res://scenes/units/HeavyGunner.tscn" id="3_hg"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_bar"]
-size = Vector2(80, 64)
+size = Vector2(64, 64)
 
 [node name="Barracks" type="StaticBody2D" groups=["buildings", "barracks"]]
 script = ExtResource("1_bar")
 max_hp = 1500
 body_color = Color(0.29, 0.263, 0.224, 1)
-size_pixels = Vector2(80, 64)
+size_pixels = Vector2(64, 64)
 rifleman_scene = ExtResource("2_rifle")
 heavy_gunner_scene = ExtResource("3_hg")
 

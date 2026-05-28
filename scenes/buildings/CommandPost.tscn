@@ -5,11 +5,12 @@
 [ext_resource type="PackedScene" path="res://scenes/buildings/Barracks.tscn" id="3_bar"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_cp"]
-size = Vector2(64, 64)
+size = Vector2(96, 96)
 
 [node name="CommandPost" type="StaticBody2D" groups=["buildings"]]
 script = ExtResource("1_cp")
 body_color = Color(0.29, 0.263, 0.224, 1)
+size_pixels = Vector2(96, 96)
 looter_scene = ExtResource("2_looter")
 barracks_scene = ExtResource("3_bar")
 

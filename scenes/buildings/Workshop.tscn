@@ -5,13 +5,13 @@
 [ext_resource type="PackedScene" path="res://scenes/units/Engineer.tscn" id="3_eng"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_ws"]
-size = Vector2(80, 64)
+size = Vector2(64, 64)
 
 [node name="Workshop" type="StaticBody2D" groups=["buildings", "workshop"]]
 script = ExtResource("1_ws")
 max_hp = 400
 body_color = Color(0.29, 0.263, 0.224, 1)
-size_pixels = Vector2(80, 64)
+size_pixels = Vector2(64, 64)
 brawler_scene = ExtResource("2_brawler")
 engineer_scene = ExtResource("3_eng")
 
