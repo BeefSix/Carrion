@@ -114,8 +114,11 @@ func _handle_right_click(world_pos: Vector2) -> void:
 		if not is_instance_valid(u):
 			continue
 		# Cremation is highest priority when the click landed on a corpse and the
-		# unit can channel it (combat units inherit cremate_target from Unit.gd).
-		if target_corpse != null and u.has_method("cremate_target"):
+		# unit is a combat unit. cremate_target is inherited from Unit.gd by ALL
+		# subclasses (including workers), so we must filter by group - otherwise
+		# right-clicking a corpse with a mixed Looter+Rifleman selection sends
+		# the Looter to channel and abandons its salvage run.
+		if target_corpse != null and u.is_in_group("combat_units"):
 			u.cremate_target(target_corpse)
 		elif target_building != null and is_damaged and u.has_method("repair_at"):
 			u.repair_at(target_building)

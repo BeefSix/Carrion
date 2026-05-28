@@ -5,7 +5,7 @@
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_hunter"]
 size = Vector2(22, 22)
 
-[node name="Hunter" type="CharacterBody2D" groups=["units", "player_units"]]
+[node name="Hunter" type="CharacterBody2D" groups=["units", "player_units", "combat_units"]]
 script = ExtResource("1_hunter")
 faction = 1
 max_hp = 50

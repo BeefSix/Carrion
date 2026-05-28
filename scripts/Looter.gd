@@ -19,7 +19,6 @@ const SALVAGE_PER_KILL := 25
 const CARRY_CAP := 25
 const INTERACTION_RANGE := 80.0
 const KILL_AREA_ARRIVE_RANGE := 80.0
-const AVOID_RANGE := 160.0
 const RETARGET_INTERVAL := 0.3
 const SEARCH_DURATION := 6.0
 const SEARCH_RADIUS := 150.0
@@ -32,6 +31,11 @@ var _carrying := 0
 var _attack_cooldown := 0.0
 var _retarget_timer := 0.0
 
+# _has_kill is the sentinel for "this Looter has killed something this match
+# and knows where to go hunt again." Previously we keyed on _last_kill_pos
+# being non-zero, which broke the moment a kill happened to land on (0, 0)
+# and was just a code smell otherwise.
+var _has_kill: bool = false
 var _last_kill_pos: Vector2 = Vector2.ZERO
 var _search_timer := 0.0
 var _search_wander_timer := 0.0
@@ -75,7 +79,7 @@ func _pick_next_action() -> void:
 	if _carrying > 0:
 		_start_return_home()
 		return
-	if _last_kill_pos != Vector2.ZERO:
+	if _has_kill:
 		_start_return_to_hunt()
 		return
 	_try_start_auto_hunt()
@@ -146,6 +150,7 @@ func _tick_hunt_fire() -> void:
 		if was_alive and (not is_instance_valid(_target_zombie) or _target_zombie.current_hp <= 0):
 			_carrying = min(_carrying + SALVAGE_PER_KILL, CARRY_CAP)
 			_last_kill_pos = global_position
+			_has_kill = true
 			_target_zombie = null
 			# Carry cap forces immediate return — no lingering after kill.
 			_start_return_home()
@@ -156,6 +161,7 @@ func _tick_return_home() -> void:
 		_home_base = _find_nearest_command_post()
 		if _home_base == null:
 			_sub = Sub.NONE
+			velocity = Vector2.ZERO
 			return
 		_nav.target_position = _home_base.position
 	if global_position.distance_to(_home_base.position) <= INTERACTION_RANGE:
@@ -163,8 +169,11 @@ func _tick_return_home() -> void:
 		_sub = Sub.NONE
 		velocity = Vector2.ZERO
 		return
+	# Defensive fire is no-velocity (just damage + noise), so we can shoot while
+	# walking. Then continue along the nav path - no raw steering, so walls and
+	# buildings actually get pathed around.
 	_try_defensive_fire()
-	_avoidant_move_to(_home_base.position)
+	_follow_navigation()
 
 
 func _try_defensive_fire() -> void:
@@ -229,18 +238,6 @@ func _deposit_at_home() -> void:
 	_carrying = 0
 
 
-func _avoidant_move_to(target_pos: Vector2) -> void:
-	var to_target: Vector2 = (target_pos - global_position).normalized()
-	var threat = _find_nearest_zombie_in_range(AVOID_RANGE)
-	var spd: float = get_effective_move_speed()
-	if threat != null:
-		var away: Vector2 = (global_position - threat.global_position).normalized()
-		velocity = (to_target + away * 1.5).normalized() * spd
-	else:
-		velocity = to_target * spd
-	move_and_slide()
-
-
 func _find_nearest_zombie_in_range(range_px: float):
 	var best = null
 	var best_dist := range_px
@@ -257,9 +254,27 @@ func _find_nearest_zombie_in_range(range_px: float):
 
 
 func _find_nearest_command_post():
+	# Prefer an owned CP - same-ownership group ("player_buildings" if the player
+	# spawned us, "ai_buildings" if the AI spawned us). Falls back to any CP only
+	# if our owned HQ is gone, in which case we'll just idle at whatever's left.
+	var owner_group: String = "ai_buildings" if is_in_group("ai_units") else "player_buildings"
 	var nearest = null
 	var nearest_dist := INF
 	for cp in get_tree().get_nodes_in_group("command_post"):
+		if not is_instance_valid(cp):
+			continue
+		if not cp.is_in_group(owner_group):
+			continue
+		var dist: float = global_position.distance_to(cp.position)
+		if dist < nearest_dist:
+			nearest_dist = dist
+			nearest = cp
+	if nearest != null:
+		return nearest
+	# Fallback: any CP, just so we don't go null and lock up.
+	for cp in get_tree().get_nodes_in_group("command_post"):
+		if not is_instance_valid(cp):
+			continue
 		var dist: float = global_position.distance_to(cp.position)
 		if dist < nearest_dist:
 			nearest_dist = dist

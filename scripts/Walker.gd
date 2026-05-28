@@ -128,8 +128,23 @@ func _tick_gather_return() -> void:
 
 
 func _find_nearest_camp():
+	# Same-ownership preference as Looter._find_nearest_command_post - players
+	# return to player's TC, AI Walkers (future Phase 2) return to AI's TC.
+	var owner_group: String = "ai_buildings" if is_in_group("ai_units") else "player_buildings"
 	var nearest = null
 	var nearest_dist := INF
+	for c in get_tree().get_nodes_in_group("tribal_camp"):
+		if not is_instance_valid(c):
+			continue
+		if not c.is_in_group(owner_group):
+			continue
+		var d: float = global_position.distance_to(c.position)
+		if d < nearest_dist:
+			nearest_dist = d
+			nearest = c
+	if nearest != null:
+		return nearest
+	# Fallback: any TC.
 	for c in get_tree().get_nodes_in_group("tribal_camp"):
 		if not is_instance_valid(c):
 			continue

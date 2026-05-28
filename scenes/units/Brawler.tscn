@@ -5,7 +5,7 @@
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_brawler"]
 size = Vector2(24, 24)
 
-[node name="Brawler" type="CharacterBody2D" groups=["units", "player_units"]]
+[node name="Brawler" type="CharacterBody2D" groups=["units", "player_units", "combat_units"]]
 script = ExtResource("1_brawler")
 faction = 4
 max_hp = 80
