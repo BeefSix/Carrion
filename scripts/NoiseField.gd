@@ -2,6 +2,7 @@ extends Node2D
 
 const NOISE_DECAY_RATE := 10.0
 const REACH_PER_NOISE := 2.0
+const MAX_REACH := 480.0
 const MERGE_RADIUS := 96.0
 const MIN_INTENSITY := 1.0
 const ATTRACT_INTERVAL := 0.4
@@ -135,7 +136,7 @@ func _attract_zombies() -> void:
 		var best_emitter = null
 		var best_intensity: float = 0.0
 		for e in _emitters:
-			var reach: float = e.intensity * REACH_PER_NOISE
+			var reach: float = min(e.intensity * REACH_PER_NOISE, MAX_REACH)
 			var d: float = u.global_position.distance_to(e.position)
 			if d <= reach and e.intensity > best_intensity:
 				best_intensity = e.intensity
@@ -178,7 +179,7 @@ func _draw() -> void:
 	var now: float = Time.get_ticks_msec() / 1000.0
 	var cooldown_remaining: float = max(0.0, HORDE_COOLDOWN - (now - _last_horde_time))
 	for e in _emitters:
-		var reach: float = e.intensity * REACH_PER_NOISE
+		var reach: float = min(e.intensity * REACH_PER_NOISE, MAX_REACH)
 		var ratio: float = clamp(e.intensity / SMALL_THRESHOLD, 0.0, 1.0)
 		draw_circle(e.position, reach, Color(1, 0.4, 0.1, 0.13), true, -1, true)
 		var ring_alpha: float = 0.45 + 0.5 * ratio
