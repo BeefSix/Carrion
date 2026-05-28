@@ -6,6 +6,7 @@
 radius = 11.0
 
 [node name="Shambler" type="CharacterBody2D" groups=["units"]]
+collision_mask = 3
 script = ExtResource("1_shambler")
 faction = 2
 max_hp = 40

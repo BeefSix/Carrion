@@ -12,10 +12,12 @@ const FLEE_HP_FRACTION := 0.5
 const FLEE_THREAT_RANGE := 200.0
 const RETARGET_INTERVAL := 0.3
 const CONSTRUCTION_SPAWN_OFFSET := Vector2(80, 0)
+const WALL_SCENE_PATH := "res://scenes/buildings/Wall.tscn"
+const WALL_ARRIVE_RANGE := 56.0
 
-const BUILDABLE_ORDER := ["workshop", "safehouse", "greenhouse", "water_collection"]
-const BUILDABLE_COSTS := { "workshop": 150, "safehouse": 150, "greenhouse": 100, "water_collection": 75 }
-const BUILDABLE_TIMES := { "workshop": 40.0, "safehouse": 50.0, "greenhouse": 30.0, "water_collection": 25.0 }
+const BUILDABLE_ORDER := ["workshop", "safehouse", "greenhouse", "water_collection", "wall"]
+const BUILDABLE_COSTS := { "workshop": 150, "safehouse": 150, "greenhouse": 100, "water_collection": 75, "wall": 25 }
+const BUILDABLE_TIMES := { "workshop": 40.0, "safehouse": 50.0, "greenhouse": 30.0, "water_collection": 25.0, "wall": 10.0 }
 const BUILDABLE_PATHS := {
 	"workshop": "res://scenes/buildings/Workshop.tscn",
 	"safehouse": "res://scenes/buildings/Safehouse.tscn",
@@ -31,6 +33,8 @@ var _sub: Sub = Sub.NONE
 var _repair_accumulator := 0.0
 var _construction_what := ""
 var _construction_timer := 0.0
+var _building_wall := false
+var _wall_target: Vector2 = Vector2.ZERO
 
 
 func repair_at(building) -> void:
@@ -44,6 +48,16 @@ func repair_at(building) -> void:
 	_sub = Sub.REPAIR_APPROACH
 	current_command = Command.CONSTRUCT
 	_nav.target_position = building.position
+
+
+func build_wall_at(pos: Vector2) -> void:
+	_building_wall = true
+	_wall_target = pos
+	_construction_what = "wall"
+	_construction_timer = BUILDABLE_TIMES["wall"]
+	_sub = Sub.CONSTRUCTING
+	current_command = Command.CONSTRUCT
+	_nav.target_position = pos
 
 
 func move_to(world_pos: Vector2) -> void:
@@ -70,6 +84,7 @@ func _pretty_name(item: String) -> String:
 		"safehouse": return "Safehouse"
 		"greenhouse": return "Greenhouse"
 		"water_collection": return "Water Collection"
+		"wall": return "Wall"
 		_: return item.capitalize()
 
 
@@ -87,6 +102,12 @@ func do_action(idx: int) -> void:
 	if idx < 0 or idx >= BUILDABLE_ORDER.size():
 		return
 	var item: String = BUILDABLE_ORDER[idx]
+	if item == "wall":
+		# Walls go through placement mode; cost is paid on placement confirm.
+		var sel = get_tree().get_first_node_in_group("selection_manager")
+		if sel != null and sel.has_method("start_wall_placement"):
+			sel.start_wall_placement(self)
+		return
 	if not GameState.can_spend(BUILDABLE_COSTS[item]):
 		return
 	GameState.spend(BUILDABLE_COSTS[item])
@@ -100,6 +121,7 @@ func get_status_text() -> String:
 
 
 func _start_construction(item: String) -> void:
+	_building_wall = false
 	_construction_what = item
 	_construction_timer = BUILDABLE_TIMES[item]
 	_sub = Sub.CONSTRUCTING
@@ -107,13 +129,21 @@ func _start_construction(item: String) -> void:
 
 
 func _spawn_construction() -> void:
-	var path: String = BUILDABLE_PATHS.get(_construction_what, "")
-	if path != "":
-		var scene: PackedScene = load(path) as PackedScene
-		if scene != null:
-			var b = scene.instantiate()
-			b.position = global_position + CONSTRUCTION_SPAWN_OFFSET
-			get_parent().add_child(b)
+	if _building_wall:
+		var wall_scene: PackedScene = load(WALL_SCENE_PATH) as PackedScene
+		if wall_scene != null:
+			var w = wall_scene.instantiate()
+			w.position = _wall_target
+			get_parent().add_child(w)
+		_building_wall = false
+	else:
+		var path: String = BUILDABLE_PATHS.get(_construction_what, "")
+		if path != "":
+			var scene: PackedScene = load(path) as PackedScene
+			if scene != null:
+				var b = scene.instantiate()
+				b.position = global_position + CONSTRUCTION_SPAWN_OFFSET
+				get_parent().add_child(b)
 	_construction_what = ""
 	_sub = Sub.NONE
 	current_command = Command.IDLE
@@ -202,7 +232,13 @@ func _tick_repair_channel(delta: float) -> void:
 
 
 func _tick_constructing(delta: float) -> void:
-	velocity = Vector2.ZERO
+	if _building_wall:
+		if global_position.distance_to(_wall_target) > WALL_ARRIVE_RANGE:
+			_follow_navigation()
+			return
+		velocity = Vector2.ZERO
+	else:
+		velocity = Vector2.ZERO
 	_construction_timer -= delta
 	if _construction_timer <= 0.0:
 		_spawn_construction()

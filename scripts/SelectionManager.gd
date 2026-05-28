@@ -4,6 +4,8 @@ extends Node2D
 signal selection_changed(units: Array, building)
 
 const DRAG_THRESHOLD_PX := 8.0
+const WALL_GRID := 32.0
+const WALL_COST := 25
 
 var _dragging := false
 var _drag_start_world: Vector2
@@ -11,12 +13,53 @@ var _drag_start_screen: Vector2
 var _selected_units: Array = []
 var _selected_building = null
 
+var _placing_wall := false
+var _wall_builder = null
+
 
 func _ready() -> void:
 	add_to_group("selection_manager")
 
 
+func start_wall_placement(builder) -> void:
+	_placing_wall = true
+	_wall_builder = builder
+	queue_redraw()
+
+
+func _cancel_wall_placement() -> void:
+	_placing_wall = false
+	_wall_builder = null
+	queue_redraw()
+
+
+func _confirm_wall_placement(world_pos: Vector2) -> void:
+	if _wall_builder == null or not is_instance_valid(_wall_builder) or not _wall_builder.has_method("build_wall_at"):
+		_cancel_wall_placement()
+		return
+	if not GameState.can_spend(WALL_COST):
+		_cancel_wall_placement()
+		return
+	GameState.spend(WALL_COST)
+	_wall_builder.build_wall_at(_snap_to_grid(world_pos))
+	_cancel_wall_placement()
+
+
+func _snap_to_grid(p: Vector2) -> Vector2:
+	return (p / WALL_GRID).floor() * WALL_GRID + Vector2(WALL_GRID, WALL_GRID) * 0.5
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	if _placing_wall:
+		if event is InputEventMouseButton and event.pressed:
+			if event.button_index == MOUSE_BUTTON_LEFT:
+				_confirm_wall_placement(get_global_mouse_position())
+			elif event.button_index == MOUSE_BUTTON_RIGHT:
+				_cancel_wall_placement()
+		elif event is InputEventMouseMotion:
+			queue_redraw()
+		return
+
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
@@ -155,6 +198,13 @@ func get_selected() -> Array:
 
 
 func _draw() -> void:
+	if _placing_wall:
+		var center := _snap_to_grid(get_global_mouse_position())
+		var half := Vector2(WALL_GRID, WALL_GRID) * 0.5
+		var affordable: bool = GameState.can_spend(WALL_COST)
+		var fill: Color = Color(0.5, 0.7, 0.9, 0.35) if affordable else Color(0.9, 0.4, 0.3, 0.35)
+		draw_rect(Rect2(center - half, Vector2(WALL_GRID, WALL_GRID)), fill, true)
+		draw_rect(Rect2(center - half, Vector2(WALL_GRID, WALL_GRID)), Color(0.8, 0.9, 1.0, 0.8), false, 2.0)
 	if _dragging:
 		var current_world := get_global_mouse_position()
 		var rect := Rect2(_drag_start_world, current_world - _drag_start_world).abs()
