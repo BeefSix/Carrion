@@ -144,9 +144,16 @@ func _spawn_construction() -> void:
 				var b = scene.instantiate()
 				b.position = global_position + CONSTRUCTION_SPAWN_OFFSET
 				get_parent().add_child(b)
+				_request_nav_rebake()
 	_construction_what = ""
 	_sub = Sub.NONE
 	current_command = Command.IDLE
+
+
+func _request_nav_rebake() -> void:
+	var main = get_tree().current_scene
+	if main != null and main.has_method("rebake_navigation"):
+		main.call_deferred("rebake_navigation")
 
 
 func _physics_process(delta: float) -> void:

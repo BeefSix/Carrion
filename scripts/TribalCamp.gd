@@ -121,11 +121,19 @@ func _spawn_item(item: String) -> void:
 				var hl = hunting_lodge_scene.instantiate()
 				hl.position = global_position + HUNTING_LODGE_SPAWN_OFFSET
 				get_parent().add_child(hl)
+				_request_nav_rebake()
 		"ritual_site":
 			if ritual_site_scene != null:
 				var rs = ritual_site_scene.instantiate()
 				rs.position = global_position + RITUAL_SITE_SPAWN_OFFSET
 				get_parent().add_child(rs)
+				_request_nav_rebake()
+
+
+func _request_nav_rebake() -> void:
+	var main = get_tree().current_scene
+	if main != null and main.has_method("rebake_navigation"):
+		main.call_deferred("rebake_navigation")
 
 
 func _draw_building_icon() -> void:

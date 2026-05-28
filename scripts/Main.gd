@@ -61,6 +61,44 @@ func _ready() -> void:
 	GameState.reset_match()
 	_spawn_hq()
 	_spawn_lootables()
+	_rebake_navigation()
+
+
+func rebake_navigation() -> void:
+	# Public re-bake hook so runtime-built buildings can request a refresh.
+	_rebake_navigation()
+
+
+func _rebake_navigation() -> void:
+	var nav_poly := NavigationPolygon.new()
+	nav_poly.agent_radius = 12.0
+
+	var outer := PackedVector2Array([
+		Vector2(0, 0),
+		Vector2(MAP_SIZE.x, 0),
+		Vector2(MAP_SIZE.x, MAP_SIZE.y),
+		Vector2(0, MAP_SIZE.y),
+	])
+	var source := NavigationMeshSourceGeometryData2D.new()
+	source.add_traversable_outline(outer)
+
+	var pad := 4.0
+	for b in get_tree().get_nodes_in_group("buildings"):
+		if b.is_in_group("walls"):
+			continue
+		if not ("size_pixels" in b):
+			continue
+		var half: Vector2 = b.size_pixels * 0.5
+		var p: Vector2 = b.position
+		source.add_obstruction_outline(PackedVector2Array([
+			p + Vector2(-half.x - pad, -half.y - pad),
+			p + Vector2(half.x + pad, -half.y - pad),
+			p + Vector2(half.x + pad, half.y + pad),
+			p + Vector2(-half.x - pad, half.y + pad),
+		]))
+
+	NavigationServer2D.bake_from_source_geometry_data(nav_poly, source, Callable())
+	$NavRegion.navigation_polygon = nav_poly
 
 
 func _input(event: InputEvent) -> void:

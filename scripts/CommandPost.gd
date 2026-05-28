@@ -101,3 +101,10 @@ func _spawn_item(item: String) -> void:
 			var b = barracks_scene.instantiate()
 			b.position = global_position + BARRACKS_SPAWN_OFFSET
 			get_parent().add_child(b)
+			_request_nav_rebake()
+
+
+func _request_nav_rebake() -> void:
+	var main = get_tree().current_scene
+	if main != null and main.has_method("rebake_navigation"):
+		main.call_deferred("rebake_navigation")
