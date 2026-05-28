@@ -12,7 +12,7 @@ extends TileMapLayer
 # District cells sit between roads.
 
 const TILE_W := 64
-const TILE_H := 32
+const TILE_H := 48  # 4:3 tile aspect (was 32 for 2:1 - matches IsoView.ISO_TILE_H)
 const MAP_TILES := 192
 
 const STREET := 0

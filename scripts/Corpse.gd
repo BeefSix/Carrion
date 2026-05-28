@@ -24,6 +24,8 @@ func _ready() -> void:
 	_initial_delay = return_delay
 	_timer = return_delay
 	add_to_group("corpses")
+	# Static z-sort: corpses don't move, so we only set this once.
+	z_index = IsoView.z_for(global_position)
 	queue_redraw()
 
 

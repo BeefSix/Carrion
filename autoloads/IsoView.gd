@@ -2,20 +2,32 @@ extends Node
 
 # Three-quarters perspective projection helpers. Autoloaded so any node can
 # convert between world coordinates (the logical / gameplay coordinate space,
-# unchanged from the previous top-down view) and screen coordinates (the
-# rendered position after iso projection).
+# unchanged from the previous top-down view) and screen coordinates.
 #
 # World coordinates are still pixels in a 192x192 tile grid at TILE_WORLD_PX=32
 # per tile - all gameplay math (range checks, distance, navigation, physics)
 # continues to use world coords. Rendering applies world_to_screen at draw time.
 #
-# Projection is classic 2:1 isometric:
+# Projection: 4:3 oblique iso. Each tile renders 64 wide x 48 tall on screen
+# (was 64x32 / 2:1 in the previous build; user wanted stronger tilt). The
+# formula stays the same shape; only the ISO_TILE_H ratio changes:
 #   screen_x = (tile_x - tile_y) * ISO_TILE_W / 2
 #   screen_y = (tile_x + tile_y) * ISO_TILE_H / 2 - height
+#
+# Compared to 2:1 iso, 4:3 makes the camera-down-angle steeper - the eye
+# perceives more of the ground plane and tall things lean less. Project
+# Zomboid and Stoneshard sit roughly in this range.
 
 const TILE_WORLD_PX = 32.0
 const ISO_TILE_W = 64.0
-const ISO_TILE_H = 32.0
+const ISO_TILE_H = 48.0
+
+# Godot 2D's z_index is bounded to [-4096, 4096]. World depth in this project
+# can reach 12288 (corner at x+y = 6144+6144), so we scale before clamping.
+# Z_DEPTH_SCALE chosen so the full world range fits comfortably inside the
+# z_index window while still giving fine-grained sort resolution between
+# adjacent entities.
+const Z_DEPTH_SCALE = 8
 
 
 func world_to_screen(world_pos, height = 0.0):
@@ -36,3 +48,11 @@ func screen_to_world(screen_pos):
 
 func depth_for(world_pos):
 	return world_pos.x + world_pos.y
+
+
+func z_for(world_pos):
+	# Convert a world position to a z_index for back-to-front rendering.
+	# Use this from every renderable that participates in iso depth-sort:
+	# Unit (per-frame, since they move), Building (once at _ready), Corpse, Wall.
+	var d = (world_pos.x + world_pos.y) / Z_DEPTH_SCALE
+	return clamp(int(d), -4000, 4000)

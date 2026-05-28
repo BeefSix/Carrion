@@ -127,6 +127,10 @@ func _process(delta: float) -> void:
 	if velocity.length_squared() > 1.0:
 		facing_dir = velocity.normalized()
 		queue_redraw()
+	# Iso depth sort: back-to-front by world_x + world_y. Updated every frame
+	# because units move; cheap (one multiply + clamp). Zombies sort too, so
+	# we do this before the zombie-fast-path early return.
+	z_index = IsoView.z_for(global_position)
 	if faction == Faction.ZOMBIE:
 		return
 	_tick_cremation(delta)

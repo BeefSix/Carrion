@@ -20,6 +20,10 @@ var selected: bool = false
 func _ready() -> void:
 	current_hp = max_hp
 	add_to_group("buildings")
+	# Iso depth sort - use the back corner of the footprint so units in front
+	# of the building render after (on top of) it. Static, set once.
+	var back_corner: Vector2 = global_position - size_pixels * 0.5
+	z_index = IsoView.z_for(back_corner)
 
 
 func set_selected(value: bool) -> void:
