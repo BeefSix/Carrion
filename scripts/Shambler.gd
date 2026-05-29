@@ -35,6 +35,59 @@ func _ready() -> void:
 		queue_redraw()
 
 
+func _draw() -> void:
+	# Hunched / slumped variant of the humanoid silhouette. Shorter body,
+	# wider shoulders sloping in, head pushed slightly forward and down,
+	# no lightened head (decayed skin reads as uniform with the body), no
+	# facing wedge (zombies don't intentionally face anything). Spec's
+	# "hunched, slumped, slow-looking" was deferred from Phase 5; this is
+	# the polish pass that lands it.
+	var iso_offset: Vector2 = IsoView.world_to_screen(position) - position
+	draw_set_transform(iso_offset, 0.0, Vector2.ONE)
+
+	var scale: float = float(size_px) / 22.0
+	var sw: float = 14.0 * scale
+	var sh: float = 5.0 * scale
+	var bw: float = 10.0 * scale
+	var bh: float = 12.0 * scale  # shorter than upright (16)
+	var hr: float = 4.0 * scale
+
+	var head_offset_x: float = 1.5 * scale  # head pushed slightly forward
+	var head_y: float = -bh - hr * 0.15  # head sits closer to body (less neck)
+
+	# Selection ring
+	if selected:
+		draw_arc(Vector2(0.0, 1.5), sw * 0.55, 0.0, TAU, 24, Color(1, 1, 0.4), 1.4, true)
+
+	# Shadow - slightly larger to suggest a sprawled posture.
+	draw_colored_polygon(
+		_ellipse_polygon(Vector2(0.0, 1.5), sw * 0.55, sh * 0.55),
+		Color(0, 0, 0, 0.42),
+	)
+
+	# Body silhouette - wider at shoulders, sloping in. Slumped trapezoid.
+	# Shoulders sit higher than the head's vertical center to suggest hunched.
+	draw_colored_polygon(PackedVector2Array([
+		Vector2(-bw * 0.55, -bh + 3.0),  # top-left shoulder, pushed in slightly
+		Vector2(bw * 0.55, -bh + 3.0),   # top-right shoulder
+		Vector2(bw * 0.45, -1.0),        # bottom-right
+		Vector2(-bw * 0.45, -1.0),       # bottom-left
+	]), body_color)
+
+	# Head - same color as body for the uniform decayed look, offset forward.
+	draw_circle(Vector2(head_offset_x, head_y), hr, body_color)
+
+	# HP bar above (when damaged)
+	var max_eff: int = get_effective_max_hp()
+	if max_eff > 0 and current_hp < max_eff:
+		var bar_w: float = max(18.0, float(size_px) * 0.9)
+		var bar_y: float = head_y - hr - 5.0
+		var bar_x: float = -bar_w * 0.5
+		draw_rect(Rect2(bar_x, bar_y, bar_w, 2.5), Color(0.12, 0.05, 0.05))
+		var fill_ratio: float = float(current_hp) / float(max_eff)
+		draw_rect(Rect2(bar_x, bar_y, bar_w * fill_ratio, 2.5), Color(0.35, 0.65, 0.3))
+
+
 func investigate(world_pos: Vector2) -> void:
 	if _zombie_state == ZombieState.CHASE or _zombie_state == ZombieState.ATTACK:
 		return
