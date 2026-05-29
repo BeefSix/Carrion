@@ -24,6 +24,16 @@ const SEARCH_DURATION := 6.0
 const SEARCH_RADIUS := 150.0
 const SEARCH_WANDER_INTERVAL := 1.5
 
+# Carrying-loot avoidance: when a zombie is within AVOID_RANGE on the return
+# trip, retarget the nav agent to a sidestep waypoint instead of straight
+# home. The sidestep is computed from a perpendicular-to-threat offset blended
+# with the home direction, so the Looter routes around the zombie via the
+# nav mesh (not raw velocity steering - that was the original "sprinting
+# off the map" bug). Restored from spec §4.1 per the design doc.
+const AVOID_RANGE := 160.0
+const AVOID_DETOUR_PX := 120.0
+const AVOID_RETARGET_INTERVAL := 0.5
+
 var _sub: Sub = Sub.NONE
 var _target_zombie = null
 var _home_base = null
@@ -39,6 +49,10 @@ var _has_kill: bool = false
 var _last_kill_pos: Vector2 = Vector2.ZERO
 var _search_timer := 0.0
 var _search_wander_timer := 0.0
+
+# Throttle to avoid hammering _nav.target_position every frame on the return
+# trip; the nav agent re-paths whenever the target changes.
+var _avoid_retarget_timer: float = 0.0
 
 
 func move_to(world_pos: Vector2) -> void:
@@ -170,9 +184,26 @@ func _tick_return_home() -> void:
 		velocity = Vector2.ZERO
 		return
 	# Defensive fire is no-velocity (just damage + noise), so we can shoot while
-	# walking. Then continue along the nav path - no raw steering, so walls and
-	# buildings actually get pathed around.
+	# walking.
 	_try_defensive_fire()
+	# Zombie-shy detour: if a zombie is within AVOID_RANGE, retarget the nav
+	# agent to a sidestep waypoint (perpendicular-from-threat blended with
+	# home direction) so the path routes around it via the nav mesh. Throttled
+	# so we don't re-path every frame.
+	_avoid_retarget_timer -= get_physics_process_delta_time()
+	if _avoid_retarget_timer <= 0.0:
+		_avoid_retarget_timer = AVOID_RETARGET_INTERVAL
+		var threat = _find_nearest_zombie_in_range(AVOID_RANGE)
+		if threat != null:
+			var away: Vector2 = (global_position - threat.global_position).normalized()
+			var to_home: Vector2 = (_home_base.position - global_position).normalized()
+			var sidestep: Vector2 = global_position + away * AVOID_DETOUR_PX + to_home * AVOID_DETOUR_PX
+			sidestep.x = clamp(sidestep.x, 50.0, 6094.0)
+			sidestep.y = clamp(sidestep.y, 50.0, 6094.0)
+			_nav.target_position = sidestep
+		else:
+			# No threat - direct line home.
+			_nav.target_position = _home_base.position
 	_follow_navigation()
 
 

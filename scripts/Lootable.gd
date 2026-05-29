@@ -31,6 +31,19 @@ const NEIGHBORHOOD_COLORS := {
 	"civic": Color("a4a08e"),
 }
 
+# Per-type salvage anchors. PZ map is denser than the original 22-Lootable
+# layout (~70 Lootables now), so per-building yields scale down to keep the
+# faction-saturation salvage rate near the design doc's ~600/min target
+# instead of the runaway 14k floor that 70 x 200 produced.
+const SALVAGE_BY_TYPE := {
+	"residential": 50,
+	"commercial": 100,
+	"industrial": 150,
+	"medical": 200,
+	"security": 200,
+	"civic": 125,
+}
+
 @export var starting_salvage: int = 200
 @export var is_infested: bool = false
 @export var neighborhood_type: String = "residential"
@@ -41,6 +54,11 @@ var _spawn_timer := 0.0
 
 func _ready() -> void:
 	super._ready()
+	# Per-type salvage overrides the @export default. Map-placed Lootables
+	# inherit from their neighborhood_type; only Lootables created with an
+	# explicit @export override (e.g., in tests) keep the 200 default.
+	if SALVAGE_BY_TYPE.has(neighborhood_type):
+		starting_salvage = SALVAGE_BY_TYPE[neighborhood_type]
 	remaining_salvage = starting_salvage
 	add_to_group("lootable")
 	var fp: Vector2 = FOOTPRINTS.get(neighborhood_type, Vector2(64, 64))
