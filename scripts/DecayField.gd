@@ -83,14 +83,29 @@ func get_value_at(world_pos: Vector2) -> float:
 
 
 func _draw() -> void:
-	var size := Vector2(TILE_PX, TILE_PX)
+	# Each decayed tile renders as an iso diamond centered on the iso
+	# projection of its world-coord tile center. Same diamond shape and size
+	# as the iso ground tiles below so decay reads as a stain ON the ground,
+	# not floating squares over it.
 	var alpha_scale: float = 0.55 / MAX_DECAY
+	var half_w: float = IsoView.ISO_TILE_W * 0.5
+	var half_h: float = IsoView.ISO_TILE_H * 0.5
+	var tile_w: float = float(TILE_PX)
 	for ty in range(MAP_TILES):
 		var row_offset: int = ty * MAP_TILES
-		var py: float = float(ty * TILE_PX)
 		for tx in range(MAP_TILES):
 			var v: float = _grid[tx + row_offset]
 			if v < DRAW_THRESHOLD:
 				continue
+			var world_center := Vector2(
+				float(tx) * tile_w + tile_w * 0.5,
+				float(ty) * tile_w + tile_w * 0.5,
+			)
+			var iso_center: Vector2 = IsoView.world_to_screen(world_center)
 			var c := Color(DECAY_COLOR.r, DECAY_COLOR.g, DECAY_COLOR.b, v * alpha_scale)
-			draw_rect(Rect2(Vector2(float(tx * TILE_PX), py), size), c, true)
+			draw_colored_polygon(PackedVector2Array([
+				iso_center + Vector2(0.0, -half_h),
+				iso_center + Vector2(half_w, 0.0),
+				iso_center + Vector2(0.0, half_h),
+				iso_center + Vector2(-half_w, 0.0),
+			]), c)
