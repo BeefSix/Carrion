@@ -268,48 +268,94 @@ func get_status_text() -> String:
 
 
 func _draw() -> void:
-	var half: float = float(size_px) / 2.0
+	# Iso shift - the unit's node stays at world coords (so nav, physics,
+	# range checks all keep working) but the visible silhouette renders at
+	# IsoView.world_to_screen(position), where the iso ground tile under
+	# that world coord sits. Matches the Building._draw approach.
+	var iso_offset: Vector2 = IsoView.world_to_screen(position) - position
+	draw_set_transform(iso_offset, 0.0, Vector2.ONE)
 
+	# Silhouette geometry scaled by size_px so HG/Brawler look bigger than
+	# Looter/Scout without per-subclass overrides.
+	var scale: float = float(size_px) / 22.0
+	var sw: float = 13.0 * scale  # shadow width
+	var sh: float = 5.0 * scale   # shadow height
+	var bw: float = 9.0 * scale   # body width
+	var bh: float = 16.0 * scale  # body height
+	var hr: float = 4.0 * scale   # head radius
+
+	var body_top_y: float = -bh
+	var head_y: float = body_top_y - hr * 0.55
+
+	# Selection ring sits on the ground, around the shadow.
 	if selected:
-		draw_arc(Vector2.ZERO, half + 4.0, 0.0, TAU, 32, Color(1, 1, 0.4), 1.8, true)
+		draw_arc(Vector2(0.0, 1.5), sw * 0.55, 0.0, TAU, 24, Color(1, 1, 0.4), 1.4, true)
 
-	if faction == Faction.ZOMBIE:
-		draw_circle(Vector2.ZERO, half, body_color)
-	else:
-		var size_v := Vector2(size_px, size_px)
-		draw_rect(Rect2(-Vector2(half, half), size_v), body_color)
-		_draw_facing_triangle(half)
+	# Shadow under the figure - one solid translucent ellipse so the figure
+	# reads as resting on the ground plane, not floating.
+	draw_colored_polygon(
+		_ellipse_polygon(Vector2(0.0, 1.5), sw * 0.5, sh * 0.5),
+		Color(0, 0, 0, 0.42),
+	)
 
-	var bar_width: float = max(20.0, float(size_px))
-	var bar_height := 3.0
-	var bar_y: float = -half - 7.0
-	var bar_x: float = -bar_width / 2.0
-	draw_rect(Rect2(bar_x, bar_y, bar_width, bar_height), Color(0.12, 0.05, 0.05))
+	# Body silhouette - slight trapezoid, broader at shoulders than waist.
+	# All units share this base shape; subclass differentiation comes from
+	# body_color, size_px, and (later) overridable accents.
+	draw_colored_polygon(PackedVector2Array([
+		Vector2(-bw * 0.42, body_top_y + 2.0),
+		Vector2(bw * 0.42, body_top_y + 2.0),
+		Vector2(bw * 0.5, -1.0),
+		Vector2(-bw * 0.5, -1.0),
+	]), body_color)
+
+	# Head - slightly lighter than the body so the silhouette reads.
+	draw_circle(Vector2(0.0, head_y), hr, body_color.lightened(0.08))
+
+	# Facing wedge - small lighter triangle on the chest pointing iso-forward.
+	# Direction comes from facing_dir (already tracked in _process), projected
+	# to iso space so visually it points where the unit "is looking".
+	_draw_facing_wedge(body_top_y, bh, bw)
+
+	# HP bar floats above the head when damaged.
 	var max_eff: int = get_effective_max_hp()
-	var fill_ratio: float = float(current_hp) / float(max_eff) if max_eff > 0 else 0.0
-	draw_rect(Rect2(bar_x, bar_y, bar_width * fill_ratio, bar_height), Color(0.35, 0.65, 0.3))
+	if max_eff > 0 and current_hp < max_eff:
+		var bar_w: float = max(18.0, float(size_px) * 0.9)
+		var bar_y: float = head_y - hr - 5.0
+		var bar_x: float = -bar_w * 0.5
+		draw_rect(Rect2(bar_x, bar_y, bar_w, 2.5), Color(0.12, 0.05, 0.05))
+		var fill_ratio: float = float(current_hp) / float(max_eff)
+		draw_rect(Rect2(bar_x, bar_y, bar_w * fill_ratio, 2.5), Color(0.35, 0.65, 0.3))
 
-	_draw_veterancy_chevrons(half)
-
-
-func _draw_facing_triangle(half: float) -> void:
-	var tip: Vector2 = facing_dir * (half * 0.85)
-	var base_center: Vector2 = facing_dir * (half * 0.2)
-	var perp: Vector2 = facing_dir.rotated(PI / 2.0)
-	var base_half_width: float = half * 0.35
-	var corner_a: Vector2 = base_center + perp * base_half_width
-	var corner_b: Vector2 = base_center - perp * base_half_width
-	var tri_color: Color = body_color.lightened(0.35)
-	draw_colored_polygon(PackedVector2Array([tip, corner_a, corner_b]), tri_color)
+	# Veterancy chevrons sit above the HP bar (or just above the head when
+	# HP is full and the bar is hidden).
+	_draw_veterancy_chevrons(head_y - hr - 8.0)
 
 
-func _draw_veterancy_chevrons(half: float) -> void:
+func _draw_facing_wedge(body_top_y: float, bh: float, bw: float) -> void:
+	# Project facing_dir (world space) to iso so the wedge points the
+	# direction the unit is heading in screen space.
+	var iso_facing: Vector2 = Vector2(
+		facing_dir.x - facing_dir.y,
+		(facing_dir.x + facing_dir.y) * 0.75,
+	)
+	if iso_facing.length_squared() < 0.001:
+		return
+	iso_facing = iso_facing.normalized()
+	var chest := Vector2(0.0, body_top_y + bh * 0.30)
+	var tip: Vector2 = chest + iso_facing * (bw * 0.55)
+	var perp: Vector2 = iso_facing.rotated(PI * 0.5) * 1.8
+	draw_colored_polygon(PackedVector2Array([
+		chest + perp, tip, chest - perp,
+	]), body_color.lightened(0.45))
+
+
+func _draw_veterancy_chevrons(top_y: float) -> void:
 	if veterancy_level < 2:
 		return
 	var count: int = veterancy_level - 1
 	var color: Color = Color(0.82, 0.55, 0.22) if veterancy_level == 2 else Color(0.85, 0.85, 0.92)
-	var base_x: float = half + 3.0
-	var base_y: float = -half - 9.0
+	var base_x: float = 6.0
+	var base_y: float = top_y
 	for i in range(count):
 		var y: float = base_y - i * 4.0
 		var pts := PackedVector2Array([
@@ -318,3 +364,12 @@ func _draw_veterancy_chevrons(half: float) -> void:
 			Vector2(base_x + 6.0, y + 3.0),
 		])
 		draw_polyline(pts, color, 1.6, true)
+
+
+func _ellipse_polygon(center: Vector2, rx: float, ry: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	var segments := 14
+	for i in range(segments):
+		var angle: float = TAU * float(i) / float(segments)
+		pts.append(center + Vector2(cos(angle) * rx, sin(angle) * ry))
+	return pts
