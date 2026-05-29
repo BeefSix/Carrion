@@ -181,9 +181,14 @@ func _draw() -> void:
 	for e in _emitters:
 		var reach: float = min(e.intensity * REACH_PER_NOISE, MAX_REACH)
 		var ratio: float = clamp(e.intensity / SMALL_THRESHOLD, 0.0, 1.0)
-		draw_circle(e.position, reach, Color(1, 0.4, 0.1, 0.13), true, -1, true)
+		# Project emitter world position to iso for debug visualization. Reach
+		# stays in screen pixels - a circle of "reach" at iso center is a useful
+		# debug halo even if it's not strictly the iso-projection of a world circle
+		# (which would be a 4:3 ellipse).
+		var iso_pos: Vector2 = IsoView.world_to_screen(e.position)
+		draw_circle(iso_pos, reach, Color(1, 0.4, 0.1, 0.13), true, -1, true)
 		var ring_alpha: float = 0.45 + 0.5 * ratio
-		draw_arc(e.position, reach, 0.0, TAU, 56, Color(1, 0.4, 0.1, ring_alpha), 2.5, true)
+		draw_arc(iso_pos, reach, 0.0, TAU, 56, Color(1, 0.4, 0.1, ring_alpha), 2.5, true)
 		if _debug_font != null:
 			var tier_label := ""
 			if e.intensity >= CATASTROPHIC_THRESHOLD:
@@ -199,4 +204,4 @@ func _draw() -> void:
 				status += " | CD %.0fs" % cooldown_remaining
 			if _wave_count > 0:
 				status += " | W%d" % _wave_count
-			draw_string(_debug_font, e.position + Vector2(-32, -reach - 6), status, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 0.9, 0.6, 0.95))
+			draw_string(_debug_font, iso_pos + Vector2(-32, -reach - 6), status, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 0.9, 0.6, 0.95))
