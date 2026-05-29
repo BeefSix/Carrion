@@ -11,8 +11,9 @@ size = Vector2(96, 96)
 [node name="SettlementHub" type="StaticBody2D" groups=["buildings"]]
 script = ExtResource("1_sh")
 max_hp = 600
-body_color = Color(0.29, 0.263, 0.224, 1)
+body_color = Color(0.478, 0.361, 0.235, 1)
 size_pixels = Vector2(96, 96)
+wall_height = 48.0
 scout_scene = ExtResource("2_scout")
 engineer_scene = ExtResource("3_eng")
 brawler_scene = ExtResource("4_brawler")

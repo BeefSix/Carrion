@@ -1,17 +1,31 @@
 class_name Building
 extends StaticBody2D
 
+# Building base class. In Phase 4 of the three-quarters perspective conversion
+# the body renders as a proper iso 3D structure - footprint base on the ground,
+# two visible walls (south + east, the camera-facing pair), and a roof.
+#
+# The node itself stays at world coordinates (so gameplay - range checks, nav
+# obstructions, child spawn offsets - operates on the same numbers as before).
+# Rendering applies draw_set_transform with an iso offset so the visible building
+# lands at IsoView.world_to_screen(position), which is where the iso ground tile
+# under that world coord renders. Building and ground stay visually aligned.
+# Click detection is still in world space (Phase 6 will project it to iso).
+
+signal destroyed(building)
+
 const PALETTE_STRUCTURE := Color("4a4339")
 const PALETTE_MILITARY := Color("5a6644")
 const PALETTE_SURVIVOR := Color("7a5c3c")
 const PALETTE_TRIBAL := Color("8a6a3a")
 const PALETTE_ICON_NEUTRAL := Color("8a857a")
 
-signal destroyed(building)
-
 @export var max_hp: int = 1000
 @export var body_color: Color = Color.WHITE
 @export var size_pixels: Vector2 = Vector2(64, 64)
+# Wall height in screen pixels. Bigger / more imposing buildings (HQs) override
+# to push this higher in their scene or _ready.
+@export var wall_height: float = 32.0
 
 var current_hp: int
 var selected: bool = false
@@ -20,8 +34,8 @@ var selected: bool = false
 func _ready() -> void:
 	current_hp = max_hp
 	add_to_group("buildings")
-	# Iso depth sort - use the back corner of the footprint so units in front
-	# of the building render after (on top of) it. Static, set once.
+	# Iso depth sort - back corner depth so units in front of the building
+	# render after it. Set once; buildings don't move.
 	var back_corner: Vector2 = global_position - size_pixels * 0.5
 	z_index = IsoView.z_for(back_corner)
 
@@ -61,31 +75,100 @@ func get_status_text() -> String:
 
 
 func _die() -> void:
-	# Emit before freeing so Main's win-condition listener fires with us still
-	# referenceable (queue_free is deferred to end-of-frame anyway).
 	destroyed.emit(self)
 	queue_free()
 
 
 func _draw() -> void:
-	var half: Vector2 = size_pixels / 2.0
-	# Body
-	draw_rect(Rect2(-half, size_pixels), body_color)
-	# Type icon (subclass override)
+	# Apply the iso shift so the visible building lands at IsoView projection
+	# of our world-coord position. Everything drawn below this call is in iso
+	# screen-space relative to the iso-projected center.
+	var iso_offset: Vector2 = IsoView.world_to_screen(position) - position
+	draw_set_transform(iso_offset, 0.0, Vector2.ONE)
+
+	var hw: float = size_pixels.x * 0.5
+	var hh: float = size_pixels.y * 0.5
+
+	# Project the four footprint corners to iso (offsets from node origin).
+	# IsoView's projection is linear, so projecting a relative offset gives
+	# the relative iso offset.
+	var nw: Vector2 = IsoView.world_to_screen(Vector2(-hw, -hh))
+	var ne: Vector2 = IsoView.world_to_screen(Vector2(hw, -hh))
+	var se: Vector2 = IsoView.world_to_screen(Vector2(hw, hh))
+	var sw: Vector2 = IsoView.world_to_screen(Vector2(-hw, hh))
+
+	var nw_top: Vector2 = nw + Vector2(0.0, -wall_height)
+	var ne_top: Vector2 = ne + Vector2(0.0, -wall_height)
+	var se_top: Vector2 = se + Vector2(0.0, -wall_height)
+	var sw_top: Vector2 = sw + Vector2(0.0, -wall_height)
+
+	# Ground footprint - reads as the building's shadow/base ring.
+	draw_colored_polygon(PackedVector2Array([nw, ne, se, sw]), body_color.darkened(0.55))
+
+	# South wall (front, faces camera).
+	draw_colored_polygon(PackedVector2Array([sw, se, se_top, sw_top]), body_color)
+
+	# East wall (right side) - slightly darker so the two visible walls separate
+	# instead of melting together.
+	draw_colored_polygon(PackedVector2Array([se, ne, ne_top, se_top]), body_color.darkened(0.20))
+
+	# Roof - slightly lighter, top-down read of the building's top surface.
+	draw_colored_polygon(PackedVector2Array([nw_top, ne_top, se_top, sw_top]), body_color.lightened(0.22))
+
+	# Edge outlines to define the form.
+	var edge: Color = body_color.darkened(0.45)
+	draw_line(sw, se, edge, 1.0)
+	draw_line(se, ne, edge, 1.0)
+	draw_line(sw, sw_top, edge, 1.0)
+	draw_line(se, se_top, edge, 1.0)
+	draw_line(ne, ne_top, edge, 1.0)
+	draw_line(nw_top, ne_top, edge, 1.0)
+	draw_line(ne_top, se_top, edge, 1.0)
+	draw_line(se_top, sw_top, edge, 1.0)
+	draw_line(sw_top, nw_top, edge, 1.0)
+
+	# Door on the south wall.
+	_draw_south_door(sw, se, sw_top, se_top)
+
+	# Subclass icon - shift the canvas to the roof center so existing
+	# _draw_building_icon implementations (which draw at local Vector2.ZERO)
+	# appear on the roof of the iso building instead of at the ground center.
+	var roof_center: Vector2 = (nw_top + se_top) * 0.5
+	draw_set_transform(iso_offset + roof_center, 0.0, Vector2.ONE)
 	_draw_building_icon()
-	# Selection ring
+	draw_set_transform(iso_offset, 0.0, Vector2.ONE)
+
+	# Selection ring around the roof.
 	if selected:
-		draw_rect(Rect2(-half, size_pixels), Color(1, 1, 0.4), false, 3.0)
-	# HP bar (only when damaged)
+		draw_polyline(PackedVector2Array([nw_top, ne_top, se_top, sw_top, nw_top]), Color(1, 1, 0.4), 2.0, true)
+
+	# HP bar floats above the roof.
 	if current_hp < max_hp:
-		var bar_width: float = size_pixels.x
-		var bar_height := 4.0
-		var bar_y: float = -size_pixels.y / 2.0 - 10.0
-		var x: float = -bar_width / 2.0
-		draw_rect(Rect2(x, bar_y, bar_width, bar_height), Color(0.12, 0.05, 0.05))
+		var bar_w: float = max(size_pixels.x * 0.7, 32.0)
+		var bar_y: float = nw_top.y - 10.0
+		var bar_x: float = -bar_w * 0.5
+		draw_rect(Rect2(bar_x, bar_y, bar_w, 3.0), Color(0.12, 0.05, 0.05))
 		var fill_ratio: float = float(current_hp) / float(max_hp) if max_hp > 0 else 0.0
-		draw_rect(Rect2(x, bar_y, bar_width * fill_ratio, bar_height), Color(0.35, 0.65, 0.3))
+		draw_rect(Rect2(bar_x, bar_y, bar_w * fill_ratio, 3.0), Color(0.35, 0.65, 0.3))
 
 
+func _draw_south_door(sw: Vector2, se: Vector2, sw_top: Vector2, se_top: Vector2) -> void:
+	var bottom_mid: Vector2 = (sw + se) * 0.5
+	var top_mid: Vector2 = (sw_top + se_top) * 0.5
+	var to_top: Vector2 = top_mid - bottom_mid
+	var wall_dir: Vector2 = (se - sw)
+	var half_door: Vector2 = wall_dir * 0.10
+	var door_top: Vector2 = to_top * 0.55
+	var bl: Vector2 = bottom_mid - half_door
+	var br: Vector2 = bottom_mid + half_door
+	var tl: Vector2 = bl + door_top
+	var tr: Vector2 = br + door_top
+	draw_colored_polygon(PackedVector2Array([bl, br, tr, tl]), body_color.darkened(0.55))
+
+
+# Legacy hook - subclasses override to draw a type marker. The canvas is
+# transformed so subclass draws at their local Vector2.ZERO appear at the
+# building's roof center. Kept the old name so existing subclass overrides
+# (CommandPost, TribalCamp, SettlementHub, Lootable variants) just work.
 func _draw_building_icon() -> void:
 	pass

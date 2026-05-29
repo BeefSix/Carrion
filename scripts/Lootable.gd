@@ -21,15 +21,13 @@ const FOOTPRINTS := {
 	"civic": Vector2(96, 96),
 }
 const NEIGHBORHOOD_COLORS := {
-	# Brightened from the previous muted palette so Lootables contrast with the
-	# new dark-asphalt ground and read distinctly from each other. Each color
-	# anchors its district's palette family (Decoration.PALETTES picks variants
-	# from a similar hue, so a Lootable sits visually inside its neighborhood).
-	"residential": Color("8e6e4a"),
-	"commercial": Color("8a6a3e"),
-	"industrial": Color("4a4640"),
-	"medical": Color("9aaaaa"),
-	"security": Color("3e4a68"),
+	# Per the PZ town-layout / three-quarters perspective spec - muted palette
+	# tuned so each district reads distinctly when rendered as iso walls + roof.
+	"residential": Color("8a7560"),  # brown-beige
+	"commercial": Color("8a8070"),   # gray-tan
+	"industrial": Color("454540"),   # dark gray
+	"medical": Color("a09595"),      # pale gray-white
+	"security": Color("454a55"),     # dark blue-gray
 	"civic": Color("a4a08e"),
 }
 

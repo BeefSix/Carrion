@@ -9,8 +9,9 @@ size = Vector2(96, 96)
 
 [node name="CommandPost" type="StaticBody2D" groups=["buildings"]]
 script = ExtResource("1_cp")
-body_color = Color(0.29, 0.263, 0.224, 1)
+body_color = Color(0.353, 0.4, 0.267, 1)
 size_pixels = Vector2(96, 96)
+wall_height = 48.0
 looter_scene = ExtResource("2_looter")
 barracks_scene = ExtResource("3_bar")
 
