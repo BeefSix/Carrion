@@ -105,11 +105,18 @@ func _draw_building_icon() -> void:
 	draw_circle(Vector2.ZERO, 14.0, PALETTE_MILITARY)
 
 
+const SPAWN_JITTER := 24.0
+
+
 func _spawn_item(item: String) -> void:
 	if item == "looter":
 		if looter_scene != null:
 			var l = looter_scene.instantiate()
-			l.position = global_position + LOOTER_SPAWN_OFFSET
+			# Jitter so multiple Looters don't spawn on top of each other -
+			# overlapping CharacterBody2D shapes get separated by the physics
+			# solver in unpredictable directions, which is what produced the
+			# "second looter ran left off the screen" report.
+			l.position = global_position + LOOTER_SPAWN_OFFSET + _spawn_jitter()
 			get_parent().add_child(l)
 	elif item == "barracks":
 		if barracks_scene != null:
@@ -117,6 +124,10 @@ func _spawn_item(item: String) -> void:
 			b.position = global_position + BARRACKS_SPAWN_OFFSET
 			get_parent().add_child(b)
 			_request_nav_rebake()
+
+
+func _spawn_jitter() -> Vector2:
+	return Vector2(randf_range(-SPAWN_JITTER, SPAWN_JITTER), randf_range(-SPAWN_JITTER, SPAWN_JITTER))
 
 
 func _request_nav_rebake() -> void:

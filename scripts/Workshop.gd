@@ -86,6 +86,9 @@ func _process(delta: float) -> void:
 				_start_production(next_item)
 
 
+const SPAWN_JITTER := 24.0
+
+
 func _spawn_item(item: String) -> void:
 	var scene: PackedScene = null
 	if item == "brawler":
@@ -95,7 +98,8 @@ func _spawn_item(item: String) -> void:
 	if scene == null:
 		return
 	var u = scene.instantiate()
-	u.position = global_position + SPAWN_OFFSET
+	var jitter := Vector2(randf_range(-SPAWN_JITTER, SPAWN_JITTER), randf_range(-SPAWN_JITTER, SPAWN_JITTER))
+	u.position = global_position + SPAWN_OFFSET + jitter
 	get_parent().add_child(u)
 
 

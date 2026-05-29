@@ -164,11 +164,17 @@ func _spawn_produced(item: String) -> void:
 				get_parent().call_deferred("rebake_navigation")
 
 
+const SPAWN_JITTER := 24.0
+
+
 func _spawn_unit(scene: PackedScene, pos: Vector2) -> void:
 	if scene == null:
 		return
 	var u = scene.instantiate()
-	u.position = pos
+	# Jitter prevents stacked spawns from being separated in arbitrary
+	# directions by the physics solver (the "ran left off the screen" bug).
+	var jitter := Vector2(randf_range(-SPAWN_JITTER, SPAWN_JITTER), randf_range(-SPAWN_JITTER, SPAWN_JITTER))
+	u.position = pos + jitter
 	get_parent().add_child(u)
 	# After add_child the unit's scene-defined groups have applied; flip ownership
 	# so SelectionManager won't let the player command it and Looter deposits route

@@ -102,6 +102,9 @@ func _draw_building_icon() -> void:
 	draw_rect(Rect2(-inner_size / 2.0, inner_size), PALETTE_MILITARY)
 
 
+const SPAWN_JITTER := 24.0
+
+
 func _spawn_item(item: String) -> void:
 	var scene: PackedScene = null
 	if item == "rifleman":
@@ -111,5 +114,8 @@ func _spawn_item(item: String) -> void:
 	if scene == null:
 		return
 	var u = scene.instantiate()
-	u.position = global_position + SPAWN_OFFSET
+	# Jitter so back-to-back spawns don't stack on the same pixel and have the
+	# physics solver separate them in random directions.
+	var jitter := Vector2(randf_range(-SPAWN_JITTER, SPAWN_JITTER), randf_range(-SPAWN_JITTER, SPAWN_JITTER))
+	u.position = global_position + SPAWN_OFFSET + jitter
 	get_parent().add_child(u)

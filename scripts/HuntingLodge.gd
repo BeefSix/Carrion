@@ -70,11 +70,15 @@ func _process(delta: float) -> void:
 				_start_production()
 
 
+const SPAWN_JITTER := 24.0
+
+
 func _spawn_hunter() -> void:
 	if hunter_scene == null:
 		return
 	var h = hunter_scene.instantiate()
-	h.position = global_position + SPAWN_OFFSET
+	var jitter := Vector2(randf_range(-SPAWN_JITTER, SPAWN_JITTER), randf_range(-SPAWN_JITTER, SPAWN_JITTER))
+	h.position = global_position + SPAWN_OFFSET + jitter
 	get_parent().add_child(h)
 
 

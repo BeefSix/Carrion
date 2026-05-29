@@ -70,11 +70,15 @@ func _process(delta: float) -> void:
 				_start_production()
 
 
+const SPAWN_JITTER := 24.0
+
+
 func _spawn_shaman() -> void:
 	if shaman_scene == null:
 		return
 	var s = shaman_scene.instantiate()
-	s.position = global_position + SPAWN_OFFSET
+	var jitter := Vector2(randf_range(-SPAWN_JITTER, SPAWN_JITTER), randf_range(-SPAWN_JITTER, SPAWN_JITTER))
+	s.position = global_position + SPAWN_OFFSET + jitter
 	get_parent().add_child(s)
 
 

@@ -110,12 +110,16 @@ func _process(delta: float) -> void:
 				_start_production(next_item)
 
 
+const SPAWN_JITTER := 24.0
+
+
 func _spawn_item(item: String) -> void:
 	match item:
 		"walker":
 			if walker_scene != null:
 				var w = walker_scene.instantiate()
-				w.position = global_position + WALKER_SPAWN_OFFSET
+				var jitter := Vector2(randf_range(-SPAWN_JITTER, SPAWN_JITTER), randf_range(-SPAWN_JITTER, SPAWN_JITTER))
+				w.position = global_position + WALKER_SPAWN_OFFSET + jitter
 				get_parent().add_child(w)
 		"hunting_lodge":
 			if hunting_lodge_scene != null:
