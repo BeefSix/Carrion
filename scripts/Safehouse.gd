@@ -83,11 +83,17 @@ func _process(delta: float) -> void:
 				_start_production()
 
 
+const SPAWN_JITTER := 24.0
+
+
 func _spawn_scout() -> void:
 	if scout_scene == null:
 		return
 	var s = scout_scene.instantiate()
-	s.position = global_position + SPAWN_OFFSET
+	# Same jitter pattern as other unit producers - prevents stacked spawns
+	# triggering physics-solver separation.
+	var jitter := Vector2(randf_range(-SPAWN_JITTER, SPAWN_JITTER), randf_range(-SPAWN_JITTER, SPAWN_JITTER))
+	s.position = global_position + SPAWN_OFFSET + jitter
 	get_parent().add_child(s)
 
 
