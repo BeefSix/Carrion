@@ -17,41 +17,107 @@ const EDGE_SPAWN_KEEPOUT := 1200.0  # avoid dumping wanderers on top of the play
 
 # Per-faction corner spawns. Tile (18, 18) center inside the rubble edge band; clear zone
 # is the surrounding 12x12 tiles, big enough to drop HQ + a few small buildings + walls.
-const SPAWN_NW := Vector2(576, 576)
-const SPAWN_NE := Vector2(5568, 576)
-const SPAWN_SW := Vector2(576, 5568)
-const SPAWN_SE := Vector2(5568, 5568)
+# Per-faction corner spawns. Players land inside their residential zone with
+# a 16-tile clear zone around the HQ. Per PZ town-layout spec: NW + SE are
+# residential corners (player starts). NE corner is medical/security
+# (contested), SW corner is industrial (contested).
+const SPAWN_NW := Vector2(768, 768)    # tile (24, 24) - NW residential
+const SPAWN_NE := Vector2(5120, 768)   # tile (160, 24) - NE medical
+const SPAWN_SW := Vector2(768, 5120)   # tile (24, 160) - SW industrial
+const SPAWN_SE := Vector2(5120, 5120)  # tile (160, 160) - SE residential
 
-# Hand-designed neighborhood layout. To be replaced by the PZ town-layout spec
-# in post-perspective-conversion work; for now sits where it was before Track 2.
+# PZ town-layout hand-placed Lootables. ~70 buildings across six zones:
+#   NW residential (20 houses)
+#   SE residential (20 houses)
+#   Downtown commercial + civic (10)
+#   SW industrial (8 warehouses)
+#   NE medical/security (6 institutional)
+#   Wilderness rural (6 farmhouses)
+# Positions are world pixel centers. Footprints come from Lootable.FOOTPRINTS
+# keyed by type (2x2 residential, 3x2 commercial, 3x3 institutional, etc.).
 const NEIGHBORHOOD_LAYOUT := [
-	# NW Residential
-	{ "pos": Vector2(1088, 1088), "type": "residential" },
-	{ "pos": Vector2(1216, 1088), "type": "residential" },
-	{ "pos": Vector2(1344, 1088), "type": "residential" },
-	{ "pos": Vector2(1088, 1216), "type": "residential" },
+	# NW Residential - 5x4 grid west of secondary road at x=56, north of secondary at y=56.
 	{ "pos": Vector2(1216, 1216), "type": "residential" },
 	{ "pos": Vector2(1344, 1216), "type": "residential" },
-	{ "pos": Vector2(1088, 1344), "type": "residential" },
+	{ "pos": Vector2(1472, 1216), "type": "residential" },
+	{ "pos": Vector2(1600, 1216), "type": "residential" },
+	{ "pos": Vector2(1728, 1216), "type": "residential" },
 	{ "pos": Vector2(1216, 1344), "type": "residential" },
 	{ "pos": Vector2(1344, 1344), "type": "residential" },
-	# NE Commercial
-	{ "pos": Vector2(4384, 1088), "type": "commercial" },
-	{ "pos": Vector2(4528, 1088), "type": "commercial" },
-	{ "pos": Vector2(4672, 1088), "type": "commercial" },
-	{ "pos": Vector2(4816, 1088), "type": "commercial" },
-	{ "pos": Vector2(4960, 1088), "type": "commercial" },
-	# SW Industrial
-	{ "pos": Vector2(1200, 4528), "type": "industrial" },
-	{ "pos": Vector2(1360, 4528), "type": "industrial" },
-	{ "pos": Vector2(1200, 4688), "type": "industrial" },
-	{ "pos": Vector2(1360, 4688), "type": "industrial" },
-	# SE Medical/Security
-	{ "pos": Vector2(4572, 4672), "type": "medical" },
-	{ "pos": Vector2(4772, 4672), "type": "security" },
-	# N Civic plaza
-	{ "pos": Vector2(2952, 896), "type": "civic" },
-	{ "pos": Vector2(3192, 896), "type": "civic" },
+	{ "pos": Vector2(1472, 1344), "type": "residential" },
+	{ "pos": Vector2(1600, 1344), "type": "residential" },
+	{ "pos": Vector2(1728, 1344), "type": "residential" },
+	{ "pos": Vector2(1216, 1472), "type": "residential" },
+	{ "pos": Vector2(1344, 1472), "type": "residential" },
+	{ "pos": Vector2(1472, 1472), "type": "residential" },
+	{ "pos": Vector2(1600, 1472), "type": "residential" },
+	{ "pos": Vector2(1728, 1472), "type": "residential" },
+	{ "pos": Vector2(1216, 1600), "type": "residential" },
+	{ "pos": Vector2(1344, 1600), "type": "residential" },
+	{ "pos": Vector2(1472, 1600), "type": "residential" },
+	{ "pos": Vector2(1600, 1600), "type": "residential" },
+	{ "pos": Vector2(1728, 1600), "type": "residential" },
+
+	# SE Residential - 5x4 grid mirrored from NW (north-west of player 2 spawn).
+	{ "pos": Vector2(4416, 4416), "type": "residential" },
+	{ "pos": Vector2(4544, 4416), "type": "residential" },
+	{ "pos": Vector2(4672, 4416), "type": "residential" },
+	{ "pos": Vector2(4800, 4416), "type": "residential" },
+	{ "pos": Vector2(4928, 4416), "type": "residential" },
+	{ "pos": Vector2(4416, 4544), "type": "residential" },
+	{ "pos": Vector2(4544, 4544), "type": "residential" },
+	{ "pos": Vector2(4672, 4544), "type": "residential" },
+	{ "pos": Vector2(4800, 4544), "type": "residential" },
+	{ "pos": Vector2(4928, 4544), "type": "residential" },
+	{ "pos": Vector2(4416, 4672), "type": "residential" },
+	{ "pos": Vector2(4544, 4672), "type": "residential" },
+	{ "pos": Vector2(4672, 4672), "type": "residential" },
+	{ "pos": Vector2(4800, 4672), "type": "residential" },
+	{ "pos": Vector2(4928, 4672), "type": "residential" },
+	{ "pos": Vector2(4416, 4800), "type": "residential" },
+	{ "pos": Vector2(4544, 4800), "type": "residential" },
+	{ "pos": Vector2(4672, 4800), "type": "residential" },
+	{ "pos": Vector2(4800, 4800), "type": "residential" },
+	{ "pos": Vector2(4928, 4800), "type": "residential" },
+
+	# Downtown commercial strip - 8 stores along the main road, north and south.
+	{ "pos": Vector2(2752, 2784), "type": "commercial" },
+	{ "pos": Vector2(2880, 2784), "type": "commercial" },
+	{ "pos": Vector2(3264, 2784), "type": "commercial" },
+	{ "pos": Vector2(3392, 2784), "type": "commercial" },
+	{ "pos": Vector2(2752, 3360), "type": "commercial" },
+	{ "pos": Vector2(2880, 3360), "type": "commercial" },
+	{ "pos": Vector2(3264, 3360), "type": "commercial" },
+	{ "pos": Vector2(3392, 3360), "type": "commercial" },
+	# Downtown civic - school, government, plaza
+	{ "pos": Vector2(2752, 3072), "type": "civic" },
+	{ "pos": Vector2(3392, 3072), "type": "civic" },
+
+	# SW industrial - 8 warehouses in two rows
+	{ "pos": Vector2(1024, 4416), "type": "industrial" },
+	{ "pos": Vector2(1248, 4416), "type": "industrial" },
+	{ "pos": Vector2(1472, 4416), "type": "industrial" },
+	{ "pos": Vector2(1696, 4416), "type": "industrial" },
+	{ "pos": Vector2(1024, 4672), "type": "industrial" },
+	{ "pos": Vector2(1248, 4672), "type": "industrial" },
+	{ "pos": Vector2(1472, 4672), "type": "industrial" },
+	{ "pos": Vector2(1696, 4672), "type": "industrial" },
+
+	# NE medical/security - 2 hospitals, 2 police, 2 mixed
+	{ "pos": Vector2(4448, 1216), "type": "medical" },
+	{ "pos": Vector2(4672, 1216), "type": "medical" },
+	{ "pos": Vector2(4448, 1440), "type": "security" },
+	{ "pos": Vector2(4672, 1440), "type": "security" },
+	{ "pos": Vector2(4448, 1664), "type": "medical" },
+	{ "pos": Vector2(4672, 1664), "type": "security" },
+
+	# Wilderness rural - 6 isolated farmhouses at the edges of the map
+	{ "pos": Vector2(384, 384), "type": "residential" },
+	{ "pos": Vector2(5760, 384), "type": "residential" },
+	{ "pos": Vector2(384, 5760), "type": "residential" },
+	{ "pos": Vector2(5760, 5760), "type": "residential" },
+	{ "pos": Vector2(3072, 320), "type": "residential" },
+	{ "pos": Vector2(3072, 5824), "type": "residential" },
 ]
 
 const INFESTED_RATE_BY_TYPE := {
