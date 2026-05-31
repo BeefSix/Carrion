@@ -2,7 +2,7 @@ class_name CommandPost
 extends "res://scripts/Building.gd"
 
 const LOOTER_COST := 50
-const LOOTER_BUILD_TIME := 18.0
+const LOOTER_BUILD_TIME := 6.0
 const BARRACKS_COST := 200
 const BARRACKS_BUILD_TIME := 50.0
 const LOOTER_SPAWN_OFFSET := Vector2(0, 80)

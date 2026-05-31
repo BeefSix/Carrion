@@ -2,7 +2,7 @@ class_name TribalCamp
 extends "res://scripts/Building.gd"
 
 const WALKER_COST := 50
-const WALKER_BUILD_TIME := 20.0
+const WALKER_BUILD_TIME := 7.0
 const HUNTING_LODGE_COST := 150
 const HUNTING_LODGE_BUILD_TIME := 45.0
 const RITUAL_SITE_COST := 200

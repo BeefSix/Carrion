@@ -4,9 +4,9 @@ extends "res://scripts/Building.gd"
 const SCOUT_COST := 50
 const ENGINEER_COST := 50
 const BRAWLER_COST := 50
-const SCOUT_BUILD_TIME := 25.0
-const ENGINEER_BUILD_TIME := 25.0
-const BRAWLER_BUILD_TIME := 25.0
+const SCOUT_BUILD_TIME := 8.0
+const ENGINEER_BUILD_TIME := 8.0
+const BRAWLER_BUILD_TIME := 8.0
 const SPAWN_OFFSET := Vector2(0, 80)
 const ABSOLUTE_SCOUT_CAP := 4
 

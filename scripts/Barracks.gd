@@ -2,9 +2,9 @@ class_name Barracks
 extends "res://scripts/Building.gd"
 
 const RIFLEMAN_COST := 75
-const RIFLEMAN_BUILD_TIME := 25.0
+const RIFLEMAN_BUILD_TIME := 8.0
 const HEAVY_GUNNER_COST := 225
-const HEAVY_GUNNER_BUILD_TIME := 40.0
+const HEAVY_GUNNER_BUILD_TIME := 13.0
 const SPAWN_OFFSET := Vector2(0, 80)
 
 @export var rifleman_scene: PackedScene

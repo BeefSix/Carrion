@@ -2,7 +2,7 @@ class_name RitualSite
 extends "res://scripts/Building.gd"
 
 const SHAMAN_COST := 100
-const SHAMAN_BUILD_TIME := 40.0
+const SHAMAN_BUILD_TIME := 13.0
 const SPAWN_OFFSET := Vector2(0, 80)
 
 @export var shaman_scene: PackedScene

@@ -2,7 +2,7 @@ class_name Workshop
 extends "res://scripts/Building.gd"
 
 const BRAWLER_COST := 50
-const BRAWLER_BUILD_TIME := 25.0
+const BRAWLER_BUILD_TIME := 8.0
 const SPAWN_OFFSET := Vector2(0, 80)
 
 @export var brawler_scene: PackedScene
@@ -72,7 +72,7 @@ func _queue_item(item: String, cost: int) -> void:
 func _start_production(item: String) -> void:
 	_producing = true
 	_produce_what = item
-	_produce_timer = BRAWLER_BUILD_TIME if item == "brawler" else 25.0
+	_produce_timer = BRAWLER_BUILD_TIME if item == "brawler" else 8.0
 
 
 func _process(delta: float) -> void:
