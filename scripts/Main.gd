@@ -1,6 +1,7 @@
 extends Node2D
 
 const LOOTABLE_SCENE := preload("res://scenes/buildings/Lootable.tscn")
+const TOWN_PLANNER_SCRIPT := preload("res://scripts/maps/TownPlanner.gd")
 const CP_SCENE := preload("res://scenes/buildings/CommandPost.tscn")
 const TC_SCENE := preload("res://scenes/buildings/TribalCamp.tscn")
 const SH_SCENE := preload("res://scenes/buildings/SettlementHub.tscn")
@@ -137,8 +138,18 @@ var _match_ended: bool = false
 var _win_overlay: CanvasLayer = null
 
 
+var _town_data: Dictionary = {}
+
+
 func _ready() -> void:
 	GameState.reset_match()
+	# Process-based town generation. TownPlanner runs its 12-step pipeline
+	# and hands back the tile_grid + lots + buildings + lootables. Phase 1
+	# only steps 1-3 are populated; later phases (buildings, lootables)
+	# come online as those steps are implemented.
+	var planner = TOWN_PLANNER_SCRIPT.new()
+	_town_data = planner.plan_town()
+	$GroundTiles.apply_tile_grid(_town_data["tile_grid"])
 	_spawn_hq()
 	_spawn_lootables()
 	_rebake_navigation()
@@ -337,9 +348,15 @@ func _spawn_hq() -> void:
 
 
 func _spawn_lootables() -> void:
+	# Consumes TownPlanner's lootables list (filled by Step 11). Until that
+	# step is implemented, the list is empty and no Lootables spawn -
+	# expected for Phase 1 of the town-gen pipeline. Hand-placed
+	# NEIGHBORHOOD_LAYOUT kept as a constant for documentation but no longer
+	# used to spawn from.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1
-	for entry in NEIGHBORHOOD_LAYOUT:
+	var lootables: Array = _town_data.get("lootables", [])
+	for entry in lootables:
 		var lootable = LOOTABLE_SCENE.instantiate()
 		lootable.position = entry["pos"]
 		lootable.neighborhood_type = entry["type"]
