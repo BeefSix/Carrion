@@ -108,10 +108,10 @@ const COHESION_TARGET_JITTER := 14.0         # tight formation spread
 # and affinity to hang out" the user asked for - independent of whether
 # a leader is currently wandering. Lone zombies who see another zombie
 # pull toward them; clusters with no active leader still tighten.
-const MAGNETIC_RADIUS_PX := 14.0 * 32.0     # 14 tiles
-const MAGNETIC_PROBABILITY := 0.75           # 75% of direction picks just head to nearest zombie
+const MAGNETIC_RADIUS_PX := 40.0 * 32.0     # fallback radius for nearest-zombie pull (40 tiles)
 const MAGNETIC_TRAVEL_FRACTION := 0.75       # travel 75% of the way (vs all the way - leaves room for jostle)
 const MAGNETIC_TRAVEL_MAX_PX := 280.0        # cap per cycle so cross-map magnetic doesn't teleport
+const MAGNETIC_GLOBAL_DENSITY_THRESHOLD := 3 # global densest cell must hold at least this many zombies to attract
 
 # Cluster stickiness: once a zombie is in a populated ZombieField cell,
 # its wander picks should mostly shuffle in place and its timer should
@@ -711,7 +711,12 @@ func _start_wander() -> void:
 		)
 	if target == Vector2.ZERO and randf() < COHESION_PROBABILITY:
 		target = _find_cluster_leader_target()
-	if target == Vector2.ZERO and randf() < MAGNETIC_PROBABILITY:
+	# Magnetic always fires now (no probability gate). All zombies are
+	# attracted to other zombies as a default behavior, not a probabilistic
+	# bias. Targets the densest cell on the entire map; falls back to
+	# nearest individual zombie within MAGNETIC_RADIUS if no significant
+	# cluster exists.
+	if target == Vector2.ZERO:
 		target = _find_magnetic_target()
 	if target == Vector2.ZERO:
 		var direction: Vector2 = _pick_wander_direction()
@@ -733,10 +738,28 @@ func _zombie_field_density_here() -> int:
 
 
 func _find_magnetic_target() -> Vector2:
-	# Sightlines-and-affinity: pull toward the nearest zombie within
-	# MAGNETIC_RADIUS regardless of whether they're wandering. Doesn't
-	# require any in-cluster status; works on isolated zombies that
-	# can see each other across open ground.
+	# Two-tier magnetic attraction:
+	#   1. Global densest cell. If anywhere on the map has a cluster of
+	#      MAGNETIC_GLOBAL_DENSITY_THRESHOLD+ zombies, target it. This
+	#      pulls lone zombies toward the biggest pile regardless of
+	#      distance - "all zombies attracted to other zombies" requires
+	#      a map-wide signal.
+	#   2. Fallback: nearest individual zombie within MAGNETIC_RADIUS_PX.
+	#      Used when no big cluster exists yet (cold-start) or when we
+	#      ARE the big cluster (densest cell is our own).
+	var zf = get_tree().get_first_node_in_group("zombie_field")
+	if zf != null and zf.has_method("get_densest_cell_center"):
+		var densest_count: int = zf.get_densest_cell_count()
+		if densest_count >= MAGNETIC_GLOBAL_DENSITY_THRESHOLD:
+			var center: Vector2 = zf.get_densest_cell_center()
+			var to_center: Vector2 = center - global_position
+			# If the densest cell IS our own cell (we're in the big pile),
+			# fall through to the nearest-zombie inward nudge instead of
+			# targeting our own position.
+			if to_center.length_squared() > (64.0 * 64.0):
+				var travel_g: float = minf(to_center.length() * MAGNETIC_TRAVEL_FRACTION, MAGNETIC_TRAVEL_MAX_PX)
+				return global_position + to_center.normalized() * travel_g
+	# Fallback: nearest individual zombie.
 	var nearest = null
 	var nearest_dist: float = MAGNETIC_RADIUS_PX
 	for other in get_tree().get_nodes_in_group("units"):

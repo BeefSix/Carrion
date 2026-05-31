@@ -115,6 +115,31 @@ func get_density_at(world_pos: Vector2) -> int:
 	return _density[cell.x + cell.y * GRID_SIZE]
 
 
+# Returns the world-position of the densest cell on the map (cell center).
+# Used by zombies for global "head toward the biggest pile" attraction.
+# Returns Vector2.ZERO if no cell has density > 0.
+func get_densest_cell_center() -> Vector2:
+	var best_idx: int = -1
+	var best_count: int = 0
+	for i in range(_density.size()):
+		if _density[i] > best_count:
+			best_count = _density[i]
+			best_idx = i
+	if best_idx < 0:
+		return Vector2.ZERO
+	var cx: int = best_idx % GRID_SIZE
+	var cy: int = best_idx / GRID_SIZE
+	return Vector2(cx * CELL_PX + CELL_PX * 0.5, cy * CELL_PX + CELL_PX * 0.5)
+
+
+func get_densest_cell_count() -> int:
+	var best: int = 0
+	for i in range(_density.size()):
+		if _density[i] > best:
+			best = _density[i]
+	return best
+
+
 func density_score(world_pos: Vector2) -> float:
 	# Cells over the overpack threshold push zombies outward; cells with
 	# even one zombie now produce a small pull so cold-start clustering
