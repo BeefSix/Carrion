@@ -85,14 +85,17 @@ const WANDER_OPEN_PENALTY := 0.7       # multiplier when sample is open terrain
 const WANDER_BUILDING_QUERY_RADIUS := 200.0  # ~6 tiles
 const WANDER_DECAY_QUERY_TILES := 8
 
-# Cluster drift (Phase 2 #2). Idle zombies check periodically for other
-# idle zombies and slightly bias their wander direction toward the cluster
-# centroid. Bias reverses when overcrowded so clusters stay loose 4-10
-# rather than collapsing into 30-zombie blobs.
-const CLUSTER_FAR_RADIUS_PX := 12.0 * 32.0  # 12 tiles - cluster membership query
-const CLUSTER_CLOSE_RADIUS_PX := 6.0 * 32.0  # 6 tiles - crowding query
-const CLUSTER_BIAS_PROBABILITY := 0.30       # 30% of direction picks use cluster
-const CLUSTER_CROWD_THRESHOLD := 8           # 8+ close zombies -> repel
+# Cluster drift. Idle zombies bias wanders toward nearby idle-zombie
+# centroids. Tuning prioritizes visible tight clods - higher bias rate,
+# longer travel toward centroid, higher crowding threshold so clusters
+# pack visibly before the soft cap kicks in.
+const CLUSTER_FAR_RADIUS_PX := 12.0 * 32.0    # 12 tiles - cluster membership query
+const CLUSTER_CLOSE_RADIUS_PX := 4.0 * 32.0   # 4 tiles - crowding query (was 6)
+const CLUSTER_BIAS_PROBABILITY := 0.55        # 55% of direction picks (was 30%)
+const CLUSTER_CROWD_THRESHOLD := 14           # 14+ within close radius -> repel (was 8)
+const CLUSTER_TRAVEL_FRACTION := 0.6          # how much of centroid distance to travel each wander
+const CLUSTER_TRAVEL_MAX_PX := 220.0          # cap so a single wander step doesn't teleport across the map
+const CLUSTER_REPEL_DISTANCE_PX := 120.0      # how far to push when crowded
 const TRIBAL_ALIGNED_COLOR := Color("5a5530")
 # Force-spawned (Shaman ritual) zombies stay tribally-aligned for this many
 # seconds, then revert to standard wild behavior. During the window they
@@ -528,17 +531,22 @@ func _tick_wander(delta: float) -> void:
 
 func _start_wander() -> void:
 	# Direction selection layers:
-	#   30% chance: cluster bias toward (or away from, if crowded) the
-	#     idle-zombie centroid within 12 tiles. Falls through to env-scored
-	#     pick if no neighbors.
-	#   otherwise:   env-scored candidate sampling (decay + buildings + open
-	#     terrain weights).
-	var direction: Vector2 = Vector2.ZERO
+	#   55% chance: cluster bias. Returns a TARGET POSITION (not direction)
+	#     so the wander step can travel a meaningful fraction of the way
+	#     toward the centroid - that's what makes clods actually tighten
+	#     instead of just drifting one tile per cycle.
+	#   otherwise:   env-scored candidate sampling (decay + buildings +
+	#     open terrain weights), short standard wander.
+	var target: Vector2 = Vector2.ZERO
+	var used_cluster: bool = false
 	if randf() < CLUSTER_BIAS_PROBABILITY:
-		direction = _cluster_bias_direction()
-	if direction == Vector2.ZERO:
-		direction = _pick_wander_direction()
-	var target: Vector2 = global_position + direction * WANDER_RADIUS
+		var ct: Vector2 = _cluster_bias_target()
+		if ct != Vector2.ZERO:
+			target = ct
+			used_cluster = true
+	if not used_cluster:
+		var direction: Vector2 = _pick_wander_direction()
+		target = global_position + direction * WANDER_RADIUS
 	target.x = clamp(target.x, 50.0, 6094.0)
 	target.y = clamp(target.y, 50.0, 6094.0)
 	_wander_target = target
@@ -553,9 +561,15 @@ func is_currently_idle() -> bool:
 	return _zombie_state == ZombieState.IDLE
 
 
-func _cluster_bias_direction() -> Vector2:
-	# Returns a unit vector toward (or away from) the idle-zombie centroid
-	# within 12 tiles. Vector2.ZERO if no neighbors qualify.
+func _cluster_bias_target() -> Vector2:
+	# Returns a world-space target that biases this wander toward (or away
+	# from) the idle-zombie cluster centroid. Vector2.ZERO if no neighbors
+	# qualify (caller falls through to env-scored pick).
+	#
+	# Travel distance: CLUSTER_TRAVEL_FRACTION * distance-to-centroid,
+	# capped at CLUSTER_TRAVEL_MAX_PX so big sparse clusters still produce
+	# meaningful per-cycle convergence. With cycle 15-30 sec and travel up
+	# to 220 px, a 600 px scatter converges visibly in ~3-5 cycles.
 	var neighbor_positions: Array[Vector2] = []
 	var close_count: int = 0
 	for other in get_tree().get_nodes_in_group("units"):
@@ -580,13 +594,17 @@ func _cluster_bias_direction() -> Vector2:
 		centroid += p
 	centroid /= float(neighbor_positions.size())
 	var to_centroid: Vector2 = centroid - global_position
-	if to_centroid.length_squared() < 1.0:
+	var dist: float = to_centroid.length()
+	if dist < 1.0:
 		return Vector2.ZERO
-	var dir: Vector2 = to_centroid.normalized()
-	# Soft cap: too many close neighbors flips the bias.
+	var dir: Vector2 = to_centroid / dist
+	# Soft cap: too many close neighbors -> push out instead of in. Tight
+	# clods are fine; collapse-to-blob is not, so the cap protects against
+	# 30-zombie pile-ups.
 	if close_count >= CLUSTER_CROWD_THRESHOLD:
-		return -dir
-	return dir
+		return global_position - dir * CLUSTER_REPEL_DISTANCE_PX
+	var travel: float = minf(dist * CLUSTER_TRAVEL_FRACTION, CLUSTER_TRAVEL_MAX_PX)
+	return global_position + dir * travel
 
 
 func _pick_wander_direction() -> Vector2:
