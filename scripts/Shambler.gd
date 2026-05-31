@@ -118,12 +118,20 @@ const MAGNETIC_TRAVEL_MAX_PX := 280.0        # cap per cycle so cross-map magnet
 # tick down slower. Without this, the 25% of picks that fall through
 # the magnetic check end up doing 96 px env-scored wanders - that's the
 # "running off in different directions" the user reported.
-const CLUSTER_SHUFFLE_DENSITY_THRESHOLD := 3   # cell has 3+ zombies -> sticky behavior
-const CLUSTER_SHUFFLE_PROBABILITY := 0.80      # 80% of picks in a populated cell shuffle in place
-const CLUSTER_SHUFFLE_RADIUS_PX := 24.0        # shuffle within +/- 24 px of current position
-const CLUSTER_TIMER_SCALE_LIGHT := 0.5         # 3-4 in cell -> 2x slower timer
-const CLUSTER_TIMER_SCALE_TIGHT := 0.2         # 5+ in cell -> 5x slower timer
-const CLUSTER_TIMER_TIGHT_THRESHOLD := 5
+const CLUSTER_SHUFFLE_DENSITY_THRESHOLD := 3   # captain-of-cluster shuffles 80% of picks at this density
+const CLUSTER_SHUFFLE_PROBABILITY := 0.80
+const CLUSTER_SHUFFLE_RADIUS_PX := 24.0
+
+# Captain pattern (replaces previous per-zombie wander timers as the
+# coordination mechanism). The lowest-instance-ID zombie within
+# COHESION_RADIUS_PX of a position is captain of that local cluster.
+# Captains tick their wander timer and pick directions normally;
+# followers (everyone else) skip the wander entirely and stand still
+# until pulled along by the captain's _propagate_wander_to_cluster.
+# This makes cohesion structural, not probabilistic - clusters can no
+# longer disperse from accumulated independent picks because only one
+# zombie per cluster is allowed to pick.
+const CAPTAIN_CHECK_INTERVAL := 0.5
 
 # Phase 2.5 state cascade: when one zombie transitions IDLE -> INVESTIGATE
 # or IDLE -> ACQUIRING, nearby idle zombies have a chance to follow with
@@ -172,6 +180,12 @@ var _search_repath_timer: float = 0.0
 # LOST_TARGET state remembers where the lost target was last seen so the
 # zombie can walk there before giving up.
 var _last_known_pos: Vector2 = Vector2.ZERO
+# Captain pattern: cached "am I the cluster captain" flag, refreshed at
+# CAPTAIN_CHECK_INTERVAL. True if no other zombie within COHESION_RADIUS_PX
+# has a lower instance_id than ours (or if we have no nearby zombies, in
+# which case we're trivially captain of a one-zombie "cluster").
+var _is_captain: bool = true
+var _captain_check_timer: float = 0.0
 # Cascade pending state - level we joined at (-1 = no pending), the
 # stimulus we'll investigate when the delay timer fires, and the timer.
 var _pending_cascade_level: int = -1
@@ -626,17 +640,35 @@ func _tick_wander(delta: float) -> void:
 			_follow_navigation()
 	else:
 		velocity = Vector2.ZERO
-		# Sticky timer: zombies in populated cells count down slower so
-		# clusters stay coherent for longer before the next pick cycle.
-		var scale: float = 1.0
-		var local_density: int = _zombie_field_density_here()
-		if local_density >= CLUSTER_TIMER_TIGHT_THRESHOLD:
-			scale = CLUSTER_TIMER_SCALE_TIGHT
-		elif local_density >= CLUSTER_SHUFFLE_DENSITY_THRESHOLD:
-			scale = CLUSTER_TIMER_SCALE_LIGHT
-		_wander_timer -= delta * scale
+		# Captain pattern: only the cluster's captain (lowest instance_id
+		# within COHESION_RADIUS_PX) actually counts down its wander timer.
+		# Everyone else stands still until the captain pulls them along
+		# via _propagate_wander_to_cluster. Refresh captain status every
+		# CAPTAIN_CHECK_INTERVAL seconds to amortize the O(N) check.
+		_captain_check_timer -= delta
+		if _captain_check_timer <= 0.0:
+			_captain_check_timer = CAPTAIN_CHECK_INTERVAL
+			_refresh_captain_status()
+		if not _is_captain:
+			return
+		_wander_timer -= delta
 		if _wander_timer <= 0.0:
 			_start_wander()
+
+
+func _refresh_captain_status() -> void:
+	var my_id: int = get_instance_id()
+	for other in get_tree().get_nodes_in_group("units"):
+		if other == self or not is_instance_valid(other):
+			continue
+		if other.faction != Faction.ZOMBIE:
+			continue
+		if global_position.distance_to(other.global_position) > COHESION_RADIUS_PX:
+			continue
+		if other.get_instance_id() < my_id:
+			_is_captain = false
+			return
+	_is_captain = true
 
 
 func _start_wander() -> void:
