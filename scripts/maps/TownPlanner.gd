@@ -51,10 +51,14 @@ const ANCHOR_DOWNTOWN := Vector2i(96, 96)
 const ANCHOR_INDUSTRIAL := Vector2i(32, 160)
 const ANCHOR_MEDICAL := Vector2i(160, 48)
 
-# Road dimensions.
-const PRIMARY_ROAD_HALFWIDTH := 1   # produces 4-tile-wide road (centerlines test abs <= 1 -> spans 3, +1 for second center = 4)
-const SECONDARY_ROAD_HALFWIDTH := 0  # produces 2-tile-wide road
-const SIDEWALK_BAND := 1             # tiles of sidewalk flanking primary roads
+# Road dimensions (in tiles). 1 tile ~= 2 meters per the scale anchor:
+#   primary 4-wide  = 8 m (two-lane + sidewalks ok)
+#   secondary 3-wide = 6 m (real residential street width)
+#   alley 2-wide    = 4 m (real service alley)
+const PRIMARY_ROAD_WIDTH := 4
+const SECONDARY_ROAD_WIDTH := 3
+const ALLEY_WIDTH := 2
+const SIDEWALK_BAND := 1            # tiles of sidewalk flanking primary roads
 
 # Zone classification anchors. Used by step 3 to assign lot zones based on
 # road position. Zone = which quadrant the road sits in.
@@ -66,15 +70,20 @@ const ZONE_DOWNTOWN := "downtown"
 const ZONE_INDUSTRIAL := "industrial"
 const ZONE_MEDICAL := "medical"
 
-# Lot platting rules per zone (frontage/depth/spacing in tiles).
+# Lot platting rules per zone. Frontage / depth / spacing in tiles. Sizes
+# tuned so each zone's lots fit the scale-adjusted building footprints
+# (residential 3x3/4x3/4x4, commercial up to 8x6, industrial 8x8 to 12x12,
+# medical 6x6 to 8x8) with appropriate setback. Per spec: residential lots
+# 6-10 frontage / 10-14 depth (small pre-war / European town density);
+# industrial / medical bumped up so 10x10+ buildings have setback room.
 const LOT_RULES := {
-	"residential_nw": { "frontage_min": 6, "frontage_max": 10, "depth_min": 10, "depth_max": 14, "spacing": 2 },
-	"residential_ne": { "frontage_min": 6, "frontage_max": 10, "depth_min": 10, "depth_max": 14, "spacing": 2 },
-	"residential_sw": { "frontage_min": 6, "frontage_max": 10, "depth_min": 10, "depth_max": 14, "spacing": 2 },
-	"residential_se": { "frontage_min": 6, "frontage_max": 10, "depth_min": 10, "depth_max": 14, "spacing": 2 },
-	"downtown":       { "frontage_min": 8, "frontage_max": 12, "depth_min": 8,  "depth_max": 12, "spacing": 0 },
-	"industrial":     { "frontage_min": 16,"frontage_max": 24, "depth_min": 16, "depth_max": 24, "spacing": 5 },
-	"medical":        { "frontage_min": 12,"frontage_max": 16, "depth_min": 12, "depth_max": 16, "spacing": 5 },
+	"residential_nw": { "frontage_min": 8, "frontage_max": 12, "depth_min": 12, "depth_max": 16, "spacing": 2 },
+	"residential_ne": { "frontage_min": 8, "frontage_max": 12, "depth_min": 12, "depth_max": 16, "spacing": 2 },
+	"residential_sw": { "frontage_min": 8, "frontage_max": 12, "depth_min": 12, "depth_max": 16, "spacing": 2 },
+	"residential_se": { "frontage_min": 8, "frontage_max": 12, "depth_min": 12, "depth_max": 16, "spacing": 2 },
+	"downtown":       { "frontage_min": 10, "frontage_max": 14, "depth_min": 10, "depth_max": 14, "spacing": 0 },
+	"industrial":     { "frontage_min": 22, "frontage_max": 30, "depth_min": 22, "depth_max": 30, "spacing": 5 },
+	"medical":        { "frontage_min": 14, "frontage_max": 20, "depth_min": 14, "depth_max": 20, "spacing": 5 },
 }
 
 var _rng: RandomNumberGenerator
@@ -88,16 +97,17 @@ func plan_town(seed_value: int = 1) -> Dictionary:
 	data["anchors"] = step_1_anchors()
 	data["roads"] = step_2_roads(data["anchors"])
 	data["lots"] = step_3_lots(data["roads"])
-	# Steps 4-12 stubbed; phases 2-4 implement.
-	data["buildings"] = []
-	data["alleys"] = []
+	data["buildings"] = step_4_buildings_on_lots(data["lots"])
+	# Build base tile grid (roads + lot fills) before step 5 overlays yards,
+	# driveways, parking, and building footprint placeholders.
+	data["tile_grid"] = _build_tile_grid(data["roads"], data["lots"])
+	step_5_fill_lot_spaces(data["lots"], data["buildings"], data["tile_grid"])
+	data["alleys"] = step_6_alleys(data["lots"])
+	_paint_alleys(data["alleys"], data["tile_grid"])
+	# Steps 7-12 stubbed; phases 3-4 implement.
 	data["affordances"] = []
 	data["spawn_zones"] = []
 	data["lootables"] = []
-
-	# Build the tile grid from roads + lots so GroundTiles has something to
-	# paint. Later steps overwrite/extend this grid.
-	data["tile_grid"] = _build_tile_grid(data["roads"], data["lots"])
 	return data
 
 
@@ -210,19 +220,33 @@ func step_3_lots(roads: Array) -> Array:
 	return lots
 
 
+func _road_width(road: Dictionary) -> int:
+	return PRIMARY_ROAD_WIDTH if road["type"] == "primary" else SECONDARY_ROAD_WIDTH
+
+
+func _road_sidewalk(road: Dictionary) -> int:
+	return SIDEWALK_BAND if road["type"] == "primary" else 0
+
+
 func _build_road_occupancy_grid(roads: Array) -> PackedByteArray:
 	# 0 = free, 1 = road/sidewalk (no lot allowed), 2 = lot (filled later).
 	var grid := PackedByteArray()
 	grid.resize(MAP_TILES * MAP_TILES)
 	for road in roads:
-		var half: int = PRIMARY_ROAD_HALFWIDTH if road["type"] == "primary" else SECONDARY_ROAD_HALFWIDTH
-		var sidewalk: int = SIDEWALK_BAND if road["type"] == "primary" else 0
-		var total_half: int = half + sidewalk + 1  # +1 covers the "second centerline" tile in 4-wide roads
+		var width: int = _road_width(road)
+		var sidewalk: int = _road_sidewalk(road)
+		# Half-extent from the centerline: for width=4 we want [-2..+1], for
+		# width=3 we want [-1..+1], for width=2 we want [-1..0]. width/2
+		# floors give us the "low" offset; "high" = width - low - 1.
+		var low: int = width / 2
+		var high: int = width - low - 1
+		var min_offset: int = -low - sidewalk
+		var max_offset: int = high + sidewalk
 		if road["axis"] == "h":
 			var lo: int = max(0, road["from"])
 			var hi: int = min(MAP_TILES - 1, road["to"] - 1)
 			for x in range(lo, hi + 1):
-				for dy in range(-total_half, total_half + 2):
+				for dy in range(min_offset, max_offset + 1):
 					var y: int = road["center"] + dy
 					if y >= 0 and y < MAP_TILES:
 						grid[x + y * MAP_TILES] = 1
@@ -230,7 +254,7 @@ func _build_road_occupancy_grid(roads: Array) -> PackedByteArray:
 			var lo2: int = max(0, road["from"])
 			var hi2: int = min(MAP_TILES - 1, road["to"] - 1)
 			for y in range(lo2, hi2 + 1):
-				for dx in range(-total_half, total_half + 2):
+				for dx in range(min_offset, max_offset + 1):
 					var x: int = road["center"] + dx
 					if x >= 0 and x < MAP_TILES:
 						grid[x + y * MAP_TILES] = 1
@@ -241,14 +265,18 @@ func _plat_road_frontage(road: Dictionary, lots: Array, occupancy: PackedByteArr
 	# For each side of the road, walk the frontage and carve lots. The
 	# frontage strip sits just outside the sidewalk band; lot depth extends
 	# further outward.
-	var half: int = PRIMARY_ROAD_HALFWIDTH if road["type"] == "primary" else SECONDARY_ROAD_HALFWIDTH
-	var sidewalk: int = SIDEWALK_BAND if road["type"] == "primary" else 0
-	var setback: int = half + sidewalk + 2  # frontage strip starts 1 tile outside sidewalk
-
-	# Two sides of the road: positive offset, negative offset.
-	for side_sign in [-1, 1]:
-		var strip_offset: int = side_sign * setback
-		_walk_strip(road, lots, occupancy, strip_offset, side_sign, road_class)
+	var width: int = _road_width(road)
+	var sidewalk: int = _road_sidewalk(road)
+	# Strip offset = halfwidth from centerline + sidewalk band + 1 (frontage
+	# strip starts 1 tile outside the road footprint).
+	var low: int = width / 2
+	var high: int = width - low - 1
+	# We want two separate offsets, one for each side, because of the
+	# "second centerline" asymmetry for even widths.
+	var offset_neg: int = -(low + sidewalk + 1)
+	var offset_pos: int = high + sidewalk + 1
+	_walk_strip(road, lots, occupancy, offset_neg, -1, road_class)
+	_walk_strip(road, lots, occupancy, offset_pos, 1, road_class)
 
 
 func _walk_strip(road: Dictionary, lots: Array, occupancy: PackedByteArray, strip_offset: int, side_sign: int, road_class: String) -> void:
@@ -367,17 +395,14 @@ func _mark_lot_occupied(rect: Rect2i, occupancy: PackedByteArray) -> void:
 # ---------------------------------------------------------------------
 # Tile grid builder
 # ---------------------------------------------------------------------
-# Compose the final 192x192 tile grid from the road network + lot data.
-# Wilderness/edges, lot fill, and post-process steps are layered on later.
+# Compose the base 192x192 tile grid from the road network + lot interiors.
+# Step 5 (lot fill + driveways + building placeholders) overlays this.
 func _build_tile_grid(roads: Array, lots: Array) -> PackedByteArray:
 	var grid := PackedByteArray()
 	grid.resize(MAP_TILES * MAP_TILES)
-	# Default fill: bare ground.
 	for i in range(grid.size()):
 		grid[i] = TILE_BARE_GROUND
-
-	# Paint lots first - their interior tiles will be overwritten by roads
-	# (roads are drawn on top to ensure they win at intersections).
+	# Paint lots' interior fill first; roads then win at intersections.
 	for lot in lots:
 		var interior_tile := _interior_tile_for_zone(lot["zone"])
 		var rect: Rect2i = lot["rect"]
@@ -385,36 +410,35 @@ func _build_tile_grid(roads: Array, lots: Array) -> PackedByteArray:
 			for y in range(rect.position.y, rect.position.y + rect.size.y):
 				if x >= 0 and x < MAP_TILES and y >= 0 and y < MAP_TILES:
 					grid[x + y * MAP_TILES] = interior_tile
-
-	# Paint roads + sidewalks. Primary roads have 4-tile bodies + 1-tile
-	# sidewalk band on each side.
+	# Paint roads (body + sidewalks for primary).
 	for road in roads:
-		var half: int = PRIMARY_ROAD_HALFWIDTH if road["type"] == "primary" else SECONDARY_ROAD_HALFWIDTH
-		var sidewalk: int = SIDEWALK_BAND if road["type"] == "primary" else 0
+		var width: int = _road_width(road)
+		var sidewalk: int = _road_sidewalk(road)
 		var body_tile := TILE_MAIN_ROAD if road["type"] == "primary" else TILE_SECONDARY_ROAD
+		var low: int = width / 2
+		var high: int = width - low - 1
 		if road["axis"] == "h":
 			for x in range(max(0, road["from"]), min(MAP_TILES, road["to"])):
-				for dy in range(-half - 1, half + 2):  # the "+1" half-tile asymmetry produces 4-wide
+				for dy in range(-low, high + 1):
 					var y: int = road["center"] + dy
 					if y >= 0 and y < MAP_TILES:
 						grid[x + y * MAP_TILES] = body_tile
 				if sidewalk > 0:
-					for dy in [-half - 2, half + 2]:
+					for dy in [-low - 1, high + 1]:
 						var ys: int = road["center"] + dy
 						if ys >= 0 and ys < MAP_TILES:
 							grid[x + ys * MAP_TILES] = TILE_SIDEWALK
 		else:
 			for y in range(max(0, road["from"]), min(MAP_TILES, road["to"])):
-				for dx in range(-half - 1, half + 2):
+				for dx in range(-low, high + 1):
 					var x: int = road["center"] + dx
 					if x >= 0 and x < MAP_TILES:
 						grid[x + y * MAP_TILES] = body_tile
 				if sidewalk > 0:
-					for dx in [-half - 2, half + 2]:
+					for dx in [-low - 1, high + 1]:
 						var xs: int = road["center"] + dx
 						if xs >= 0 and xs < MAP_TILES:
 							grid[xs + y * MAP_TILES] = TILE_SIDEWALK
-
 	return grid
 
 
@@ -433,18 +457,285 @@ func _interior_tile_for_zone(zone: String) -> int:
 
 
 # ---------------------------------------------------------------------
-# Step stubs - implemented in subsequent phases
+# Step 4 - buildings on lots
 # ---------------------------------------------------------------------
-func step_4_buildings_on_lots(_lots: Array) -> Array:
-	return []
+# Each lot gets one building, footprint and setback per zone rules.
+# Building faces the lot's frontage_dir (which is the direction toward the
+# road the lot fronts). Because every lot has exactly one frontage_dir
+# inherited from its generating road in step 3, every building on the same
+# side of the same road faces the same way - the watchlist failure mode
+# "buildings facing inconsistent directions within a single row" is
+# prevented by construction.
+func step_4_buildings_on_lots(lots: Array) -> Array:
+	var buildings: Array = []
+	for lot in lots:
+		var building := _place_building_on_lot(lot)
+		if not building.is_empty():
+			buildings.append(building)
+	return buildings
 
 
-func step_5_fill_lot_spaces(_lots: Array, _buildings: Array, _grid: PackedByteArray) -> void:
-	pass
+func _place_building_on_lot(lot: Dictionary) -> Dictionary:
+	var zone: String = lot["zone"]
+	var rect: Rect2i = lot["rect"]
+	var frontage_dir: Vector2i = lot["frontage_dir"]
+	var spec := _building_spec_for_zone(zone)
+	if spec.is_empty():
+		return {}
+	# Footprint is (along_road, perpendicular_to_road) - we rotate the
+	# layout depending on whether the road is horizontal or vertical.
+	var along: int = spec["width"]
+	var perp: int = spec["depth"]
+	var setback: int = spec["setback"]
+	var bx: int = 0
+	var by: int = 0
+	var bw: int = 0
+	var bh: int = 0
+	if frontage_dir.y != 0:
+		# Horizontal road - frontage axis is X, depth axis is Y.
+		bw = along
+		bh = perp
+		bx = rect.position.x + int((rect.size.x - bw) / 2)
+		if frontage_dir.y < 0:
+			by = rect.position.y + setback
+		else:
+			by = rect.position.y + rect.size.y - setback - bh
+	else:
+		# Vertical road - frontage axis is Y, depth axis is X.
+		bw = perp
+		bh = along
+		by = rect.position.y + int((rect.size.y - bh) / 2)
+		if frontage_dir.x < 0:
+			bx = rect.position.x + setback
+		else:
+			bx = rect.position.x + rect.size.x - setback - bw
+	# Validate building fits inside the lot.
+	if bx < rect.position.x or by < rect.position.y:
+		return {}
+	if bx + bw > rect.position.x + rect.size.x:
+		return {}
+	if by + bh > rect.position.y + rect.size.y:
+		return {}
+	return {
+		"rect": Rect2i(bx, by, bw, bh),
+		"facing": frontage_dir,
+		"zone": zone,
+	}
 
 
-func step_6_alleys(_lots: Array) -> Array:
-	return []
+func _building_spec_for_zone(zone: String) -> Dictionary:
+	# Returns {"width": int, "depth": int, "setback": int} where width is
+	# the dimension along the road frontage and depth is into the lot.
+	# Footprints scaled to the master spec's 1-tile = 2m anchor:
+	#   residential 3x3 (6x6m) -> 4x4 (8x8m): real small-to-modest house
+	#   commercial  4x3 (8x6m) -> 6x4 (12x8m): real storefront to mid shop
+	#   industrial  8x8 (16x16m) -> 12x12 (24x24m): real warehouse
+	#   medical/civic 6x6 (12x12m) -> 8x8 (16x16m): clinic / small police
+	# Variation within a row breaks photocopy uniformity.
+	match zone:
+		ZONE_RESIDENTIAL_NW, ZONE_RESIDENTIAL_NE, ZONE_RESIDENTIAL_SE, ZONE_RESIDENTIAL_SW:
+			var roll: float = _rng.randf()
+			if roll < 0.4:
+				return { "width": 3, "depth": 3, "setback": _rng.randi_range(2, 3) }
+			elif roll < 0.75:
+				return { "width": 4, "depth": 3, "setback": _rng.randi_range(2, 3) }
+			else:
+				return { "width": 4, "depth": 4, "setback": _rng.randi_range(2, 3) }
+		ZONE_DOWNTOWN:
+			var droll: float = _rng.randf()
+			if droll < 0.5:
+				return { "width": 4, "depth": 3, "setback": 0 }
+			elif droll < 0.85:
+				return { "width": 6, "depth": 4, "setback": 0 }
+			else:
+				return { "width": 8, "depth": 6, "setback": 0 }
+		ZONE_INDUSTRIAL:
+			var iroll: float = _rng.randf()
+			if iroll < 0.5:
+				return { "width": 8, "depth": 8, "setback": _rng.randi_range(4, 8) }
+			elif iroll < 0.85:
+				return { "width": 10, "depth": 10, "setback": _rng.randi_range(4, 8) }
+			else:
+				return { "width": 12, "depth": 12, "setback": _rng.randi_range(4, 8) }
+		ZONE_MEDICAL:
+			if _rng.randf() < 0.5:
+				return { "width": 6, "depth": 6, "setback": _rng.randi_range(4, 6) }
+			return { "width": 8, "depth": 8, "setback": _rng.randi_range(4, 6) }
+	return {}
+
+
+# ---------------------------------------------------------------------
+# Step 5 - fill lot spaces
+# ---------------------------------------------------------------------
+# Paint the non-building portion of each lot with zone-appropriate tile
+# types. Building footprints get TILE_RUBBLE as a placeholder so the
+# pre-Lootable visual clearly shows lot/building/yard structure; once
+# Step 11 spawns real Lootable instances they will visually cover the
+# placeholder tiles.
+func step_5_fill_lot_spaces(lots: Array, buildings: Array, grid: PackedByteArray) -> void:
+	# Index buildings by their lot for quick lookup (matched by zone +
+	# overlap; lots and buildings are parallel arrays in our pipeline so
+	# we can pair them by index).
+	for i in range(lots.size()):
+		var lot: Dictionary = lots[i]
+		if i >= buildings.size():
+			continue
+		var building: Dictionary = buildings[i]
+		_fill_lot(lot, building, grid)
+
+
+func _fill_lot(lot: Dictionary, building: Dictionary, grid: PackedByteArray) -> void:
+	var lot_rect: Rect2i = lot["rect"]
+	var zone: String = lot["zone"]
+	var fill_tile := _lot_fill_tile_for_zone(zone)
+	var building_rect: Rect2i = building.get("rect", Rect2i())
+	# Paint the lot interior with the fill tile.
+	for x in range(lot_rect.position.x, lot_rect.position.x + lot_rect.size.x):
+		for y in range(lot_rect.position.y, lot_rect.position.y + lot_rect.size.y):
+			if x < 0 or x >= MAP_TILES or y < 0 or y >= MAP_TILES:
+				continue
+			grid[x + y * MAP_TILES] = fill_tile
+	# Paint the building footprint with a placeholder tile.
+	if not building.is_empty():
+		for x in range(building_rect.position.x, building_rect.position.x + building_rect.size.x):
+			for y in range(building_rect.position.y, building_rect.position.y + building_rect.size.y):
+				if x < 0 or x >= MAP_TILES or y < 0 or y >= MAP_TILES:
+					continue
+				grid[x + y * MAP_TILES] = TILE_RUBBLE  # placeholder for building footprint
+	# Driveway: 1-tile-wide strip from the road to the building, only in
+	# residential zones with setback > 0.
+	if _is_residential(zone) and not building.is_empty():
+		_paint_driveway(lot, building, grid)
+
+
+func _lot_fill_tile_for_zone(zone: String) -> int:
+	match zone:
+		ZONE_DOWNTOWN:
+			return TILE_SIDEWALK  # downtown buildings sit directly on sidewalk
+		ZONE_INDUSTRIAL:
+			return TILE_PARKING_LOT
+		ZONE_MEDICAL:
+			return TILE_PARKING_LOT
+	return TILE_YARD  # residential default
+
+
+func _is_residential(zone: String) -> bool:
+	return zone == ZONE_RESIDENTIAL_NW or zone == ZONE_RESIDENTIAL_NE or zone == ZONE_RESIDENTIAL_SW or zone == ZONE_RESIDENTIAL_SE
+
+
+func _paint_driveway(lot: Dictionary, building: Dictionary, grid: PackedByteArray) -> void:
+	var lot_rect: Rect2i = lot["rect"]
+	var building_rect: Rect2i = building["rect"]
+	var frontage_dir: Vector2i = lot["frontage_dir"]
+	# Driveway runs from the road edge of the lot to the road-facing edge
+	# of the building. 1 tile wide, along the lot's frontage axis at the
+	# building's edge.
+	if frontage_dir.y != 0:
+		# Horizontal road - driveway runs north-south on x = building edge x
+		var driveway_x: int = building_rect.position.x  # left edge of building
+		var y_start: int = 0
+		var y_end: int = 0
+		if frontage_dir.y < 0:
+			y_start = lot_rect.position.y
+			y_end = building_rect.position.y
+		else:
+			y_start = building_rect.position.y + building_rect.size.y
+			y_end = lot_rect.position.y + lot_rect.size.y
+		for y in range(y_start, y_end):
+			if driveway_x >= 0 and driveway_x < MAP_TILES and y >= 0 and y < MAP_TILES:
+				grid[driveway_x + y * MAP_TILES] = TILE_SIDE_STREET
+	else:
+		# Vertical road - driveway runs east-west
+		var driveway_y: int = building_rect.position.y
+		var x_start: int = 0
+		var x_end: int = 0
+		if frontage_dir.x < 0:
+			x_start = lot_rect.position.x
+			x_end = building_rect.position.x
+		else:
+			x_start = building_rect.position.x + building_rect.size.x
+			x_end = lot_rect.position.x + lot_rect.size.x
+		for x in range(x_start, x_end):
+			if x >= 0 and x < MAP_TILES and driveway_y >= 0 and driveway_y < MAP_TILES:
+				grid[x + driveway_y * MAP_TILES] = TILE_SIDE_STREET
+
+
+# ---------------------------------------------------------------------
+# Step 6 - alleys
+# ---------------------------------------------------------------------
+# 1-tile-wide dirt-road alleys between paired rows of residential lots
+# (lots whose back edges face each other across a narrow gap). For this
+# version we find pairs of horizontal residential roads close enough to
+# have back-to-back lots between them, and paint an alley strip at the
+# midpoint. Same for vertical road pairs.
+func step_6_alleys(lots: Array) -> Array:
+	var alleys: Array = []
+	# Group residential lots by which road they front and their side.
+	# Find pairs where back edges face each other.
+	# Simplified: find horizontal alley opportunities (paired horizontal
+	# roads with residential lots between them).
+	var horizontal_back_pairs: Dictionary = {}  # key: (y_top, y_bot), value: [lots in pair]
+	for lot in lots:
+		if not _is_residential(lot["zone"]):
+			continue
+		var rect: Rect2i = lot["rect"]
+		var frontage_dir: Vector2i = lot["frontage_dir"]
+		if frontage_dir.y == 0:
+			continue
+		# Lot back edge is opposite the frontage direction.
+		var back_y: int = 0
+		if frontage_dir.y < 0:
+			back_y = rect.position.y + rect.size.y  # south back edge
+		else:
+			back_y = rect.position.y  # north back edge
+		# Place a row-key by approximate back_y (bucket by 4 tiles)
+		var key: int = back_y / 4
+		if not horizontal_back_pairs.has(key):
+			horizontal_back_pairs[key] = []
+		horizontal_back_pairs[key].append(lot)
+	# For each cluster with 4+ lots, add an alley at the cluster's back_y.
+	for key in horizontal_back_pairs.keys():
+		var cluster: Array = horizontal_back_pairs[key]
+		if cluster.size() < 4:
+			continue
+		# Sample roughly 50-60% of clusters get an alley (per spec).
+		if _rng.randf() > 0.55:
+			continue
+		var back_y: int = key * 4 + 2  # approximate alley y
+		var min_x: int = MAP_TILES
+		var max_x: int = 0
+		for lot in cluster:
+			var r: Rect2i = lot["rect"]
+			min_x = min(min_x, r.position.x)
+			max_x = max(max_x, r.position.x + r.size.x)
+		alleys.append({
+			"axis": "h",
+			"y": back_y,
+			"from": min_x,
+			"to": max_x,
+		})
+	return alleys
+
+
+func _paint_alleys(alleys: Array, grid: PackedByteArray) -> void:
+	# Alleys are ALLEY_WIDTH tiles wide (2 tiles = ~4 m, a real service alley).
+	for a in alleys:
+		if a["axis"] == "h":
+			var y_center: int = a["y"]
+			for dy in range(0, ALLEY_WIDTH):
+				var y: int = y_center + dy
+				if y < 0 or y >= MAP_TILES:
+					continue
+				for x in range(max(0, a["from"]), min(MAP_TILES, a["to"])):
+					grid[x + y * MAP_TILES] = TILE_DIRT_ROAD
+		else:
+			var x_center: int = a["x"]
+			for dx in range(0, ALLEY_WIDTH):
+				var x: int = x_center + dx
+				if x < 0 or x >= MAP_TILES:
+					continue
+				for y in range(max(0, a["from"]), min(MAP_TILES, a["to"])):
+					grid[x + y * MAP_TILES] = TILE_DIRT_ROAD
 
 
 func step_7_wilderness_gradient(_grid: PackedByteArray) -> void:
