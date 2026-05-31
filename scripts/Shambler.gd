@@ -48,8 +48,15 @@ const WANDER_ARRIVE_RANGE := 30.0
 const WANDER_INTERVAL_MIN := 4.0
 const WANDER_INTERVAL_MAX := 10.0
 const TRIBAL_ALIGNED_COLOR := Color("5a5530")
+# Force-spawned (Shaman ritual) zombies stay tribally-aligned for this many
+# seconds, then revert to standard wild behavior. During the window they
+# exempt all Tribal units from targeting, not just Walkers.
+const TRIBAL_ALIGNMENT_DURATION := 30.0
 
 @export var is_tribal_aligned: bool = false
+
+var _tribal_alignment_timer: float = 0.0
+var _baseline_body_color: Color = Color.WHITE
 
 var _zombie_state: int = ZombieState.IDLE
 var _target = null
@@ -80,8 +87,12 @@ func _ready() -> void:
 	_facing_angle = randf() * TAU
 	_desired_facing_angle = _facing_angle
 	facing_dir = Vector2.from_angle(_facing_angle)
+	# Preserve the original body color before the tribal-aligned override so
+	# we can revert to it when the 30-sec timer expires.
+	_baseline_body_color = body_color
 	if is_tribal_aligned:
 		body_color = TRIBAL_ALIGNED_COLOR
+		_tribal_alignment_timer = TRIBAL_ALIGNMENT_DURATION
 		queue_redraw()
 
 
@@ -292,6 +303,14 @@ func _tick_idle_head_turn(delta: float) -> void:
 func _physics_process(delta: float) -> void:
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
 	_tick_facing(delta)
+	# Drop tribal alignment when the timer runs out (force-spawned zombies
+	# revert to standard wild behavior).
+	if is_tribal_aligned:
+		_tribal_alignment_timer -= delta
+		if _tribal_alignment_timer <= 0.0:
+			is_tribal_aligned = false
+			body_color = _baseline_body_color
+			queue_redraw()
 
 	# Perception at 5 Hz - vision detection (cone + range; LOS in commit 2).
 	_perception_timer -= delta
@@ -442,12 +461,23 @@ func _update_perception(_delta: float) -> void:
 
 
 func _find_visible_target():
+	# Per spec: only Walkers are exempt from all zombie targeting. Tribal
+	# Hunters and Shamans are detected normally. Tribally-aligned zombies
+	# (force-spawned) exempt all Tribal during their 30-sec alignment.
 	var best = null
 	var best_dist: float = VISION_RANGE_PX
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction == Faction.ZOMBIE or u.faction == Faction.TRIBAL:
+		if u.faction == Faction.ZOMBIE:
+			continue
+		# Walkers are always invisible to zombie targeting - the load-bearing
+		# Tribal identity mechanic.
+		if u.is_in_group("walkers"):
+			continue
+		# Force-spawned zombies treat all Tribal as ally during the 30-sec
+		# alignment window.
+		if is_tribal_aligned and u.faction == Faction.TRIBAL:
 			continue
 		if not _can_see(u.global_position):
 			continue

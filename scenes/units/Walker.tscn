@@ -5,7 +5,7 @@
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_walker"]
 size = Vector2(18, 18)
 
-[node name="Walker" type="CharacterBody2D" groups=["units", "player_units"]]
+[node name="Walker" type="CharacterBody2D" groups=["units", "player_units", "walkers"]]
 script = ExtResource("1_walker")
 faction = 1
 max_hp = 30
