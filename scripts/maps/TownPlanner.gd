@@ -760,49 +760,55 @@ const WILDERNESS_EDGE_BAND := 16
 
 
 func step_7_wilderness_gradient(grid: PackedByteArray) -> void:
+	# Pass 1: downgrade roads/sidewalk/parking that pass through the band.
+	# Pass 2: sample wilderness fill using PATCH-LEVEL clustering (not per-tile
+	# RNG), so vegetation forms patches rather than checkerboard noise. The
+	# patch hash bins tiles into 4x4 chunks that share a noise value, so
+	# adjacent tiles in the same patch usually get the same wilderness sample.
 	for x in range(MAP_TILES):
 		for y in range(MAP_TILES):
 			var d: int = min(min(x, y), min(MAP_TILES - 1 - x, MAP_TILES - 1 - y))
 			if d >= WILDERNESS_EDGE_BAND:
 				continue
 			var current: int = grid[x + y * MAP_TILES]
-			# Main roads exit the map and stay main roads (highway out of town).
 			if current == TILE_MAIN_ROAD:
 				continue
-			# Downgrade secondary road to dirt; sidewalk and parking to bare.
 			if current == TILE_SECONDARY_ROAD:
 				grid[x + y * MAP_TILES] = TILE_DIRT_ROAD
 				continue
 			if current == TILE_SIDEWALK or current == TILE_PARKING_LOT:
 				grid[x + y * MAP_TILES] = TILE_BARE_GROUND
 				current = TILE_BARE_GROUND
-			# Sample a wilderness tile based on distance.
-			grid[x + y * MAP_TILES] = _wilderness_sample(d, current)
+			grid[x + y * MAP_TILES] = _wilderness_sample(x, y, d, current)
 
 
-func _wilderness_sample(distance_from_edge: int, current_tile: int) -> int:
-	# Higher vegetation probability nearer the edge, decaying to ~0 by tile 16.
-	var t: float = 1.0 - (float(distance_from_edge) / float(WILDERNESS_EDGE_BAND))
-	# t = 1.0 at edge, 0.0 at WILDERNESS_EDGE_BAND.
-	var roll: float = _rng.randf()
+func _patch_value(x: int, y: int) -> int:
+	# Deterministic 0-99 patch hash, bucketed by 4-tile chunks so adjacent
+	# tiles in the same chunk share the same value (clustered variation).
+	var cx: int = x / 4
+	var cy: int = y / 4
+	var h: int = (cx * 73856093) ^ (cy * 19349663)
+	return abs(h) % 100
+
+
+func _wilderness_sample(x: int, y: int, distance_from_edge: int, current_tile: int) -> int:
+	# Patch-clustered wilderness sampling. Probabilities tuned WAY down from
+	# the previous per-tile RNG noise: pure wilderness is mostly dirt with
+	# occasional vegetation patches; transition band is mostly current-tile
+	# preservation with very rare vegetation worn-spots.
+	var p: int = _patch_value(x, y)
 	if distance_from_edge < WILDERNESS_EDGE_PURE:
-		# Pure wilderness: vegetation-dominant.
-		if roll < 0.55:
+		# Pure wilderness band - dirt-dominant with occasional patches.
+		if p < 25:
 			return TILE_VEGETATION
-		if roll < 0.80:
-			return TILE_DIRT_ROAD
-		if roll < 0.92:
+		if p < 30:
 			return TILE_RUBBLE
-		return TILE_BARE_GROUND
-	# Transition band (8..15): mix that fades with distance.
-	var veg_prob: float = 0.40 * t
-	var dirt_prob: float = 0.25 * t
-	if roll < veg_prob:
-		return TILE_VEGETATION
-	if roll < veg_prob + dirt_prob:
 		return TILE_DIRT_ROAD
-	# Otherwise keep current tile (yard, parking, etc.) - this gives the
-	# gradient its town-fading-out feel rather than abrupt replacement.
+	# Transition band (8..15) - mostly preserve current with rare patches.
+	# Patch threshold scales with proximity to edge (closer = more patches).
+	var veg_threshold: int = int(15.0 * (1.0 - float(distance_from_edge) / float(WILDERNESS_EDGE_BAND)))
+	if p < veg_threshold:
+		return TILE_VEGETATION
 	return current_tile
 
 
