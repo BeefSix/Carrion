@@ -69,10 +69,11 @@ const PERCEPTION_INTERVAL := 0.2  # 5 Hz perception update (was 0.3 retarget)
 const INVESTIGATE_ARRIVE_RANGE := 60.0
 const WANDER_RADIUS := 96.0
 const WANDER_ARRIVE_RANGE := 30.0
-# Phase 2: direction change cadence widened (was 4-10 sec; spec wants
-# 15-30 sec so wanders feel like settled drift, not constant motion).
-const WANDER_INTERVAL_MIN := 15.0
-const WANDER_INTERVAL_MAX := 30.0
+# Direction change cadence: 10-20 sec is the sweet spot for legibility at
+# 4x speed. 15-30 sec felt mechanically straight-line because direction
+# events were too rare for the eye to see them as deliberation.
+const WANDER_INTERVAL_MIN := 10.0
+const WANDER_INTERVAL_MAX := 20.0
 # Environmental preference weights applied when picking a new wander
 # direction. Higher score = more likely to be picked. Direction sampling
 # generates a handful of candidates, scores each by the env at its sample
@@ -91,7 +92,7 @@ const WANDER_DECAY_QUERY_TILES := 8
 # pack visibly before the soft cap kicks in.
 const CLUSTER_FAR_RADIUS_PX := 12.0 * 32.0    # 12 tiles - cluster membership query
 const CLUSTER_CLOSE_RADIUS_PX := 4.0 * 32.0   # 4 tiles - crowding query (was 6)
-const CLUSTER_BIAS_PROBABILITY := 0.10        # Phase 2.5: density gradient takes over primary pooling; centroid bias is supplemental at 10%
+const CLUSTER_BIAS_PROBABILITY := 0.45        # Bumped back up from 0.10 - density gradient can't seed clusters out of sparse populations; centroid bias is the cold-start mechanism
 
 # Phase 2.5 state cascade: when one zombie transitions IDLE -> INVESTIGATE
 # or IDLE -> ACQUIRING, nearby idle zombies have a chance to follow with
@@ -650,10 +651,12 @@ func _cluster_bias_target() -> Vector2:
 		var d: float = global_position.distance_to(other.global_position)
 		if d > CLUSTER_FAR_RADIUS_PX:
 			continue
-		# Only idle zombies anchor clusters - chasing zombies are heading
-		# somewhere specific and shouldn't pull others off task.
-		if other.has_method("is_currently_idle") and not other.is_currently_idle():
-			continue
+		# All nearby zombies count as cluster anchors - sparse populations
+		# rarely have multiple IDLE zombies within range simultaneously, so
+		# the idle-only filter was killing centroid pull in exactly the
+		# scenarios where it's most needed (fresh spawns, cold-start
+		# clustering). Investigating / chasing zombies still register as
+		# mass for centroid purposes; they just don't follow back.
 		neighbor_positions.append(other.global_position)
 		if d < CLUSTER_CLOSE_RADIUS_PX:
 			close_count += 1

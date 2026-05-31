@@ -29,15 +29,21 @@ const DENSITY_UPDATE_INTERVAL := 2.5
 const RESIDUE_DECAY_INTERVAL := 1.0
 const RESIDUE_DECAY_MULT := 0.98             # 2% per sec exponential decay
 
-# Density score buckets per spec.
-const DENSITY_SCORE_TIER1_THRESHOLD := 3
-const DENSITY_SCORE_TIER2_THRESHOLD := 6
-const DENSITY_SCORE_TIER3_THRESHOLD := 11
+# Density score buckets. Lower-end thresholds added so even ONE other
+# zombie in a cell registers as attractive - on sparse maps the original
+# 3+ floor produced cold-start failure where clusters never seeded.
 const DENSITY_SCORE_OVERPACK_THRESHOLD := 16
-const DENSITY_SCORE_TIER1 := 0.5
-const DENSITY_SCORE_TIER2 := 1.0
-const DENSITY_SCORE_TIER3 := 1.2
+const DENSITY_SCORE_TIER3_THRESHOLD := 11
+const DENSITY_SCORE_TIER2_THRESHOLD := 6
+const DENSITY_SCORE_TIER1_THRESHOLD := 3
+const DENSITY_SCORE_LOW_HIGH_THRESHOLD := 2  # 2 zombies in cell
+const DENSITY_SCORE_LOW_LOW_THRESHOLD := 1   # even 1 other zombie has gravity
 const DENSITY_SCORE_OVERPACK := -0.5
+const DENSITY_SCORE_TIER3 := 1.2
+const DENSITY_SCORE_TIER2 := 1.0
+const DENSITY_SCORE_TIER1 := 0.6
+const DENSITY_SCORE_LOW_HIGH := 0.35
+const DENSITY_SCORE_LOW_LOW := 0.18
 
 # Residue contribution to direction score: cap so it never dominates,
 # scale so it requires meaningful magnitude to register.
@@ -110,8 +116,9 @@ func get_density_at(world_pos: Vector2) -> int:
 
 
 func density_score(world_pos: Vector2) -> float:
-	# Bucketed score per spec. Cells over the overpack threshold push
-	# zombies outward so pools stabilize rather than runaway-accumulating.
+	# Cells over the overpack threshold push zombies outward; cells with
+	# even one zombie now produce a small pull so cold-start clustering
+	# actually seeds.
 	var n: int = get_density_at(world_pos)
 	if n >= DENSITY_SCORE_OVERPACK_THRESHOLD:
 		return DENSITY_SCORE_OVERPACK
@@ -121,6 +128,10 @@ func density_score(world_pos: Vector2) -> float:
 		return DENSITY_SCORE_TIER2
 	if n >= DENSITY_SCORE_TIER1_THRESHOLD:
 		return DENSITY_SCORE_TIER1
+	if n >= DENSITY_SCORE_LOW_HIGH_THRESHOLD:
+		return DENSITY_SCORE_LOW_HIGH
+	if n >= DENSITY_SCORE_LOW_LOW_THRESHOLD:
+		return DENSITY_SCORE_LOW_LOW
 	return 0.0
 
 
