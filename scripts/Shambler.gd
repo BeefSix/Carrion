@@ -144,9 +144,8 @@ func investigate(world_pos: Vector2) -> void:
 	_nav.target_position = world_pos
 
 
-# Vision detection: distance check, cone check (with edge fuzziness), and
-# LOS check (commit 2 of perception will add LOS). For now returns true on
-# range + cone.
+# Vision detection: distance, cone (with edge fuzziness), then LOS.
+# Cheap filter first (distance + angle), expensive raycast last.
 func _can_see(target_pos: Vector2) -> bool:
 	var to_target: Vector2 = target_pos - global_position
 	var distance: float = to_target.length()
@@ -163,7 +162,55 @@ func _can_see(target_pos: Vector2) -> bool:
 	if angle_offset > VISION_CONE_HALF_RAD - VISION_EDGE_FUZZ_RAD:
 		if randf() > 0.5:
 			return false
+	# LOS: walk segment against every building/wall rect. Buildings and
+	# walls block; ground, fences, other units do NOT block.
+	if not _has_los(target_pos):
+		return false
 	return true
+
+
+func _has_los(target_pos: Vector2) -> bool:
+	# Segment-vs-rect for every building in range. Bounding box pre-filter
+	# rejects buildings entirely outside the segment AABB so we only run
+	# the 4-edge intersection test on candidates that could possibly block.
+	var seg_min: Vector2 = global_position.min(target_pos)
+	var seg_max: Vector2 = global_position.max(target_pos)
+	var seg_aabb := Rect2(seg_min, seg_max - seg_min).grow(8.0)
+	for b in get_tree().get_nodes_in_group("buildings"):
+		if not is_instance_valid(b):
+			continue
+		if b == self:
+			continue
+		if not ("size_pixels" in b):
+			continue
+		var half: Vector2 = b.size_pixels * 0.5
+		var brect := Rect2(b.position - half, b.size_pixels)
+		if not seg_aabb.intersects(brect):
+			continue
+		if _segment_intersects_rect(global_position, target_pos, brect):
+			return false
+	return true
+
+
+func _segment_intersects_rect(p1: Vector2, p2: Vector2, rect: Rect2) -> bool:
+	# Endpoint inside the rect? Counts as blocked (target is inside the
+	# building, e.g., a unit standing on a building tile - shouldn't happen
+	# in practice but we handle defensively).
+	if rect.has_point(p1) or rect.has_point(p2):
+		return true
+	var tl: Vector2 = rect.position
+	var tr: Vector2 = rect.position + Vector2(rect.size.x, 0.0)
+	var br: Vector2 = rect.position + rect.size
+	var bl: Vector2 = rect.position + Vector2(0.0, rect.size.y)
+	if Geometry2D.segment_intersects_segment(p1, p2, tl, tr) != null:
+		return true
+	if Geometry2D.segment_intersects_segment(p1, p2, tr, br) != null:
+		return true
+	if Geometry2D.segment_intersects_segment(p1, p2, br, bl) != null:
+		return true
+	if Geometry2D.segment_intersects_segment(p1, p2, bl, tl) != null:
+		return true
+	return false
 
 
 func _angle_diff(a: float, b: float) -> float:
