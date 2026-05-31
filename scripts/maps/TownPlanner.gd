@@ -1132,7 +1132,85 @@ func step_10_spawn_clear_zones(lots: Array, buildings: Array, grid: PackedByteAr
 				if x < 0 or x >= MAP_TILES or y < 0 or y >= MAP_TILES:
 					continue
 				grid[x + y * MAP_TILES] = TILE_YARD
+		# Place a U-cluster of 4 small residential lots around the spawn,
+		# opening toward map center so Survivor (and any fortifying faction)
+		# has wall-able terrain at start.
+		_add_spawn_cluster(anchor, lots, buildings, grid)
 	return zones
+
+
+# Settlement-ready cluster: 4 small (3x3) residential houses on 5x5 lots
+# arranged in an L around the spawn corner, opening toward map center.
+# Houses face the spawn anchor so doors are visible from the HQ.
+const CLUSTER_HOUSE_SIZE := 3
+const CLUSTER_LOT_SIZE := 5
+const CLUSTER_DIST_FROM_ANCHOR := 11  # arm offset perpendicular to opening
+
+
+func _add_spawn_cluster(anchor: Vector2i, lots: Array, buildings: Array, grid: PackedByteArray) -> void:
+	# Direction from anchor toward map center - houses go on the opposite
+	# side so the U opens center-ward.
+	var center := Vector2i(MAP_TILES / 2, MAP_TILES / 2)
+	var to_center: Vector2i = center - anchor
+	# Cardinal directions: 1 = center-side, -1 = wilderness-side.
+	var x_dir: int = 1 if to_center.x > 0 else -1
+	var y_dir: int = 1 if to_center.y > 0 else -1
+	# Arm-1 sits perpendicular to y-axis at offset -y_dir * CLUSTER_DIST.
+	var arm1_y: int = anchor.y + (-y_dir) * CLUSTER_DIST_FROM_ANCHOR
+	# Arm-1 houses face anchor (direction = +y_dir along y).
+	var arm1_facing := Vector2i(0, y_dir)
+	# 2 houses on arm-1, 7 tiles apart along x.
+	for offset in [-4, 4]:
+		var px: int = anchor.x + offset
+		_add_cluster_house(Vector2i(px, arm1_y), arm1_facing, lots, buildings, grid)
+	# Arm-2 sits perpendicular to x-axis at offset -x_dir * CLUSTER_DIST.
+	var arm2_x: int = anchor.x + (-x_dir) * CLUSTER_DIST_FROM_ANCHOR
+	var arm2_facing := Vector2i(x_dir, 0)
+	for offset2 in [-4, 4]:
+		var py: int = anchor.y + offset2
+		_add_cluster_house(Vector2i(arm2_x, py), arm2_facing, lots, buildings, grid)
+
+
+func _add_cluster_house(center_tile: Vector2i, facing: Vector2i, lots: Array, buildings: Array, grid: PackedByteArray) -> void:
+	# Center the 5x5 lot and 3x3 building on center_tile.
+	var lot_top_left := Vector2i(
+		center_tile.x - CLUSTER_LOT_SIZE / 2,
+		center_tile.y - CLUSTER_LOT_SIZE / 2,
+	)
+	var building_top_left := Vector2i(
+		center_tile.x - CLUSTER_HOUSE_SIZE / 2,
+		center_tile.y - CLUSTER_HOUSE_SIZE / 2,
+	)
+	# Bounds check.
+	if lot_top_left.x < 0 or lot_top_left.y < 0:
+		return
+	if lot_top_left.x + CLUSTER_LOT_SIZE > MAP_TILES:
+		return
+	if lot_top_left.y + CLUSTER_LOT_SIZE > MAP_TILES:
+		return
+	var lot_rect := Rect2i(lot_top_left.x, lot_top_left.y, CLUSTER_LOT_SIZE, CLUSTER_LOT_SIZE)
+	var building_rect := Rect2i(building_top_left.x, building_top_left.y, CLUSTER_HOUSE_SIZE, CLUSTER_HOUSE_SIZE)
+	lots.append({
+		"rect": lot_rect,
+		"frontage_dir": facing,
+		"zone": ZONE_RESIDENTIAL_NW,
+		"spawn_cluster": true,
+	})
+	buildings.append({
+		"rect": building_rect,
+		"facing": facing,
+		"zone": ZONE_RESIDENTIAL_NW,
+		"spawn_cluster": true,
+	})
+	# Paint lot + building tiles.
+	for x in range(lot_top_left.x, lot_top_left.x + CLUSTER_LOT_SIZE):
+		for y in range(lot_top_left.y, lot_top_left.y + CLUSTER_LOT_SIZE):
+			if x >= 0 and x < MAP_TILES and y >= 0 and y < MAP_TILES:
+				grid[x + y * MAP_TILES] = TILE_YARD
+	for x in range(building_top_left.x, building_top_left.x + CLUSTER_HOUSE_SIZE):
+		for y in range(building_top_left.y, building_top_left.y + CLUSTER_HOUSE_SIZE):
+			if x >= 0 and x < MAP_TILES and y >= 0 and y < MAP_TILES:
+				grid[x + y * MAP_TILES] = TILE_RUBBLE
 
 
 func _rects_intersect(a: Rect2i, b: Rect2i) -> bool:
