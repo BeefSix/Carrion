@@ -98,10 +98,20 @@ const CLUSTER_BIAS_PROBABILITY := 0.45        # Bumped back up from 0.10 - densi
 # within ~5 tiles), copy the nearest neighbor's active wander target
 # instead of picking independently. Keeps formed groups moving as one
 # unit instead of dispersing on independent direction picks.
-const COHESION_RADIUS_PX := 5.0 * 32.0      # 5 tiles
-const COHESION_PROBABILITY := 0.90           # was 0.70 - bumped for tighter cohesion
-const COHESION_NEIGHBOR_THRESHOLD := 2       # need 2+ neighbors to count as a cluster
-const COHESION_TARGET_JITTER := 14.0         # was 24 - tighter formation
+const COHESION_RADIUS_PX := 10.0 * 32.0     # 10 tiles - wider catchment
+const COHESION_PROBABILITY := 0.95           # almost always follow a wandering leader
+const COHESION_NEIGHBOR_THRESHOLD := 1       # even one neighbor counts now
+const COHESION_TARGET_JITTER := 14.0         # tight formation spread
+
+# Magnetic pull: zombies are aware of other zombies out to 14 tiles and
+# heavily bias their wander toward the nearest one. This is the "sightlines
+# and affinity to hang out" the user asked for - independent of whether
+# a leader is currently wandering. Lone zombies who see another zombie
+# pull toward them; clusters with no active leader still tighten.
+const MAGNETIC_RADIUS_PX := 14.0 * 32.0     # 14 tiles
+const MAGNETIC_PROBABILITY := 0.75           # 75% of direction picks just head to nearest zombie
+const MAGNETIC_TRAVEL_FRACTION := 0.75       # travel 75% of the way (vs all the way - leaves room for jostle)
+const MAGNETIC_TRAVEL_MAX_PX := 280.0        # cap per cycle so cross-map magnetic doesn't teleport
 
 # Phase 2.5 state cascade: when one zombie transitions IDLE -> INVESTIGATE
 # or IDLE -> ACQUIRING, nearby idle zombies have a chance to follow with
@@ -611,20 +621,20 @@ func _tick_wander(delta: float) -> void:
 
 func _start_wander() -> void:
 	# Direction selection layers in priority order:
-	#   1. Passive cohesion: if 2+ neighbors are ALREADY wandering, copy
-	#      one of their targets (catches stragglers whose own timer fires
-	#      after a leader has already started moving).
-	#   2. Centroid bias: 45% chance to bias toward all-zombie centroid.
-	#   3. Env-scored candidate sampling: density / decay / buildings /
-	#      open terrain / noise residue weighted-random pick.
-	# After picking, ACTIVELY PUSH our wander to nearby idle neighbors
-	# so the cluster moves together instead of waiting for individual
-	# timers to fire.
+	#   1. Cohesion: copy a wandering leader's target (catches stragglers
+	#      and synchronizes already-formed clusters).
+	#   2. Magnetic: head toward the nearest zombie within 14 tiles. This
+	#      is the cold-start gravity that pulls separated zombies together
+	#      even when nobody is actively wandering yet.
+	#   3. Env-scored pick: density / decay / buildings / open terrain /
+	#      residue weighted-random fallback.
+	# After picking, actively push our target to nearby idle neighbors so
+	# the cluster moves as one unit.
 	var target: Vector2 = Vector2.ZERO
 	if randf() < COHESION_PROBABILITY:
 		target = _find_cluster_leader_target()
-	if target == Vector2.ZERO and randf() < CLUSTER_BIAS_PROBABILITY:
-		target = _cluster_bias_target()
+	if target == Vector2.ZERO and randf() < MAGNETIC_PROBABILITY:
+		target = _find_magnetic_target()
 	if target == Vector2.ZERO:
 		var direction: Vector2 = _pick_wander_direction()
 		target = global_position + direction * WANDER_RADIUS
@@ -634,6 +644,31 @@ func _start_wander() -> void:
 	_wandering = true
 	_nav.target_position = _wander_target
 	_propagate_wander_to_cluster()
+
+
+func _find_magnetic_target() -> Vector2:
+	# Sightlines-and-affinity: pull toward the nearest zombie within
+	# MAGNETIC_RADIUS regardless of whether they're wandering. Doesn't
+	# require any in-cluster status; works on isolated zombies that
+	# can see each other across open ground.
+	var nearest = null
+	var nearest_dist: float = MAGNETIC_RADIUS_PX
+	for other in get_tree().get_nodes_in_group("units"):
+		if other == self or not is_instance_valid(other):
+			continue
+		if other.faction != Faction.ZOMBIE:
+			continue
+		var d: float = global_position.distance_to(other.global_position)
+		if d < nearest_dist:
+			nearest_dist = d
+			nearest = other
+	if nearest == null:
+		return Vector2.ZERO
+	var to_them: Vector2 = nearest.global_position - global_position
+	if to_them.length_squared() < 1.0:
+		return Vector2.ZERO
+	var travel: float = minf(nearest_dist * MAGNETIC_TRAVEL_FRACTION, MAGNETIC_TRAVEL_MAX_PX)
+	return global_position + to_them.normalized() * travel
 
 
 func _propagate_wander_to_cluster() -> void:
