@@ -104,7 +104,9 @@ func plan_town(seed_value: int = 1) -> Dictionary:
 	step_5_fill_lot_spaces(data["lots"], data["buildings"], data["tile_grid"])
 	data["alleys"] = step_6_alleys(data["lots"])
 	_paint_alleys(data["alleys"], data["tile_grid"])
-	# Steps 7-12 stubbed; phases 3-4 implement.
+	step_7_wilderness_gradient(data["tile_grid"])
+	step_8_variation(data["lots"], data["buildings"], data["tile_grid"])
+	# Steps 9-12 stubbed; phase 4 implements.
 	data["affordances"] = []
 	data["spawn_zones"] = []
 	data["lootables"] = []
@@ -738,12 +740,134 @@ func _paint_alleys(alleys: Array, grid: PackedByteArray) -> void:
 					grid[x + y * MAP_TILES] = TILE_DIRT_ROAD
 
 
-func step_7_wilderness_gradient(_grid: PackedByteArray) -> void:
-	pass
+# ---------------------------------------------------------------------
+# Step 7 - wilderness edge gradient
+# ---------------------------------------------------------------------
+# Outer 16 tiles fade from town to wilderness. Gradient is gradual (not
+# binary): density of vegetation rises and density of paved/yard tiles
+# drops as distance from edge decreases. Watchlist item "hard binary
+# cutoff" is the primary failure mode to avoid; we sample tile probabilities
+# by distance instead of toggling at a single threshold.
+#
+# Zones:
+#   distance 0..7  - pure wilderness (vegetation + dirt + occasional rubble)
+#   distance 8..15 - transition band (vegetation + dirt + bare ground)
+#   distance 16+   - town (untouched)
+# Roads passing through the gradient also downgrade: secondary roads
+# become dirt roads, sidewalks become bare ground.
+const WILDERNESS_EDGE_PURE := 8
+const WILDERNESS_EDGE_BAND := 16
 
 
-func step_8_variation(_lots: Array, _buildings: Array) -> void:
-	pass
+func step_7_wilderness_gradient(grid: PackedByteArray) -> void:
+	for x in range(MAP_TILES):
+		for y in range(MAP_TILES):
+			var d: int = min(min(x, y), min(MAP_TILES - 1 - x, MAP_TILES - 1 - y))
+			if d >= WILDERNESS_EDGE_BAND:
+				continue
+			var current: int = grid[x + y * MAP_TILES]
+			# Main roads exit the map and stay main roads (highway out of town).
+			if current == TILE_MAIN_ROAD:
+				continue
+			# Downgrade secondary road to dirt; sidewalk and parking to bare.
+			if current == TILE_SECONDARY_ROAD:
+				grid[x + y * MAP_TILES] = TILE_DIRT_ROAD
+				continue
+			if current == TILE_SIDEWALK or current == TILE_PARKING_LOT:
+				grid[x + y * MAP_TILES] = TILE_BARE_GROUND
+				current = TILE_BARE_GROUND
+			# Sample a wilderness tile based on distance.
+			grid[x + y * MAP_TILES] = _wilderness_sample(d, current)
+
+
+func _wilderness_sample(distance_from_edge: int, current_tile: int) -> int:
+	# Higher vegetation probability nearer the edge, decaying to ~0 by tile 16.
+	var t: float = 1.0 - (float(distance_from_edge) / float(WILDERNESS_EDGE_BAND))
+	# t = 1.0 at edge, 0.0 at WILDERNESS_EDGE_BAND.
+	var roll: float = _rng.randf()
+	if distance_from_edge < WILDERNESS_EDGE_PURE:
+		# Pure wilderness: vegetation-dominant.
+		if roll < 0.55:
+			return TILE_VEGETATION
+		if roll < 0.80:
+			return TILE_DIRT_ROAD
+		if roll < 0.92:
+			return TILE_RUBBLE
+		return TILE_BARE_GROUND
+	# Transition band (8..15): mix that fades with distance.
+	var veg_prob: float = 0.40 * t
+	var dirt_prob: float = 0.25 * t
+	if roll < veg_prob:
+		return TILE_VEGETATION
+	if roll < veg_prob + dirt_prob:
+		return TILE_DIRT_ROAD
+	# Otherwise keep current tile (yard, parking, etc.) - this gives the
+	# gradient its town-fading-out feel rather than abrupt replacement.
+	return current_tile
+
+
+# ---------------------------------------------------------------------
+# Step 8 - variation
+# ---------------------------------------------------------------------
+# Real towns aren't perfectly uniform. Mark some lots as vacant (no
+# building); mark some buildings as damaged (one corner rubbled);
+# scatter a few small parks (2x2 to 4x4 vegetation patches) in
+# transitional areas between zones.
+func step_8_variation(lots: Array, buildings: Array, grid: PackedByteArray) -> void:
+	# Vacant lots - clear the building footprint placeholder, leave the
+	# lot's fill tile (yard / parking) visible. 4% of lots become vacant.
+	for i in range(buildings.size()):
+		if _rng.randf() < 0.04:
+			var b: Dictionary = buildings[i]
+			var lot: Dictionary = lots[i]
+			var fill_tile := _lot_fill_tile_for_zone(lot["zone"])
+			var rect: Rect2i = b.get("rect", Rect2i())
+			for x in range(rect.position.x, rect.position.x + rect.size.x):
+				for y in range(rect.position.y, rect.position.y + rect.size.y):
+					if x >= 0 and x < MAP_TILES and y >= 0 and y < MAP_TILES:
+						grid[x + y * MAP_TILES] = fill_tile
+			b["vacant"] = true
+	# Damaged buildings - 6% of remaining buildings get a corner rubbled.
+	for i in range(buildings.size()):
+		var b2: Dictionary = buildings[i]
+		if b2.get("vacant", false):
+			continue
+		if _rng.randf() < 0.06:
+			var rect2: Rect2i = b2.get("rect", Rect2i())
+			# Damage one corner - 2x2 patch of rubble in a random corner.
+			var corner_x: int = rect2.position.x if _rng.randf() < 0.5 else rect2.position.x + rect2.size.x - 2
+			var corner_y: int = rect2.position.y if _rng.randf() < 0.5 else rect2.position.y + rect2.size.y - 2
+			for dx in range(0, 2):
+				for dy in range(0, 2):
+					var px: int = corner_x + dx
+					var py: int = corner_y + dy
+					if px >= 0 and px < MAP_TILES and py >= 0 and py < MAP_TILES:
+						# Already rubble (placeholder) - keep as rubble for damage
+						# read. The intact part of the building still shows as
+						# rubble placeholder; visual differentiation comes when
+						# Lootables spawn (they will reflect the damaged flag).
+						grid[px + py * MAP_TILES] = TILE_RUBBLE
+			b2["damaged"] = true
+	# Small parks - place 4 vegetation patches at fixed-but-not-on-lot
+	# positions between zones (transitional areas).
+	var park_positions := [
+		Vector2i(80, 30),
+		Vector2i(112, 30),
+		Vector2i(80, 162),
+		Vector2i(112, 162),
+	]
+	for pos in park_positions:
+		var size_n: int = _rng.randi_range(2, 4)
+		for dx in range(0, size_n):
+			for dy in range(0, size_n):
+				var x: int = pos.x + dx
+				var y: int = pos.y + dy
+				if x >= 0 and x < MAP_TILES and y >= 0 and y < MAP_TILES:
+					# Only paint if the tile is bare ground (don't overwrite
+					# lots / roads / wilderness).
+					var current: int = grid[x + y * MAP_TILES]
+					if current == TILE_BARE_GROUND:
+						grid[x + y * MAP_TILES] = TILE_VEGETATION
 
 
 func step_9_affordances(_grid: PackedByteArray, _buildings: Array) -> Array:
