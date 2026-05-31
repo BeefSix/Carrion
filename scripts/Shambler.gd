@@ -133,6 +133,15 @@ const CLUSTER_SHUFFLE_RADIUS_PX := 24.0
 # zombie per cluster is allowed to pick.
 const CAPTAIN_CHECK_INTERVAL := 0.5
 
+# Pass-by capture: zombies in mid-wander who enter a strongly-populated
+# cell get absorbed into the cluster. The min-travel guard prevents
+# self-capture during a cluster's own coordinated movement (since the
+# density grid lags by 2.5 sec, the cluster's new cell isn't registered
+# as dense yet - but their old cell is, so we'd otherwise trigger as
+# soon as they started moving).
+const PASS_BY_CAPTURE_DENSITY := 5
+const PASS_BY_CAPTURE_MIN_TRAVEL := 48.0
+
 # Phase 2.5 state cascade: when one zombie transitions IDLE -> INVESTIGATE
 # or IDLE -> ACQUIRING, nearby idle zombies have a chance to follow with
 # delayed propagation. Damped through three rings - primary 35%, secondary
@@ -186,6 +195,8 @@ var _last_known_pos: Vector2 = Vector2.ZERO
 # which case we're trivially captain of a one-zombie "cluster").
 var _is_captain: bool = true
 var _captain_check_timer: float = 0.0
+# Where we started our current wander leg, for pass-by capture distance.
+var _wander_start_pos: Vector2 = Vector2.ZERO
 # Cascade pending state - level we joined at (-1 = no pending), the
 # stimulus we'll investigate when the delay timer fires, and the timer.
 var _pending_cascade_level: int = -1
@@ -631,6 +642,17 @@ func _physics_process(delta: float) -> void:
 
 func _tick_wander(delta: float) -> void:
 	if _wandering:
+		# Pass-by capture: if we've traveled far enough that we're not
+		# moving within our own cluster's residue, and we're now standing
+		# in a strongly-populated cell, abandon the wander and idle here.
+		# Captain check on the next tick will absorb us into the cluster.
+		if global_position.distance_to(_wander_start_pos) > PASS_BY_CAPTURE_MIN_TRAVEL:
+			if _zombie_field_density_here() >= PASS_BY_CAPTURE_DENSITY:
+				_wandering = false
+				_wander_timer = randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
+				velocity = Vector2.ZERO
+				_captain_check_timer = 0.0  # force re-election next idle frame
+				return
 		if global_position.distance_to(_wander_target) <= WANDER_ARRIVE_RANGE or _nav.is_navigation_finished():
 			_wandering = false
 			_wander_timer = randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
@@ -698,6 +720,7 @@ func _start_wander() -> void:
 	target.y = clamp(target.y, 50.0, 6094.0)
 	_wander_target = target
 	_wandering = true
+	_wander_start_pos = global_position
 	_nav.target_position = _wander_target
 	_propagate_wander_to_cluster()
 
@@ -754,9 +777,10 @@ func _propagate_wander_to_cluster() -> void:
 			nearby_followers.append(other)
 	if nearby_count < COHESION_NEIGHBOR_THRESHOLD:
 		return
+	# Push ALL followers, no random skip. The previous 5% per-cycle leak
+	# was what slowly fractured large clusters across many cycles.
 	for f in nearby_followers:
-		if randf() < COHESION_PROBABILITY:
-			f.follow_leader_wander(_wander_target)
+		f.follow_leader_wander(_wander_target)
 
 
 func follow_leader_wander(leader_target: Vector2) -> void:
@@ -776,6 +800,7 @@ func follow_leader_wander(leader_target: Vector2) -> void:
 	jittered.y = clamp(jittered.y, 50.0, 6094.0)
 	_wander_target = jittered
 	_wandering = true
+	_wander_start_pos = global_position
 	_nav.target_position = _wander_target
 	# Reset our timer so we don't immediately repick on next cycle.
 	_wander_timer = randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
