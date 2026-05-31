@@ -45,8 +45,21 @@ const PERCEPTION_INTERVAL := 0.2  # 5 Hz perception update (was 0.3 retarget)
 const INVESTIGATE_ARRIVE_RANGE := 60.0
 const WANDER_RADIUS := 96.0
 const WANDER_ARRIVE_RANGE := 30.0
-const WANDER_INTERVAL_MIN := 4.0
-const WANDER_INTERVAL_MAX := 10.0
+# Phase 2: direction change cadence widened (was 4-10 sec; spec wants
+# 15-30 sec so wanders feel like settled drift, not constant motion).
+const WANDER_INTERVAL_MIN := 15.0
+const WANDER_INTERVAL_MAX := 30.0
+# Environmental preference weights applied when picking a new wander
+# direction. Higher score = more likely to be picked. Direction sampling
+# generates a handful of candidates, scores each by the env at its sample
+# point, and weighted-random-selects.
+const WANDER_CANDIDATES := 6
+const WANDER_DECAY_TIER1_BONUS := 0.5  # decay > 50 within sample area
+const WANDER_DECAY_TIER2_BONUS := 0.5  # decay > 100 stacks on top of tier 1
+const WANDER_BUILDING_BONUS := 0.3     # 2+ buildings within ~6 tiles of sample
+const WANDER_OPEN_PENALTY := 0.7       # multiplier when sample is open terrain
+const WANDER_BUILDING_QUERY_RADIUS := 200.0  # ~6 tiles
+const WANDER_DECAY_QUERY_TILES := 8
 const TRIBAL_ALIGNED_COLOR := Color("5a5530")
 # Force-spawned (Shaman ritual) zombies stay tribally-aligned for this many
 # seconds, then revert to standard wild behavior. During the window they
@@ -423,13 +436,83 @@ func _tick_wander(delta: float) -> void:
 
 
 func _start_wander() -> void:
-	var offset := Vector2(randf_range(-WANDER_RADIUS, WANDER_RADIUS), randf_range(-WANDER_RADIUS, WANDER_RADIUS))
-	var target := global_position + offset
+	# Phase 2: directional wandering with environmental texture instead of
+	# pure random offset. Candidate directions are sampled around the
+	# zombie, each scored by the environment at its projected sample point;
+	# the new heading is a weighted-random pick. Decay zones, building
+	# clusters pull the zombie in; open wilderness pushes it away.
+	var direction: Vector2 = _pick_wander_direction()
+	var target: Vector2 = global_position + direction * WANDER_RADIUS
 	target.x = clamp(target.x, 50.0, 6094.0)
 	target.y = clamp(target.y, 50.0, 6094.0)
 	_wander_target = target
 	_wandering = true
 	_nav.target_position = _wander_target
+
+
+func _pick_wander_direction() -> Vector2:
+	# Sample WANDER_CANDIDATES directions evenly spaced around the circle
+	# with small per-candidate angle jitter, then weighted-random by
+	# environmental score.
+	var candidates: Array[Vector2] = []
+	var scores: Array[float] = []
+	var base_jitter: float = randf() * TAU  # random rotational offset so we don't always sample the same angles
+	for i in range(WANDER_CANDIDATES):
+		var angle: float = base_jitter + (float(i) / float(WANDER_CANDIDATES)) * TAU + randf_range(-0.25, 0.25)
+		var dir: Vector2 = Vector2.from_angle(angle)
+		candidates.append(dir)
+		scores.append(_score_wander_direction(dir))
+	# Weighted random pick.
+	var total_score: float = 0.0
+	for s in scores:
+		total_score += s
+	if total_score <= 0.0:
+		return candidates[randi() % candidates.size()]
+	var roll: float = randf() * total_score
+	var acc: float = 0.0
+	for i in range(candidates.size()):
+		acc += scores[i]
+		if roll <= acc:
+			return candidates[i]
+	return candidates[candidates.size() - 1]
+
+
+func _score_wander_direction(dir: Vector2) -> float:
+	var sample_pos: Vector2 = global_position + dir * WANDER_RADIUS
+	var score: float = 1.0
+	# Decay attraction - sample tile's value via the field's
+	# get_value_at(world_pos). Stacked tiers so heavily decayed areas pull
+	# harder.
+	var df = get_tree().get_first_node_in_group("decay_field")
+	if df != null and df.has_method("get_value_at"):
+		var d_val: float = df.get_value_at(sample_pos)
+		if d_val > 50.0:
+			score += WANDER_DECAY_TIER1_BONUS
+		if d_val > 100.0:
+			score += WANDER_DECAY_TIER2_BONUS
+	# Building cluster attraction - count buildings within query radius,
+	# short-circuit at 2 because we just need to know "is there a cluster
+	# here" not exact density.
+	var bldg_count: int = 0
+	for b in get_tree().get_nodes_in_group("buildings"):
+		if not is_instance_valid(b):
+			continue
+		if b.position.distance_to(sample_pos) < WANDER_BUILDING_QUERY_RADIUS:
+			bldg_count += 1
+			if bldg_count >= 2:
+				break
+	if bldg_count >= 2:
+		score += WANDER_BUILDING_BONUS
+	# Open terrain avoidance - query the ground tile under sample point.
+	# bare_ground / dirt_road / vegetation register as "open" / wild.
+	var gt = get_tree().get_first_node_in_group("ground_tiles")
+	if gt != null and gt.has_method("get_tile_type_at"):
+		var tt: int = gt.get_tile_type_at(sample_pos)
+		# Constants match GroundTiles palette indices: 6 bare, 7 dirt road,
+		# 8 vegetation.
+		if tt == 6 or tt == 7 or tt == 8:
+			score *= WANDER_OPEN_PENALTY
+	return max(0.1, score)
 
 
 # Perception update - replaces the old _update_target. Vision now requires
