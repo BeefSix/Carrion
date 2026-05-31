@@ -40,6 +40,7 @@ const TILE_BARE_GROUND := 6
 const TILE_DIRT_ROAD := 7
 const TILE_VEGETATION := 8
 const TILE_RUBBLE := 9
+const TILE_FENCE := 10  # subtle darker tile at residential lot perimeters; partial cover affordance
 
 # Anchor positions (tile coords). Wilderness edge points come from the four
 # cardinal map edges where the main roads exit.
@@ -102,6 +103,7 @@ func plan_town(seed_value: int = 1) -> Dictionary:
 	# driveways, parking, and building footprint placeholders.
 	data["tile_grid"] = _build_tile_grid(data["roads"], data["lots"])
 	step_5_fill_lot_spaces(data["lots"], data["buildings"], data["tile_grid"])
+	_paint_lot_fences(data["lots"], data["tile_grid"])
 	data["alleys"] = step_6_alleys(data["lots"])
 	_paint_alleys(data["alleys"], data["tile_grid"])
 	step_7_wilderness_gradient(data["tile_grid"])
@@ -745,6 +747,50 @@ func step_6_alleys(lots: Array) -> Array:
 	return alleys
 
 
+func _paint_lot_fences(lots: Array, grid: PackedByteArray) -> void:
+	# Subtle darker-green fence tiles at residential lot perimeters,
+	# except on the road-facing front edge (driveway / front-yard access).
+	# Visually marks property lines so each lot reads as a parcel; provides
+	# partial-cover affordance for AI tactical decisions.
+	for lot in lots:
+		if not _is_residential(lot["zone"]):
+			continue
+		if lot.get("spawn_cluster", false):
+			# Spawn cluster lots are small (5x5); fences would dominate.
+			continue
+		var rect: Rect2i = lot["rect"]
+		var fd: Vector2i = lot["frontage_dir"]
+		var x0: int = rect.position.x
+		var y0: int = rect.position.y
+		var x1: int = rect.position.x + rect.size.x - 1
+		var y1: int = rect.position.y + rect.size.y - 1
+		# Top edge - skip if this is the front (frontage_dir points N).
+		if fd != Vector2i(0, -1):
+			for x in range(x0, x1 + 1):
+				_paint_fence_tile(x, y0, grid)
+		# Bottom edge - skip if front (frontage_dir points S).
+		if fd != Vector2i(0, 1):
+			for x in range(x0, x1 + 1):
+				_paint_fence_tile(x, y1, grid)
+		# Left edge - skip if front (frontage_dir points W).
+		if fd != Vector2i(-1, 0):
+			for y in range(y0, y1 + 1):
+				_paint_fence_tile(x0, y, grid)
+		# Right edge - skip if front (frontage_dir points E).
+		if fd != Vector2i(1, 0):
+			for y in range(y0, y1 + 1):
+				_paint_fence_tile(x1, y, grid)
+
+
+func _paint_fence_tile(x: int, y: int, grid: PackedByteArray) -> void:
+	# Only paint over yard tiles - don't overwrite buildings, driveways,
+	# roads, or sidewalks at the lot perimeter.
+	if x < 0 or x >= MAP_TILES or y < 0 or y >= MAP_TILES:
+		return
+	if grid[x + y * MAP_TILES] == TILE_YARD:
+		grid[x + y * MAP_TILES] = TILE_FENCE
+
+
 func _paint_alleys(alleys: Array, grid: PackedByteArray) -> void:
 	# Alleys are ALLEY_WIDTH tiles wide (2 tiles = ~4 m, a real service alley).
 	for a in alleys:
@@ -960,14 +1006,14 @@ func step_9_affordances(grid: PackedByteArray, _buildings: Array) -> Dictionary:
 			var tile: int = grid[idx]
 			# Construction.
 			construction[idx] = _construction_for_tile(tile)
-			# Coverage: interior if rubble placeholder (building footprint),
-			# full at 1 tile from building, partial at 2-3 tiles, open beyond.
-			# Extended from radius 2 to 3 to align with the spec's "near
-			# walls = cover" intent and bring the OPEN distribution under
-			# 60% on a town this size.
+			# Coverage: interior for building footprints, full / partial for
+			# tiles near buildings, partial for fence tiles (Survivor lot
+			# perimeters provide cover), open beyond.
 			var cov := COV_OPEN
 			if tile == TILE_RUBBLE and _is_building_placeholder(x, y, grid):
 				cov = COV_INTERIOR
+			elif tile == TILE_FENCE:
+				cov = COV_PARTIAL
 			else:
 				var nearest_b: int = _distance_to_building(x, y, grid, 3)
 				if nearest_b == 1:
@@ -1005,12 +1051,12 @@ func _construction_for_tile(tile: int) -> int:
 	match tile:
 		TILE_MAIN_ROAD, TILE_SECONDARY_ROAD, TILE_SIDE_STREET, TILE_DIRT_ROAD, TILE_SIDEWALK, TILE_PARKING_LOT:
 			return CST_SURFACE_ONLY
-		TILE_YARD, TILE_BARE_GROUND, TILE_VEGETATION:
+		TILE_YARD, TILE_BARE_GROUND, TILE_VEGETATION, TILE_FENCE:
+			# Fence tiles are buildable - Survivor can place a real wall on
+			# top of an existing fence, completing the perimeter.
 			return CST_BUILDABLE
 		TILE_RUBBLE:
-			# Rubble placeholders inside building footprints are blocked;
-			# rubble in wilderness is buildable. Distinguish by neighborhood.
-			return CST_BLOCKED  # conservative; phase 4 doesn't differentiate
+			return CST_BLOCKED
 	return CST_BUILDABLE
 
 

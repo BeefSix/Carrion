@@ -25,6 +25,7 @@ const TILE_COLORS := [
 	Color("4a3a30"),  # 7 dirt road (warm brown)
 	Color("3a4a35"),  # 8 vegetation (desaturated olive)
 	Color("2a2520"),  # 9 rubble (dark warm gray-brown)
+	Color("3a4632"),  # 10 fence (darker green than yard, subtle property line)
 ]
 
 
