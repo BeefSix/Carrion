@@ -1,13 +1,37 @@
 extends "res://scripts/Unit.gd"
 
-enum ZombieState { IDLE, INVESTIGATE, CHASE, ATTACK }
+enum ZombieState { IDLE, ACQUIRING, INVESTIGATE, CHASE, ATTACK }
 
-const VISION_RANGE := 384.0
+# Per-type perception parameters. The Zombie Substrate spec specifies these
+# as per-type so Shambler / Runner / Brute can each carry their own values;
+# Shambler uses the baseline. When Runner / Brute land, they override.
+#
+# Vision:  4 tiles = 128 px, 90° forward cone
+# Hearing: 12 tiles = 384 px, primary perception is vision (eyes good, ears average)
+const VISION_RANGE_TILES := 4
+const VISION_RANGE_PX := VISION_RANGE_TILES * 32.0
+const VISION_CONE_DEG := 90.0
+const VISION_CONE_HALF_RAD := deg_to_rad(VISION_CONE_DEG * 0.5)
+const VISION_EDGE_FUZZ_RAD := deg_to_rad(10.0)
+const HEARING_RANGE_TILES := 12
+const HEARING_RANGE_PX := HEARING_RANGE_TILES * 32.0
+
+const ACQUISITION_TIME_MIN := 0.5
+const ACQUISITION_TIME_MAX := 1.5
+
+# Idle head turns - zombie pivots its facing every 10-15 sec while standing
+# still, simulating slow visual scanning. This is what makes peek-around-
+# corner tactics nondeterministic; you don't know exactly which way the
+# zombie is looking at any moment.
+const HEAD_TURN_INTERVAL_MIN := 10.0
+const HEAD_TURN_INTERVAL_MAX := 15.0
+const FACING_PIVOT_RAD_PER_SEC := 4.0  # ~70 deg/sec, ~1.3 sec for full turn
+
 const ATTACK_RANGE := 36.0
 const LOST_TARGET_RANGE := 576.0
 const ATTACK_DAMAGE := 8
 const ATTACK_PERIOD := 1.0
-const RETARGET_INTERVAL := 0.3
+const PERCEPTION_INTERVAL := 0.2  # 5 Hz perception update (was 0.3 retarget)
 const INVESTIGATE_ARRIVE_RANGE := 60.0
 const WANDER_RADIUS := 96.0
 const WANDER_ARRIVE_RANGE := 30.0
@@ -21,15 +45,28 @@ var _zombie_state: int = ZombieState.IDLE
 var _target = null
 var _investigate_target: Vector2 = Vector2.ZERO
 var _attack_cooldown := 0.0
-var _retarget_timer := 0.0
+var _perception_timer := 0.0
 var _wandering := false
 var _wander_target: Vector2 = Vector2.ZERO
 var _wander_timer := 0.0
+
+# Vision / acquisition state.
+var _acquiring_target = null
+var _acquisition_timer: float = 0.0
+var _facing_angle: float = 0.0          # current facing in radians
+var _desired_facing_angle: float = 0.0  # angle we are pivoting toward
+var _head_turn_timer: float = 0.0
 
 
 func _ready() -> void:
 	super._ready()
 	_wander_timer = randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
+	_head_turn_timer = randf_range(HEAD_TURN_INTERVAL_MIN, HEAD_TURN_INTERVAL_MAX)
+	# Initial facing: random cardinal-ish so spawned zombies aren't all
+	# looking the same direction. Faces "south" by default before this.
+	_facing_angle = randf() * TAU
+	_desired_facing_angle = _facing_angle
+	facing_dir = Vector2.from_angle(_facing_angle)
 	if is_tribal_aligned:
 		body_color = TRIBAL_ALIGNED_COLOR
 		queue_redraw()
@@ -38,46 +75,52 @@ func _ready() -> void:
 func _draw() -> void:
 	# Hunched / slumped variant of the humanoid silhouette. Shorter body,
 	# wider shoulders sloping in, head pushed slightly forward and down,
-	# no lightened head (decayed skin reads as uniform with the body), no
-	# facing wedge (zombies don't intentionally face anything). Spec's
-	# "hunched, slumped, slow-looking" was deferred from Phase 5; this is
-	# the polish pass that lands it.
+	# no lightened head (decayed skin reads as uniform with the body). A
+	# small forward-pointing tick on the head shows the current facing -
+	# necessary for the player to understand whether the zombie can see
+	# them. Subtle so it doesn't dominate the silhouette.
 	var iso_offset: Vector2 = IsoView.world_to_screen(position) - position
 	draw_set_transform(iso_offset, 0.0, Vector2.ONE)
 
-	var scale: float = float(size_px) / 22.0
-	var sw: float = 14.0 * scale
-	var sh: float = 5.0 * scale
-	var bw: float = 10.0 * scale
-	var bh: float = 12.0 * scale  # shorter than upright (16)
-	var hr: float = 4.0 * scale
+	var s_scale: float = float(size_px) / 22.0
+	var sw: float = 14.0 * s_scale
+	var sh: float = 5.0 * s_scale
+	var bw: float = 10.0 * s_scale
+	var bh: float = 12.0 * s_scale
+	var hr: float = 4.0 * s_scale
 
-	var head_offset_x: float = 1.5 * scale  # head pushed slightly forward
-	var head_y: float = -bh - hr * 0.15  # head sits closer to body (less neck)
+	var head_offset_x: float = 1.5 * s_scale
+	var head_y: float = -bh - hr * 0.15
 
-	# Selection ring
 	if selected:
 		draw_arc(Vector2(0.0, 1.5), sw * 0.55, 0.0, TAU, 24, Color(1, 1, 0.4), 1.4, true)
 
-	# Shadow - slightly larger to suggest a sprawled posture.
 	draw_colored_polygon(
 		_ellipse_polygon(Vector2(0.0, 1.5), sw * 0.55, sh * 0.55),
 		Color(0, 0, 0, 0.42),
 	)
 
-	# Body silhouette - wider at shoulders, sloping in. Slumped trapezoid.
-	# Shoulders sit higher than the head's vertical center to suggest hunched.
 	draw_colored_polygon(PackedVector2Array([
-		Vector2(-bw * 0.55, -bh + 3.0),  # top-left shoulder, pushed in slightly
-		Vector2(bw * 0.55, -bh + 3.0),   # top-right shoulder
-		Vector2(bw * 0.45, -1.0),        # bottom-right
-		Vector2(-bw * 0.45, -1.0),       # bottom-left
+		Vector2(-bw * 0.55, -bh + 3.0),
+		Vector2(bw * 0.55, -bh + 3.0),
+		Vector2(bw * 0.45, -1.0),
+		Vector2(-bw * 0.45, -1.0),
 	]), body_color)
 
-	# Head - same color as body for the uniform decayed look, offset forward.
-	draw_circle(Vector2(head_offset_x, head_y), hr, body_color)
+	var head_pos := Vector2(head_offset_x, head_y)
+	draw_circle(head_pos, hr, body_color)
 
-	# HP bar above (when damaged)
+	# Facing tick - small darker line from head in facing direction (projected
+	# to iso so it points where the zombie is looking on screen).
+	var iso_facing: Vector2 = Vector2(
+		facing_dir.x - facing_dir.y,
+		(facing_dir.x + facing_dir.y) * 0.75,
+	)
+	if iso_facing.length_squared() > 0.001:
+		iso_facing = iso_facing.normalized()
+		var tip: Vector2 = head_pos + iso_facing * (hr + 3.0)
+		draw_line(head_pos + iso_facing * hr, tip, body_color.darkened(0.45), 1.6, true)
+
 	var max_eff: int = get_effective_max_hp()
 	if max_eff > 0 and current_hp < max_eff:
 		var bar_w: float = max(18.0, float(size_px) * 0.9)
@@ -96,26 +139,108 @@ func investigate(world_pos: Vector2) -> void:
 	_investigate_target = world_pos
 	_zombie_state = ZombieState.INVESTIGATE
 	_wandering = false
+	# Turn to face the noise as we head toward it.
+	_set_desired_facing(world_pos)
 	_nav.target_position = world_pos
+
+
+# Vision detection: distance check, cone check (with edge fuzziness), and
+# LOS check (commit 2 of perception will add LOS). For now returns true on
+# range + cone.
+func _can_see(target_pos: Vector2) -> bool:
+	var to_target: Vector2 = target_pos - global_position
+	var distance: float = to_target.length()
+	if distance > VISION_RANGE_PX:
+		return false
+	if distance < 1.0:
+		return true
+	var target_angle: float = to_target.angle()
+	var angle_offset: float = absf(_angle_diff(_facing_angle, target_angle))
+	if angle_offset > VISION_CONE_HALF_RAD:
+		return false
+	# Edge fuzziness: targets within VISION_EDGE_FUZZ_RAD of the cone
+	# boundary detect at 50% per perception tick instead of 100%.
+	if angle_offset > VISION_CONE_HALF_RAD - VISION_EDGE_FUZZ_RAD:
+		if randf() > 0.5:
+			return false
+	return true
+
+
+func _angle_diff(a: float, b: float) -> float:
+	# Shortest-angle difference (-PI to +PI).
+	var d: float = b - a
+	while d > PI:
+		d -= TAU
+	while d < -PI:
+		d += TAU
+	return d
+
+
+func _set_desired_facing(target_pos: Vector2) -> void:
+	var to_target: Vector2 = target_pos - global_position
+	if to_target.length_squared() < 1.0:
+		return
+	_desired_facing_angle = to_target.angle()
+
+
+func _tick_facing(delta: float) -> void:
+	# Pivot _facing_angle toward _desired_facing_angle at a capped rate, so
+	# turns are visible to the player rather than instant snap.
+	var diff: float = _angle_diff(_facing_angle, _desired_facing_angle)
+	if absf(diff) < 0.02:
+		return
+	var step: float = FACING_PIVOT_RAD_PER_SEC * delta
+	if absf(diff) < step:
+		_facing_angle = _desired_facing_angle
+	else:
+		_facing_angle += sign(diff) * step
+	facing_dir = Vector2.from_angle(_facing_angle)
+	queue_redraw()
+
+
+func _tick_idle_head_turn(delta: float) -> void:
+	# Stationary zombies pivot to a new random direction every 10-15 sec.
+	# Skipped if currently pivoting (don't pile new turns on existing).
+	if absf(_angle_diff(_facing_angle, _desired_facing_angle)) > 0.05:
+		return
+	_head_turn_timer -= delta
+	if _head_turn_timer <= 0.0:
+		_head_turn_timer = randf_range(HEAD_TURN_INTERVAL_MIN, HEAD_TURN_INTERVAL_MAX)
+		# Pick a new angle within +/- 120 degrees of current facing.
+		_desired_facing_angle = _facing_angle + randf_range(-2.094, 2.094)
 
 
 func _physics_process(delta: float) -> void:
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
-	_retarget_timer -= delta
-	if _retarget_timer <= 0:
-		_retarget_timer = RETARGET_INTERVAL
-		_update_target()
+	_tick_facing(delta)
+
+	# Perception at 5 Hz - vision detection (cone + range; LOS in commit 2).
+	_perception_timer -= delta
+	if _perception_timer <= 0.0:
+		_perception_timer = PERCEPTION_INTERVAL
+		_update_perception(delta)
 		if _target != null and _zombie_state == ZombieState.CHASE:
 			_nav.target_position = _target.global_position
 
 	match _zombie_state:
 		ZombieState.IDLE:
-			if _target != null:
-				_zombie_state = ZombieState.CHASE
-				_wandering = false
-				_nav.target_position = _target.global_position
-				return
+			_tick_idle_head_turn(delta)
 			_tick_wander(delta)
+		ZombieState.ACQUIRING:
+			# Lock facing on the acquiring target and tick the acquisition
+			# timer. If target moves out of vision, drop back to IDLE.
+			if _acquiring_target == null or not is_instance_valid(_acquiring_target):
+				_zombie_state = ZombieState.IDLE
+				_acquiring_target = null
+				return
+			_set_desired_facing(_acquiring_target.global_position)
+			velocity = Vector2.ZERO
+			_acquisition_timer -= delta
+			if _acquisition_timer <= 0.0:
+				_target = _acquiring_target
+				_acquiring_target = null
+				_zombie_state = ZombieState.CHASE
+				_nav.target_position = _target.global_position
 		ZombieState.INVESTIGATE:
 			if _target != null:
 				_zombie_state = ZombieState.CHASE
@@ -124,12 +249,14 @@ func _physics_process(delta: float) -> void:
 				_zombie_state = ZombieState.IDLE
 				velocity = Vector2.ZERO
 			else:
+				_set_desired_facing(_investigate_target)
 				_follow_navigation()
 		ZombieState.CHASE:
 			if _target == null or not is_instance_valid(_target):
 				_zombie_state = ZombieState.IDLE
 				return
-			var dist := global_position.distance_to(_target.global_position)
+			_set_desired_facing(_target.global_position)
+			var dist: float = global_position.distance_to(_target.global_position)
 			if dist <= ATTACK_RANGE:
 				_zombie_state = ZombieState.ATTACK
 				velocity = Vector2.ZERO
@@ -139,8 +266,9 @@ func _physics_process(delta: float) -> void:
 			if _target == null or not is_instance_valid(_target):
 				_zombie_state = ZombieState.IDLE
 				return
-			var dist := global_position.distance_to(_target.global_position)
-			if dist > ATTACK_RANGE * 1.2:
+			_set_desired_facing(_target.global_position)
+			var dist2: float = global_position.distance_to(_target.global_position)
+			if dist2 > ATTACK_RANGE * 1.2:
 				_zombie_state = ZombieState.CHASE
 				return
 			velocity = Vector2.ZERO
@@ -157,6 +285,7 @@ func _tick_wander(delta: float) -> void:
 			_wander_timer = randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
 			velocity = Vector2.ZERO
 		else:
+			_set_desired_facing(_wander_target)
 			_follow_navigation()
 	else:
 		velocity = Vector2.ZERO
@@ -175,16 +304,46 @@ func _start_wander() -> void:
 	_nav.target_position = _wander_target
 
 
-func _update_target() -> void:
+# Perception update - replaces the old _update_target. Vision now requires
+# the target to be in range AND in the facing cone (and later, LOS). When
+# a new target is seen, the zombie enters ACQUIRING for 0.5-1.5 seconds
+# before committing to CHASE.
+func _update_perception(_delta: float) -> void:
+	# If already chasing/attacking a valid target, keep going.
+	if _zombie_state == ZombieState.CHASE or _zombie_state == ZombieState.ATTACK:
+		if _target != null and is_instance_valid(_target):
+			return
+		_target = null
+	var best = _find_visible_target()
+	if best == null:
+		# Lost vision while acquiring -> drop acquisition.
+		if _zombie_state == ZombieState.ACQUIRING:
+			_acquiring_target = null
+			_zombie_state = ZombieState.IDLE
+		_target = null
+		return
+	# Target visible. If we're already acquiring this target, the timer
+	# (in _physics_process match block) handles the commit.
+	if _zombie_state == ZombieState.ACQUIRING and _acquiring_target == best:
+		return
+	# Start acquisition.
+	_acquiring_target = best
+	_acquisition_timer = randf_range(ACQUISITION_TIME_MIN, ACQUISITION_TIME_MAX)
+	_zombie_state = ZombieState.ACQUIRING
+
+
+func _find_visible_target():
 	var best = null
-	var best_dist := VISION_RANGE
+	var best_dist: float = VISION_RANGE_PX
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
 		if u.faction == Faction.ZOMBIE or u.faction == Faction.TRIBAL:
 			continue
+		if not _can_see(u.global_position):
+			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d <= best_dist:
 			best_dist = d
 			best = u
-	_target = best
+	return best
