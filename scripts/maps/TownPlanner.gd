@@ -227,7 +227,12 @@ func _road_width(road: Dictionary) -> int:
 
 
 func _road_sidewalk(road: Dictionary) -> int:
-	return SIDEWALK_BAND if road["type"] == "primary" else 0
+	# Both primary and secondary roads get a 1-tile sidewalk flank now -
+	# this is what visually defines the road as a feature (high-contrast
+	# light gray sidewalk against the darker road body and the adjacent
+	# yard/parking). Previously only primary roads got sidewalks, which
+	# made secondary roads bleed into adjacent lots visually.
+	return SIDEWALK_BAND
 
 
 func _build_road_occupancy_grid(roads: Array) -> PackedByteArray:
