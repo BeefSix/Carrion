@@ -60,6 +60,15 @@ const WANDER_BUILDING_BONUS := 0.3     # 2+ buildings within ~6 tiles of sample
 const WANDER_OPEN_PENALTY := 0.7       # multiplier when sample is open terrain
 const WANDER_BUILDING_QUERY_RADIUS := 200.0  # ~6 tiles
 const WANDER_DECAY_QUERY_TILES := 8
+
+# Cluster drift (Phase 2 #2). Idle zombies check periodically for other
+# idle zombies and slightly bias their wander direction toward the cluster
+# centroid. Bias reverses when overcrowded so clusters stay loose 4-10
+# rather than collapsing into 30-zombie blobs.
+const CLUSTER_FAR_RADIUS_PX := 12.0 * 32.0  # 12 tiles - cluster membership query
+const CLUSTER_CLOSE_RADIUS_PX := 6.0 * 32.0  # 6 tiles - crowding query
+const CLUSTER_BIAS_PROBABILITY := 0.30       # 30% of direction picks use cluster
+const CLUSTER_CROWD_THRESHOLD := 8           # 8+ close zombies -> repel
 const TRIBAL_ALIGNED_COLOR := Color("5a5530")
 # Force-spawned (Shaman ritual) zombies stay tribally-aligned for this many
 # seconds, then revert to standard wild behavior. During the window they
@@ -436,18 +445,66 @@ func _tick_wander(delta: float) -> void:
 
 
 func _start_wander() -> void:
-	# Phase 2: directional wandering with environmental texture instead of
-	# pure random offset. Candidate directions are sampled around the
-	# zombie, each scored by the environment at its projected sample point;
-	# the new heading is a weighted-random pick. Decay zones, building
-	# clusters pull the zombie in; open wilderness pushes it away.
-	var direction: Vector2 = _pick_wander_direction()
+	# Direction selection layers:
+	#   30% chance: cluster bias toward (or away from, if crowded) the
+	#     idle-zombie centroid within 12 tiles. Falls through to env-scored
+	#     pick if no neighbors.
+	#   otherwise:   env-scored candidate sampling (decay + buildings + open
+	#     terrain weights).
+	var direction: Vector2 = Vector2.ZERO
+	if randf() < CLUSTER_BIAS_PROBABILITY:
+		direction = _cluster_bias_direction()
+	if direction == Vector2.ZERO:
+		direction = _pick_wander_direction()
 	var target: Vector2 = global_position + direction * WANDER_RADIUS
 	target.x = clamp(target.x, 50.0, 6094.0)
 	target.y = clamp(target.y, 50.0, 6094.0)
 	_wander_target = target
 	_wandering = true
 	_nav.target_position = _wander_target
+
+
+# Public so other Shamblers can check whether to include this one in their
+# cluster centroid calculation. Active states (chasing, investigating,
+# acquiring) should not anchor clusters; only truly-idle zombies do.
+func is_currently_idle() -> bool:
+	return _zombie_state == ZombieState.IDLE
+
+
+func _cluster_bias_direction() -> Vector2:
+	# Returns a unit vector toward (or away from) the idle-zombie centroid
+	# within 12 tiles. Vector2.ZERO if no neighbors qualify.
+	var neighbor_positions: Array[Vector2] = []
+	var close_count: int = 0
+	for other in get_tree().get_nodes_in_group("units"):
+		if other == self or not is_instance_valid(other):
+			continue
+		if other.faction != Faction.ZOMBIE:
+			continue
+		var d: float = global_position.distance_to(other.global_position)
+		if d > CLUSTER_FAR_RADIUS_PX:
+			continue
+		# Only idle zombies anchor clusters - chasing zombies are heading
+		# somewhere specific and shouldn't pull others off task.
+		if other.has_method("is_currently_idle") and not other.is_currently_idle():
+			continue
+		neighbor_positions.append(other.global_position)
+		if d < CLUSTER_CLOSE_RADIUS_PX:
+			close_count += 1
+	if neighbor_positions.is_empty():
+		return Vector2.ZERO
+	var centroid: Vector2 = Vector2.ZERO
+	for p in neighbor_positions:
+		centroid += p
+	centroid /= float(neighbor_positions.size())
+	var to_centroid: Vector2 = centroid - global_position
+	if to_centroid.length_squared() < 1.0:
+		return Vector2.ZERO
+	var dir: Vector2 = to_centroid.normalized()
+	# Soft cap: too many close neighbors flips the bias.
+	if close_count >= CLUSTER_CROWD_THRESHOLD:
+		return -dir
+	return dir
 
 
 func _pick_wander_direction() -> Vector2:
