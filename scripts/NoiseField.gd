@@ -126,23 +126,32 @@ func _maybe_trigger_horde(pos: Vector2, base_size: int, tier_label: String) -> v
 
 
 func _attract_zombies() -> void:
+	# Two paths:
+	#   hear_noise(pos, magnitude, distance) - new perception API. Zombie
+	#     filters by its own hearing range and attenuation; we just deliver
+	#     every emitter so the zombie can decide what it hears.
+	#   investigate(pos)                     - legacy path for zombie types
+	#     not yet migrated to the perception system; uses emitter reach.
 	for u in get_tree().get_nodes_in_group("units"):
 		if not is_instance_valid(u):
 			continue
 		if u.faction != 2:
 			continue
-		if not u.has_method("investigate"):
-			continue
-		var best_emitter = null
-		var best_intensity: float = 0.0
-		for e in _emitters:
-			var reach: float = min(e.intensity * REACH_PER_NOISE, MAX_REACH)
-			var d: float = u.global_position.distance_to(e.position)
-			if d <= reach and e.intensity > best_intensity:
-				best_intensity = e.intensity
-				best_emitter = e
-		if best_emitter != null:
-			u.investigate(best_emitter.position)
+		if u.has_method("hear_noise"):
+			for e in _emitters:
+				var d: float = u.global_position.distance_to(e.position)
+				u.hear_noise(e.position, e.intensity, d)
+		elif u.has_method("investigate"):
+			var best_emitter = null
+			var best_intensity: float = 0.0
+			for e in _emitters:
+				var reach: float = min(e.intensity * REACH_PER_NOISE, MAX_REACH)
+				var d: float = u.global_position.distance_to(e.position)
+				if d <= reach and e.intensity > best_intensity:
+					best_intensity = e.intensity
+					best_emitter = e
+			if best_emitter != null:
+				u.investigate(best_emitter.position)
 
 
 func _trigger_horde(target: Vector2, size: int) -> void:

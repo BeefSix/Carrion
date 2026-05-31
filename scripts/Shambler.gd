@@ -1,6 +1,6 @@
 extends "res://scripts/Unit.gd"
 
-enum ZombieState { IDLE, ACQUIRING, INVESTIGATE, CHASE, ATTACK }
+enum ZombieState { IDLE, ACQUIRING, INVESTIGATE, SEARCHING, CHASE, ATTACK }
 
 # Per-type perception parameters. The Zombie Substrate spec specifies these
 # as per-type so Shambler / Runner / Brute can each carry their own values;
@@ -15,6 +15,16 @@ const VISION_CONE_HALF_RAD := deg_to_rad(VISION_CONE_DEG * 0.5)
 const VISION_EDGE_FUZZ_RAD := deg_to_rad(10.0)
 const HEARING_RANGE_TILES := 12
 const HEARING_RANGE_PX := HEARING_RANGE_TILES * 32.0
+# Hearing requires the attenuated magnitude to clear this threshold or the
+# zombie treats the noise as background. Suppresses single-tile footfalls
+# and other low-magnitude events from triggering investigation.
+const HEARING_MIN_EFFECTIVE := 5.0
+# Investigation arrives at noise position, then searches around it for
+# this duration before returning to baseline wander.
+const SEARCH_DURATION_MIN := 15.0
+const SEARCH_DURATION_MAX := 20.0
+const SEARCH_RADIUS := 60.0
+const SEARCH_REPATH_INTERVAL := 3.0
 
 const ACQUISITION_TIME_MIN := 0.5
 const ACQUISITION_TIME_MAX := 1.5
@@ -56,6 +66,9 @@ var _acquisition_timer: float = 0.0
 var _facing_angle: float = 0.0          # current facing in radians
 var _desired_facing_angle: float = 0.0  # angle we are pivoting toward
 var _head_turn_timer: float = 0.0
+# Hearing investigation state (SEARCHING phase after arriving at noise).
+var _search_timer: float = 0.0
+var _search_repath_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -134,14 +147,33 @@ func _draw() -> void:
 func investigate(world_pos: Vector2) -> void:
 	if _zombie_state == ZombieState.CHASE or _zombie_state == ZombieState.ATTACK:
 		return
-	if _zombie_state == ZombieState.INVESTIGATE and _investigate_target.distance_to(world_pos) < 50.0:
+	# If already investigating / searching this same area, refresh the
+	# search timer instead of restarting (sustained noise extends interest).
+	if (_zombie_state == ZombieState.INVESTIGATE or _zombie_state == ZombieState.SEARCHING) and \
+		_investigate_target.distance_to(world_pos) < 50.0:
+		if _zombie_state == ZombieState.SEARCHING:
+			_search_timer = max(_search_timer, randf_range(SEARCH_DURATION_MIN, SEARCH_DURATION_MAX))
 		return
 	_investigate_target = world_pos
 	_zombie_state = ZombieState.INVESTIGATE
 	_wandering = false
-	# Turn to face the noise as we head toward it.
+	# Turn to face the noise as we head toward it. _tick_facing will pivot
+	# us over ~1.3 sec - that's the spec's "1-2 second pivot" naturally.
 	_set_desired_facing(world_pos)
 	_nav.target_position = world_pos
+
+
+# Called by NoiseField for every active emitter. Zombie filters by its own
+# per-type hearing range and noise attenuation; triggers investigate() if
+# the effective magnitude clears the threshold.
+func hear_noise(noise_pos: Vector2, magnitude: float, distance: float) -> void:
+	if distance > HEARING_RANGE_PX:
+		return
+	var attenuation: float = 1.0 - (distance / HEARING_RANGE_PX)
+	var effective: float = magnitude * attenuation
+	if effective < HEARING_MIN_EFFECTIVE:
+		return
+	investigate(noise_pos)
 
 
 # Vision detection: distance, cone (with edge fuzziness), then LOS.
@@ -293,11 +325,41 @@ func _physics_process(delta: float) -> void:
 				_zombie_state = ZombieState.CHASE
 				_nav.target_position = _target.global_position
 			elif global_position.distance_to(_investigate_target) <= INVESTIGATE_ARRIVE_RANGE:
-				_zombie_state = ZombieState.IDLE
+				# Arrived at the noise but no target spotted - enter
+				# investigative wandering for 15-20 sec.
+				_zombie_state = ZombieState.SEARCHING
+				_search_timer = randf_range(SEARCH_DURATION_MIN, SEARCH_DURATION_MAX)
+				_search_repath_timer = 0.0
 				velocity = Vector2.ZERO
 			else:
 				_set_desired_facing(_investigate_target)
 				_follow_navigation()
+		ZombieState.SEARCHING:
+			# Wander in a small radius around the noise position. Drops back
+			# to IDLE when the timer expires or transitions to CHASE if a
+			# target is spotted mid-search.
+			if _target != null:
+				_zombie_state = ZombieState.CHASE
+				_nav.target_position = _target.global_position
+				return
+			_search_timer -= delta
+			if _search_timer <= 0.0:
+				_zombie_state = ZombieState.IDLE
+				velocity = Vector2.ZERO
+				return
+			_search_repath_timer -= delta
+			if _search_repath_timer <= 0.0:
+				_search_repath_timer = SEARCH_REPATH_INTERVAL
+				var offset := Vector2(
+					randf_range(-SEARCH_RADIUS, SEARCH_RADIUS),
+					randf_range(-SEARCH_RADIUS, SEARCH_RADIUS),
+				)
+				var search_pos: Vector2 = _investigate_target + offset
+				search_pos.x = clamp(search_pos.x, 50.0, 6094.0)
+				search_pos.y = clamp(search_pos.y, 50.0, 6094.0)
+				_nav.target_position = search_pos
+				_set_desired_facing(search_pos)
+			_follow_navigation()
 		ZombieState.CHASE:
 			if _target == null or not is_instance_valid(_target):
 				_zombie_state = ZombieState.IDLE
