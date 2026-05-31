@@ -94,6 +94,15 @@ const CLUSTER_FAR_RADIUS_PX := 12.0 * 32.0    # 12 tiles - cluster membership qu
 const CLUSTER_CLOSE_RADIUS_PX := 4.0 * 32.0   # 4 tiles - crowding query (was 6)
 const CLUSTER_BIAS_PROBABILITY := 0.45        # Bumped back up from 0.10 - density gradient can't seed clusters out of sparse populations; centroid bias is the cold-start mechanism
 
+# Cluster cohesion: once a zombie is in a tight cluster (2+ neighbors
+# within ~5 tiles), copy the nearest neighbor's active wander target
+# instead of picking independently. Keeps formed groups moving as one
+# unit instead of dispersing on independent direction picks.
+const COHESION_RADIUS_PX := 5.0 * 32.0      # 5 tiles
+const COHESION_PROBABILITY := 0.70           # 70% of picks inside a cluster follow
+const COHESION_NEIGHBOR_THRESHOLD := 2       # need 2+ neighbors to count as a cluster
+const COHESION_TARGET_JITTER := 24.0         # so followers don't stack on the exact pixel
+
 # Phase 2.5 state cascade: when one zombie transitions IDLE -> INVESTIGATE
 # or IDLE -> ACQUIRING, nearby idle zombies have a chance to follow with
 # delayed propagation. Damped through three rings - primary 35%, secondary
@@ -601,21 +610,20 @@ func _tick_wander(delta: float) -> void:
 
 
 func _start_wander() -> void:
-	# Direction selection layers:
-	#   55% chance: cluster bias. Returns a TARGET POSITION (not direction)
-	#     so the wander step can travel a meaningful fraction of the way
-	#     toward the centroid - that's what makes clods actually tighten
-	#     instead of just drifting one tile per cycle.
-	#   otherwise:   env-scored candidate sampling (decay + buildings +
-	#     open terrain weights), short standard wander.
+	# Direction selection layers in priority order:
+	#   1. Cluster cohesion: if 2+ neighbors within 5 tiles, 70% chance to
+	#      copy the nearest cluster member's active wander target (with
+	#      small jitter). This is what keeps formed clusters moving as one.
+	#   2. Cluster centroid bias: 45% chance to bias toward the centroid of
+	#      ALL nearby zombies. Seeds clusters from sparse populations.
+	#   3. Env-scored candidate sampling: density gradient + decay +
+	#      buildings + open terrain + noise residue, weighted-random pick.
 	var target: Vector2 = Vector2.ZERO
-	var used_cluster: bool = false
-	if randf() < CLUSTER_BIAS_PROBABILITY:
-		var ct: Vector2 = _cluster_bias_target()
-		if ct != Vector2.ZERO:
-			target = ct
-			used_cluster = true
-	if not used_cluster:
+	if randf() < COHESION_PROBABILITY:
+		target = _find_cluster_leader_target()
+	if target == Vector2.ZERO and randf() < CLUSTER_BIAS_PROBABILITY:
+		target = _cluster_bias_target()
+	if target == Vector2.ZERO:
 		var direction: Vector2 = _pick_wander_direction()
 		target = global_position + direction * WANDER_RADIUS
 	target.x = clamp(target.x, 50.0, 6094.0)
@@ -623,6 +631,50 @@ func _start_wander() -> void:
 	_wander_target = target
 	_wandering = true
 	_nav.target_position = _wander_target
+
+
+# Public accessor so other Shamblers in the same cluster can copy our
+# travel destination. Returns ZERO if we're not actively wandering or
+# not in IDLE state (don't propagate chase/investigate targets).
+func get_active_wander_target() -> Vector2:
+	if _wandering and _zombie_state == ZombieState.IDLE:
+		return _wander_target
+	return Vector2.ZERO
+
+
+func _find_cluster_leader_target() -> Vector2:
+	# Look for nearby zombies who already have an active wander destination.
+	# Require COHESION_NEIGHBOR_THRESHOLD+ total neighbors so we don't trigger
+	# cohesion when paired with just one other zombie - that's a wandering
+	# pair, not a cluster. Return the nearest leader's target with jitter
+	# so followers spread slightly instead of stacking.
+	var leader = null
+	var leader_dist: float = INF
+	var nearby_count: int = 0
+	for other in get_tree().get_nodes_in_group("units"):
+		if other == self or not is_instance_valid(other):
+			continue
+		if other.faction != Faction.ZOMBIE:
+			continue
+		var d: float = global_position.distance_to(other.global_position)
+		if d > COHESION_RADIUS_PX:
+			continue
+		nearby_count += 1
+		if not other.has_method("get_active_wander_target"):
+			continue
+		var t: Vector2 = other.get_active_wander_target()
+		if t == Vector2.ZERO:
+			continue
+		if d < leader_dist:
+			leader_dist = d
+			leader = other
+	if nearby_count < COHESION_NEIGHBOR_THRESHOLD or leader == null:
+		return Vector2.ZERO
+	var leader_target: Vector2 = leader.get_active_wander_target()
+	return leader_target + Vector2(
+		randf_range(-COHESION_TARGET_JITTER, COHESION_TARGET_JITTER),
+		randf_range(-COHESION_TARGET_JITTER, COHESION_TARGET_JITTER),
+	)
 
 
 # Public so other Shamblers can check whether to include this one in their
