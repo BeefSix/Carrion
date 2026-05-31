@@ -130,6 +130,20 @@ const HOME_PIN_COMMIT_DECAY := 0.04             # per update tick when alone
 const HOME_PIN_COMMIT_THRESHOLD := 0.4          # pin used as magnetic target above this
 const HOME_PIN_COMMIT_MAX := 1.0
 
+# Ambient noise: each zombie emits a low-magnitude moan periodically.
+# Bypasses NoiseField entirely (so cumulative cluster moans can't
+# accidentally trigger horde spawns) - directly invokes hear_noise on
+# nearby zombies and deposits small residue. This is the self-
+# reinforcing loop: clustered zombies moan, nearby zombies hear and
+# investigate, walk in, commit, moan too. Pool grows. Hearing-only
+# reach keeps the effect local: distant clusters don't poach each
+# other's members.
+const AMBIENT_NOISE_INTERVAL_MIN := 12.0
+const AMBIENT_NOISE_INTERVAL_MAX := 22.0
+const AMBIENT_NOISE_MAGNITUDE := 7.0       # just above HEARING_MIN_EFFECTIVE at close range
+const AMBIENT_NOISE_RESIDUE := 4.0          # small residue deposit on each moan
+const AMBIENT_NOISE_HEARING_RANGE_PX := 6.0 * 32.0  # 6-tile reach - shorter than full hearing
+
 # Cluster stickiness: once a zombie is in a populated ZombieField cell,
 # its wander picks should mostly shuffle in place and its timer should
 # tick down slower. Without this, the 25% of picks that fall through
@@ -220,6 +234,7 @@ var _wander_start_pos: Vector2 = Vector2.ZERO
 var _home_pin: Vector2 = Vector2.ZERO
 var _home_pin_commit: float = 0.0
 var _home_pin_timer: float = 0.0
+var _ambient_noise_timer: float = 0.0
 # Cascade pending state - level we joined at (-1 = no pending), the
 # stimulus we'll investigate when the delay timer fires, and the timer.
 var _pending_cascade_level: int = -1
@@ -231,6 +246,7 @@ func _ready() -> void:
 	super._ready()
 	_wander_timer = randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
 	_head_turn_timer = randf_range(HEAD_TURN_INTERVAL_MIN, HEAD_TURN_INTERVAL_MAX)
+	_ambient_noise_timer = randf_range(AMBIENT_NOISE_INTERVAL_MIN, AMBIENT_NOISE_INTERVAL_MAX)
 	# Initial facing: random cardinal-ish so spawned zombies aren't all
 	# looking the same direction. Faces "south" by default before this.
 	_facing_angle = randf() * TAU
@@ -544,6 +560,12 @@ func _physics_process(delta: float) -> void:
 	if _home_pin_timer <= 0.0:
 		_home_pin_timer = HOME_PIN_UPDATE_INTERVAL
 		_update_home_pin()
+	# Ambient moan: emit periodically to attract nearby zombies and
+	# deposit residue. Bypasses NoiseField so no horde spawn risk.
+	_ambient_noise_timer -= delta
+	if _ambient_noise_timer <= 0.0:
+		_ambient_noise_timer = randf_range(AMBIENT_NOISE_INTERVAL_MIN, AMBIENT_NOISE_INTERVAL_MAX)
+		_emit_ambient_noise()
 	# Drop tribal alignment when the timer runs out (force-spawned zombies
 	# revert to standard wild behavior).
 	if is_tribal_aligned:
@@ -765,6 +787,29 @@ func _zombie_field_density_here() -> int:
 	if zf == null or not zf.has_method("get_density_at"):
 		return 0
 	return zf.get_density_at(global_position)
+
+
+func _emit_ambient_noise() -> void:
+	# Deposit small residue for long-term attraction trail.
+	var zf = get_tree().get_first_node_in_group("zombie_field")
+	if zf != null and zf.has_method("deposit_residue"):
+		zf.deposit_residue(global_position, AMBIENT_NOISE_RESIDUE)
+	# Direct hear_noise to nearby zombies in range. We don't go through
+	# NoiseField because zombie clusters would accumulate cumulative
+	# intensity over time and risk false-triggering the horde spawn
+	# thresholds. Direct calls mean each moan is independently evaluated
+	# by each listener and creates no persistent emitter.
+	for other in get_tree().get_nodes_in_group("units"):
+		if other == self or not is_instance_valid(other):
+			continue
+		if other.faction != Faction.ZOMBIE:
+			continue
+		if not other.has_method("hear_noise"):
+			continue
+		var d: float = global_position.distance_to(other.global_position)
+		if d > AMBIENT_NOISE_HEARING_RANGE_PX:
+			continue
+		other.hear_noise(global_position, AMBIENT_NOISE_MAGNITUDE, d)
 
 
 func _update_home_pin() -> void:
