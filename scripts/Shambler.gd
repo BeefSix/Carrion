@@ -92,6 +92,18 @@ const WANDER_DECAY_QUERY_TILES := 8
 const CLUSTER_FAR_RADIUS_PX := 12.0 * 32.0    # 12 tiles - cluster membership query
 const CLUSTER_CLOSE_RADIUS_PX := 4.0 * 32.0   # 4 tiles - crowding query (was 6)
 const CLUSTER_BIAS_PROBABILITY := 0.10        # Phase 2.5: density gradient takes over primary pooling; centroid bias is supplemental at 10%
+
+# Phase 2.5 state cascade: when one zombie transitions IDLE -> INVESTIGATE
+# or IDLE -> ACQUIRING, nearby idle zombies have a chance to follow with
+# delayed propagation. Damped through three rings - primary 35%, secondary
+# 20%, tertiary 10% - so the wave dies out naturally.
+const CASCADE_RADIUS_PX := 8.0 * 32.0
+const CASCADE_PROB_PRIMARY := 0.35     # level 0 originator -> recipients
+const CASCADE_PROB_SECONDARY := 0.20   # level 1 (joined primary) -> recipients
+const CASCADE_PROB_TERTIARY := 0.10    # level 2+ (joined secondary or beyond)
+const CASCADE_MAX_LEVEL := 3           # stop propagating past tertiary ring
+const CASCADE_DELAY_MIN := 1.0
+const CASCADE_DELAY_MAX := 3.0
 const CLUSTER_CROWD_THRESHOLD := 14           # 14+ within close radius -> repel (was 8)
 const CLUSTER_TRAVEL_FRACTION := 0.6          # how much of centroid distance to travel each wander
 const CLUSTER_TRAVEL_MAX_PX := 220.0          # cap so a single wander step doesn't teleport across the map
@@ -128,6 +140,11 @@ var _search_repath_timer: float = 0.0
 # LOST_TARGET state remembers where the lost target was last seen so the
 # zombie can walk there before giving up.
 var _last_known_pos: Vector2 = Vector2.ZERO
+# Cascade pending state - level we joined at (-1 = no pending), the
+# stimulus we'll investigate when the delay timer fires, and the timer.
+var _pending_cascade_level: int = -1
+var _pending_cascade_stimulus: Vector2 = Vector2.ZERO
+var _pending_cascade_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -207,29 +224,72 @@ func _draw() -> void:
 		draw_rect(Rect2(bar_x, bar_y, bar_w * fill_ratio, 2.5), Color(0.35, 0.65, 0.3))
 
 
-func investigate(world_pos: Vector2) -> void:
+func investigate(world_pos: Vector2, cascade_join_level: int = -1) -> void:
+	# cascade_join_level: -1 means this is an originating investigation
+	# (gunshot heard, noise emitter triggered, etc.) and outbound broadcast
+	# is primary (level 0). Otherwise the zombie joined a cascade at that
+	# level, and outbound broadcast is at level + 1 with damped probability.
 	if _zombie_state == ZombieState.CHASE or _zombie_state == ZombieState.ATTACK:
 		return
-	# Lost-target pursuit shouldn't be diverted by noise - the zombie is
-	# already heading somewhere specific to look for someone they just lost.
 	if _zombie_state == ZombieState.LOST_TARGET:
 		return
-	# Anti-thrash: new noise within PERSIST_RADIUS_PX of the active
-	# investigation / search location is treated as reinforcement of the
-	# existing investigation, extending the search timer. Otherwise a new
-	# fresh investigation starts.
 	if (_zombie_state == ZombieState.INVESTIGATE or _zombie_state == ZombieState.SEARCHING) and \
 		_investigate_target.distance_to(world_pos) < PERSIST_RADIUS_PX:
 		if _zombie_state == ZombieState.SEARCHING:
 			_search_timer = max(_search_timer, randf_range(SEARCH_DURATION_MIN, SEARCH_DURATION_MAX))
 		return
+	var was_idle: bool = (_zombie_state == ZombieState.IDLE)
 	_investigate_target = world_pos
 	_zombie_state = ZombieState.INVESTIGATE
 	_wandering = false
-	# Turn to face the noise as we head toward it. _tick_facing will pivot
-	# us over ~1.3 sec - that's the spec's "1-2 second pivot" naturally.
 	_set_desired_facing(world_pos)
 	_nav.target_position = world_pos
+	# Cascade broadcast on IDLE -> INVESTIGATE transition only. Originators
+	# broadcast primary; cascade-followers broadcast next-level-up.
+	if was_idle:
+		var out_level: int = 0 if cascade_join_level < 0 else cascade_join_level + 1
+		_broadcast_cascade(world_pos, out_level)
+
+
+# Called by another zombie's _broadcast_cascade when this zombie is within
+# the cascade radius and the probability roll passed. We queue a delayed
+# investigate; the delay (1-3 sec randomized) is what produces visible
+# wave propagation through the cluster.
+func on_cascade(stimulus_pos: Vector2, level: int) -> void:
+	if level > CASCADE_MAX_LEVEL:
+		return
+	if _zombie_state != ZombieState.IDLE:
+		return
+	if _pending_cascade_level >= 0:
+		return  # already have a pending cascade; ignore subsequent triggers
+	_pending_cascade_stimulus = stimulus_pos
+	_pending_cascade_level = level
+	_pending_cascade_timer = randf_range(CASCADE_DELAY_MIN, CASCADE_DELAY_MAX)
+
+
+func _broadcast_cascade(stimulus_pos: Vector2, level: int) -> void:
+	if level > CASCADE_MAX_LEVEL:
+		return
+	var prob: float = CASCADE_PROB_PRIMARY
+	if level == 1:
+		prob = CASCADE_PROB_SECONDARY
+	elif level >= 2:
+		prob = CASCADE_PROB_TERTIARY
+	for other in get_tree().get_nodes_in_group("units"):
+		if other == self or not is_instance_valid(other):
+			continue
+		if other.faction != Faction.ZOMBIE:
+			continue
+		if not other.has_method("on_cascade"):
+			continue
+		if not (other.has_method("is_currently_idle") and other.is_currently_idle()):
+			continue
+		var d: float = global_position.distance_to(other.global_position)
+		if d > CASCADE_RADIUS_PX:
+			continue
+		if randf() > prob:
+			continue
+		other.on_cascade(stimulus_pos, level)
 
 
 # Called by NoiseField for every active emitter. Zombie filters by its own
@@ -416,6 +476,16 @@ func _physics_process(delta: float) -> void:
 
 	match _zombie_state:
 		ZombieState.IDLE:
+			# Pending cascade timer: when it fires, transition to INVESTIGATE
+			# with the level we joined at so re-broadcast damps correctly.
+			if _pending_cascade_level >= 0:
+				_pending_cascade_timer -= delta
+				if _pending_cascade_timer <= 0.0:
+					var join_lvl: int = _pending_cascade_level
+					var stim: Vector2 = _pending_cascade_stimulus
+					_pending_cascade_level = -1
+					investigate(stim, join_lvl)
+					return
 			_tick_idle_head_turn(delta)
 			_tick_wander(delta)
 		ZombieState.ACQUIRING:
@@ -721,9 +791,14 @@ func _update_perception(_delta: float) -> void:
 		return
 	if _zombie_state == ZombieState.ACQUIRING and _acquiring_target == best:
 		return
+	var was_idle: bool = (_zombie_state == ZombieState.IDLE)
 	_acquiring_target = best
 	_acquisition_timer = _compute_acquisition_delay(best.global_position)
 	_zombie_state = ZombieState.ACQUIRING
+	# Cascade broadcast on IDLE -> ACQUIRING - other idle zombies don't
+	# have vision on the target but will investigate the target's position.
+	if was_idle:
+		_broadcast_cascade(best.global_position, 0)
 
 
 func _find_visible_target():
