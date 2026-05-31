@@ -1,6 +1,6 @@
 extends "res://scripts/Unit.gd"
 
-enum ZombieState { IDLE, ACQUIRING, INVESTIGATE, SEARCHING, CHASE, ATTACK }
+enum ZombieState { IDLE, ACQUIRING, INVESTIGATE, SEARCHING, LOST_TARGET, CHASE, ATTACK }
 
 # Per-type perception parameters. The Zombie Substrate spec specifies these
 # as per-type so Shambler / Runner / Brute can each carry their own values;
@@ -25,6 +25,11 @@ const SEARCH_DURATION_MIN := 15.0
 const SEARCH_DURATION_MAX := 20.0
 const SEARCH_RADIUS := 60.0
 const SEARCH_REPATH_INTERVAL := 3.0
+# Anti-thrash radius - new noise within this distance of an active
+# investigation / search location is treated as reinforcement of the
+# existing investigation, not as a fresh one. Bumped from 50 px to 8
+# tiles (256 px) per Phase 2 spec.
+const PERSIST_RADIUS_PX := 256.0
 
 const ACQUISITION_TIME_MIN := 0.5
 const ACQUISITION_TIME_MAX := 1.5
@@ -98,6 +103,9 @@ var _head_turn_timer: float = 0.0
 # Hearing investigation state (SEARCHING phase after arriving at noise).
 var _search_timer: float = 0.0
 var _search_repath_timer: float = 0.0
+# LOST_TARGET state remembers where the lost target was last seen so the
+# zombie can walk there before giving up.
+var _last_known_pos: Vector2 = Vector2.ZERO
 
 
 func _ready() -> void:
@@ -180,10 +188,16 @@ func _draw() -> void:
 func investigate(world_pos: Vector2) -> void:
 	if _zombie_state == ZombieState.CHASE or _zombie_state == ZombieState.ATTACK:
 		return
-	# If already investigating / searching this same area, refresh the
-	# search timer instead of restarting (sustained noise extends interest).
+	# Lost-target pursuit shouldn't be diverted by noise - the zombie is
+	# already heading somewhere specific to look for someone they just lost.
+	if _zombie_state == ZombieState.LOST_TARGET:
+		return
+	# Anti-thrash: new noise within PERSIST_RADIUS_PX of the active
+	# investigation / search location is treated as reinforcement of the
+	# existing investigation, extending the search timer. Otherwise a new
+	# fresh investigation starts.
 	if (_zombie_state == ZombieState.INVESTIGATE or _zombie_state == ZombieState.SEARCHING) and \
-		_investigate_target.distance_to(world_pos) < 50.0:
+		_investigate_target.distance_to(world_pos) < PERSIST_RADIUS_PX:
 		if _zombie_state == ZombieState.SEARCHING:
 			_search_timer = max(_search_timer, randf_range(SEARCH_DURATION_MIN, SEARCH_DURATION_MAX))
 		return
@@ -374,6 +388,19 @@ func _physics_process(delta: float) -> void:
 				velocity = Vector2.ZERO
 			else:
 				_set_desired_facing(_investigate_target)
+				_follow_navigation()
+		ZombieState.LOST_TARGET:
+			# Walk to the last position we saw the target. _update_perception
+			# handles re-acquisition if they reappear. Arriving transitions
+			# to SEARCHING at that location for the 15-20 sec timer.
+			if global_position.distance_to(_last_known_pos) <= INVESTIGATE_ARRIVE_RANGE:
+				_investigate_target = _last_known_pos
+				_zombie_state = ZombieState.SEARCHING
+				_search_timer = randf_range(SEARCH_DURATION_MIN, SEARCH_DURATION_MAX)
+				_search_repath_timer = 0.0
+				velocity = Vector2.ZERO
+			else:
+				_set_desired_facing(_last_known_pos)
 				_follow_navigation()
 		ZombieState.SEARCHING:
 			# Wander in a small radius around the noise position. Drops back
@@ -572,29 +599,46 @@ func _score_wander_direction(dir: Vector2) -> float:
 	return max(0.1, score)
 
 
-# Perception update - replaces the old _update_target. Vision now requires
-# the target to be in range AND in the facing cone (and later, LOS). When
-# a new target is seen, the zombie enters ACQUIRING for 0.5-1.5 seconds
-# before committing to CHASE.
+# Perception update at 5 Hz. Drives state transitions when targets enter
+# or leave vision; LOST_TARGET fires on chase-time vision break.
 func _update_perception(_delta: float) -> void:
-	# If already chasing/attacking a valid target, keep going.
-	if _zombie_state == ZombieState.CHASE or _zombie_state == ZombieState.ATTACK:
+	# CHASE: verify target still visible. Vision break -> LOST_TARGET.
+	if _zombie_state == ZombieState.CHASE:
+		if _target != null and is_instance_valid(_target):
+			if not _can_see(_target.global_position):
+				_last_known_pos = _target.global_position
+				_target = null
+				_zombie_state = ZombieState.LOST_TARGET
+				_nav.target_position = _last_known_pos
+			return
+		_target = null
+		_zombie_state = ZombieState.IDLE
+	# ATTACK: melee range; vision break is rare and the dist check handles
+	# disengagement separately. Don't re-acquire during attack.
+	if _zombie_state == ZombieState.ATTACK:
 		if _target != null and is_instance_valid(_target):
 			return
 		_target = null
+		_zombie_state = ZombieState.IDLE
+	# LOST_TARGET: walk to last known and look for re-acquisition. If we
+	# spot any visible target en route, transition through ACQUIRING normally.
+	if _zombie_state == ZombieState.LOST_TARGET:
+		var maybe_visible = _find_visible_target()
+		if maybe_visible != null:
+			_acquiring_target = maybe_visible
+			_acquisition_timer = randf_range(ACQUISITION_TIME_MIN, ACQUISITION_TIME_MAX)
+			_zombie_state = ZombieState.ACQUIRING
+		return
+	# Normal flow: search for a visible target.
 	var best = _find_visible_target()
 	if best == null:
-		# Lost vision while acquiring -> drop acquisition.
 		if _zombie_state == ZombieState.ACQUIRING:
 			_acquiring_target = null
 			_zombie_state = ZombieState.IDLE
 		_target = null
 		return
-	# Target visible. If we're already acquiring this target, the timer
-	# (in _physics_process match block) handles the commit.
 	if _zombie_state == ZombieState.ACQUIRING and _acquiring_target == best:
 		return
-	# Start acquisition.
 	_acquiring_target = best
 	_acquisition_timer = randf_range(ACQUISITION_TIME_MIN, ACQUISITION_TIME_MAX)
 	_zombie_state = ZombieState.ACQUIRING
