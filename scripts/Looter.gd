@@ -8,6 +8,7 @@ enum Sub {
 	RETURN_HOME,
 	RETURN_TO_HUNT,
 	SEARCH,
+	PATROL,
 }
 
 const MAGNUM_DAMAGE := 22
@@ -34,6 +35,15 @@ const AVOID_RANGE := 160.0
 const AVOID_DETOUR_PX := 120.0
 const AVOID_RETARGET_INTERVAL := 0.5
 
+# Patrol behavior: when a Looter spawns with no kill memory and no zombie
+# in immediate vision, they pick small random offsets and walk to scan
+# new ground rather than standing still. Each leg is short so they cover
+# territory gradually and stay re-routable when zombies appear.
+const PATROL_RADIUS_MIN := 150.0
+const PATROL_RADIUS_MAX := 350.0
+const PATROL_SCAN_INTERVAL := 0.5
+const PATROL_ARRIVE_RANGE := 48.0
+
 var _sub: Sub = Sub.NONE
 var _target_zombie = null
 var _home_base = null
@@ -53,6 +63,9 @@ var _search_wander_timer := 0.0
 # Throttle to avoid hammering _nav.target_position every frame on the return
 # trip; the nav agent re-paths whenever the target changes.
 var _avoid_retarget_timer: float = 0.0
+
+var _patrol_target: Vector2 = Vector2.ZERO
+var _patrol_scan_timer: float = 0.0
 
 
 func move_to(world_pos: Vector2) -> void:
@@ -85,6 +98,8 @@ func _physics_process(delta: float) -> void:
 			_tick_return_to_hunt()
 		Sub.SEARCH:
 			_tick_search(delta)
+		Sub.PATROL:
+			_tick_patrol(delta)
 		_:
 			velocity = Vector2.ZERO
 
@@ -102,11 +117,45 @@ func _pick_next_action() -> void:
 func _try_start_auto_hunt() -> void:
 	var z = _find_nearest_zombie_in_range(HUNT_VISION)
 	if z == null:
-		velocity = Vector2.ZERO
+		# Nothing in vision - start patrolling small offsets to scan more
+		# ground instead of standing still until a zombie wanders by.
+		_start_patrol()
 		return
 	_target_zombie = z
 	_sub = Sub.HUNT_APPROACH
 	_nav.target_position = z.global_position
+
+
+func _start_patrol() -> void:
+	var angle: float = randf() * TAU
+	var dist: float = randf_range(PATROL_RADIUS_MIN, PATROL_RADIUS_MAX)
+	var target: Vector2 = global_position + Vector2.from_angle(angle) * dist
+	target.x = clamp(target.x, 50.0, 6094.0)
+	target.y = clamp(target.y, 50.0, 6094.0)
+	_patrol_target = target
+	_patrol_scan_timer = 0.0
+	_sub = Sub.PATROL
+	_nav.target_position = _patrol_target
+
+
+func _tick_patrol(delta: float) -> void:
+	# Scan for zombies on the way - if one comes into vision, switch to
+	# hunt immediately. Patrol is just to find new ground; the moment
+	# there's a target the patrol is over.
+	_patrol_scan_timer -= delta
+	if _patrol_scan_timer <= 0.0:
+		_patrol_scan_timer = PATROL_SCAN_INTERVAL
+		var z = _find_nearest_zombie_in_range(HUNT_VISION)
+		if z != null:
+			_target_zombie = z
+			_sub = Sub.HUNT_APPROACH
+			_nav.target_position = z.global_position
+			return
+	# Arrived or nav stuck - pick a fresh patrol leg.
+	if global_position.distance_to(_patrol_target) <= PATROL_ARRIVE_RANGE or _nav.is_navigation_finished():
+		_start_patrol()
+		return
+	_follow_navigation()
 
 
 func _start_return_home() -> void:
