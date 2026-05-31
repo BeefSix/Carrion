@@ -25,7 +25,7 @@ const CELL_PX := TILE_PX * CELL_TILES        # 128
 const GRID_SIZE := MAP_TILES / CELL_TILES    # 48
 const TOTAL_CELLS := GRID_SIZE * GRID_SIZE   # 2304
 
-const DENSITY_UPDATE_INTERVAL := 2.5
+const DENSITY_UPDATE_INTERVAL := 1.0  # was 2.5 - faster updates needed now that cell list also drives proximity queries
 const RESIDUE_DECAY_INTERVAL := 1.0
 const RESIDUE_DECAY_MULT := 0.98             # 2% per sec exponential decay
 
@@ -61,6 +61,14 @@ var _residue: PackedFloat32Array
 var _density_timer: float = 0.0
 var _residue_timer: float = 0.0
 
+# Spatial index: cell_index -> Array of zombie nodes in that cell.
+# Updated alongside density (every DENSITY_UPDATE_INTERVAL sec).
+# Used by all hot-path proximity queries in Shambler so we don't
+# iterate the entire units group from each of N zombies every tick.
+# At N=300 this turns O(N^2) = 90,000 ops into O(N + cells_scanned)
+# ~= a few hundred per query.
+var _cell_to_zombies: Dictionary = {}
+
 
 func _ready() -> void:
 	add_to_group("zombie_field")
@@ -81,10 +89,13 @@ func _process(delta: float) -> void:
 		_decay_residue()
 
 
-# Single pass through all zombies; cheap with the coarse grid.
+# Single pass through all zombies; cheap with the coarse grid. Also
+# rebuilds the cell -> zombies spatial index so proximity queries
+# don't have to iterate the units group themselves.
 func _recompute_density() -> void:
 	for i in range(_density.size()):
 		_density[i] = 0
+	_cell_to_zombies.clear()
 	for u in get_tree().get_nodes_in_group("units"):
 		if not is_instance_valid(u):
 			continue
@@ -93,7 +104,45 @@ func _recompute_density() -> void:
 		var cell := _world_to_cell(u.global_position)
 		if cell.x < 0 or cell.x >= GRID_SIZE or cell.y < 0 or cell.y >= GRID_SIZE:
 			continue
-		_density[cell.x + cell.y * GRID_SIZE] += 1
+		var idx: int = cell.x + cell.y * GRID_SIZE
+		_density[idx] += 1
+		if not _cell_to_zombies.has(idx):
+			_cell_to_zombies[idx] = []
+		_cell_to_zombies[idx].append(u)
+
+
+# Spatial proximity query - returns zombies within radius_px of world_pos.
+# Reads from the cell index; data is up to DENSITY_UPDATE_INTERVAL sec
+# stale, which is fine for the slow-update behaviors that use it
+# (captain election, home pin centroid, ambient noise broadcast).
+func get_zombies_within_radius(world_pos: Vector2, radius_px: float) -> Array:
+	var result: Array = []
+	var center_cell := _world_to_cell(world_pos)
+	var cells_radius: int = int(ceil(radius_px / CELL_PX)) + 1
+	for dx in range(-cells_radius, cells_radius + 1):
+		for dy in range(-cells_radius, cells_radius + 1):
+			var cx: int = center_cell.x + dx
+			var cy: int = center_cell.y + dy
+			if cx < 0 or cx >= GRID_SIZE or cy < 0 or cy >= GRID_SIZE:
+				continue
+			var idx: int = cx + cy * GRID_SIZE
+			if not _cell_to_zombies.has(idx):
+				continue
+			for z in _cell_to_zombies[idx]:
+				if not is_instance_valid(z):
+					continue
+				if world_pos.distance_to(z.global_position) <= radius_px:
+					result.append(z)
+	return result
+
+
+# Total number of zombies currently tracked. Used by NoiseField to cap
+# horde spawns when the population is already saturated.
+func get_zombie_count() -> int:
+	var n: int = 0
+	for i in range(_density.size()):
+		n += _density[i]
+	return n
 
 
 func _decay_residue() -> void:

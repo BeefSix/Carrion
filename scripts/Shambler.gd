@@ -732,6 +732,17 @@ func _tick_wander(delta: float) -> void:
 
 func _refresh_captain_status() -> void:
 	var my_id: int = get_instance_id()
+	var zf = get_tree().get_first_node_in_group("zombie_field")
+	if zf != null and zf.has_method("get_zombies_within_radius"):
+		for other in zf.get_zombies_within_radius(global_position, COHESION_RADIUS_PX):
+			if other == self:
+				continue
+			if other.get_instance_id() < my_id:
+				_is_captain = false
+				return
+		_is_captain = true
+		return
+	# Fallback if ZombieField not present.
 	for other in get_tree().get_nodes_in_group("units"):
 		if other == self or not is_instance_valid(other):
 			continue
@@ -794,11 +805,16 @@ func _emit_ambient_noise() -> void:
 	var zf = get_tree().get_first_node_in_group("zombie_field")
 	if zf != null and zf.has_method("deposit_residue"):
 		zf.deposit_residue(global_position, AMBIENT_NOISE_RESIDUE)
-	# Direct hear_noise to nearby zombies in range. We don't go through
-	# NoiseField because zombie clusters would accumulate cumulative
-	# intensity over time and risk false-triggering the horde spawn
-	# thresholds. Direct calls mean each moan is independently evaluated
-	# by each listener and creates no persistent emitter.
+	# Direct hear_noise to nearby zombies via the spatial index. Bypasses
+	# NoiseField so cumulative cluster moans can't false-trigger hordes.
+	if zf != null and zf.has_method("get_zombies_within_radius"):
+		for other in zf.get_zombies_within_radius(global_position, AMBIENT_NOISE_HEARING_RANGE_PX):
+			if other == self or not other.has_method("hear_noise"):
+				continue
+			var d: float = global_position.distance_to(other.global_position)
+			other.hear_noise(global_position, AMBIENT_NOISE_MAGNITUDE, d)
+		return
+	# Fallback - rare, ZombieField always present in normal scenes.
 	for other in get_tree().get_nodes_in_group("units"):
 		if other == self or not is_instance_valid(other):
 			continue
@@ -818,15 +834,23 @@ func _update_home_pin() -> void:
 	# If alone, decay commit (slow loss of pool loyalty).
 	var sum: Vector2 = Vector2.ZERO
 	var count: int = 0
-	for other in get_tree().get_nodes_in_group("units"):
-		if other == self or not is_instance_valid(other):
-			continue
-		if other.faction != Faction.ZOMBIE:
-			continue
-		if global_position.distance_to(other.global_position) > HOME_PIN_NEIGHBOR_RADIUS:
-			continue
-		sum += other.global_position
-		count += 1
+	var zf = get_tree().get_first_node_in_group("zombie_field")
+	if zf != null and zf.has_method("get_zombies_within_radius"):
+		for other in zf.get_zombies_within_radius(global_position, HOME_PIN_NEIGHBOR_RADIUS):
+			if other == self:
+				continue
+			sum += other.global_position
+			count += 1
+	else:
+		for other in get_tree().get_nodes_in_group("units"):
+			if other == self or not is_instance_valid(other):
+				continue
+			if other.faction != Faction.ZOMBIE:
+				continue
+			if global_position.distance_to(other.global_position) > HOME_PIN_NEIGHBOR_RADIUS:
+				continue
+			sum += other.global_position
+			count += 1
 	if count >= HOME_PIN_NEIGHBOR_THRESHOLD:
 		var centroid: Vector2 = sum / float(count)
 		if _home_pin == Vector2.ZERO:
@@ -895,17 +919,26 @@ func _propagate_wander_to_cluster() -> void:
 	# don't immediately repick on next cycle.
 	var nearby_followers: Array = []
 	var nearby_count: int = 0
-	for other in get_tree().get_nodes_in_group("units"):
-		if other == self or not is_instance_valid(other):
-			continue
-		if other.faction != Faction.ZOMBIE:
-			continue
-		var d: float = global_position.distance_to(other.global_position)
-		if d > COHESION_RADIUS_PX:
-			continue
-		nearby_count += 1
-		if other.has_method("follow_leader_wander"):
-			nearby_followers.append(other)
+	var zf = get_tree().get_first_node_in_group("zombie_field")
+	if zf != null and zf.has_method("get_zombies_within_radius"):
+		for other in zf.get_zombies_within_radius(global_position, COHESION_RADIUS_PX):
+			if other == self:
+				continue
+			nearby_count += 1
+			if other.has_method("follow_leader_wander"):
+				nearby_followers.append(other)
+	else:
+		for other in get_tree().get_nodes_in_group("units"):
+			if other == self or not is_instance_valid(other):
+				continue
+			if other.faction != Faction.ZOMBIE:
+				continue
+			var d: float = global_position.distance_to(other.global_position)
+			if d > COHESION_RADIUS_PX:
+				continue
+			nearby_count += 1
+			if other.has_method("follow_leader_wander"):
+				nearby_followers.append(other)
 	if nearby_count < COHESION_NEIGHBOR_THRESHOLD:
 		return
 	# Push ALL followers, no random skip. The previous 5% per-cycle leak

@@ -26,6 +26,7 @@ const TIER_CAT := 3
 const HORDE_COOLDOWN := 30.0
 const WAVE_SIZE_MULTIPLIER := 0.5
 const MAX_WAVE := 4
+const MAX_ZOMBIE_POPULATION := 220  # refuse horde spawns when total zombies reach this
 
 
 class Emitter:
@@ -125,6 +126,15 @@ func _maybe_trigger_horde(pos: Vector2, base_size: int, tier_label: String) -> v
 	if time_since_last < HORDE_COOLDOWN:
 		print("[NoiseField] %s horde suppressed (cooldown %.1fs remaining)" % [tier_label, HORDE_COOLDOWN - time_since_last])
 		return
+	# Population cap - stops the horde-spawn loop from snowballing once
+	# enough zombies are alive to make further spawns redundant for
+	# difficulty AND expensive for the frame budget.
+	var zf = get_tree().get_first_node_in_group("zombie_field")
+	if zf != null and zf.has_method("get_zombie_count"):
+		var current_pop: int = zf.get_zombie_count()
+		if current_pop >= MAX_ZOMBIE_POPULATION:
+			print("[NoiseField] %s horde suppressed (population cap %d/%d)" % [tier_label, current_pop, MAX_ZOMBIE_POPULATION])
+			return
 	_last_horde_time = now
 	var size_mult: float = 1.0 + float(min(_wave_count, MAX_WAVE)) * WAVE_SIZE_MULTIPLIER
 	var actual_size: int = int(round(base_size * size_mult))
