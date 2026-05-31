@@ -52,6 +52,14 @@ func _ready() -> void:
 
 
 func add_noise(world_pos: Vector2, magnitude: float) -> void:
+	# Phase 2.5: every noise event deposits residue on ZombieField's grid,
+	# producing slow persistent attraction to combat areas even after the
+	# immediate horde response has passed. Residue decays exponentially
+	# (2%/sec) so quiet shots fade in ~30 sec; sustained heavy fire keeps
+	# pulling ambient zombies in for 2-3 min.
+	var zf = get_tree().get_first_node_in_group("zombie_field")
+	if zf != null and zf.has_method("deposit_residue"):
+		zf.deposit_residue(world_pos, magnitude)
 	for e in _emitters:
 		if e.position.distance_to(world_pos) <= MERGE_RADIUS:
 			var total: float = e.intensity + magnitude
