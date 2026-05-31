@@ -91,7 +91,7 @@ const WANDER_DECAY_QUERY_TILES := 8
 # pack visibly before the soft cap kicks in.
 const CLUSTER_FAR_RADIUS_PX := 12.0 * 32.0    # 12 tiles - cluster membership query
 const CLUSTER_CLOSE_RADIUS_PX := 4.0 * 32.0   # 4 tiles - crowding query (was 6)
-const CLUSTER_BIAS_PROBABILITY := 0.55        # 55% of direction picks (was 30%)
+const CLUSTER_BIAS_PROBABILITY := 0.10        # Phase 2.5: density gradient takes over primary pooling; centroid bias is supplemental at 10%
 const CLUSTER_CROWD_THRESHOLD := 14           # 14+ within close radius -> repel (was 8)
 const CLUSTER_TRAVEL_FRACTION := 0.6          # how much of centroid distance to travel each wander
 const CLUSTER_TRAVEL_MAX_PX := 220.0          # cap so a single wander step doesn't teleport across the map
@@ -669,6 +669,15 @@ func _score_wander_direction(dir: Vector2) -> float:
 		# 8 vegetation.
 		if tt == 6 or tt == 7 or tt == 8:
 			score *= WANDER_OPEN_PENALTY
+	# Phase 2.5 density gradient pull - bucketed by ZombieField's density
+	# grid. Moderately dense cells pull strongly; saturated cells repel.
+	var zf = get_tree().get_first_node_in_group("zombie_field")
+	if zf != null:
+		if zf.has_method("density_score"):
+			score += zf.density_score(sample_pos)
+		# Noise residue - persistent attraction to recent-activity areas.
+		if zf.has_method("residue_score"):
+			score += zf.residue_score(sample_pos)
 	return max(0.1, score)
 
 
