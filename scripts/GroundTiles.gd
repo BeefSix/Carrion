@@ -15,17 +15,27 @@ const MAP_TILES := 192
 
 # Tile palette - indices must match TownPlanner's TILE_* constants.
 const TILE_COLORS := [
-	Color("2a2a2a"),  # 0 main road (very dark gray)
-	Color("5a5a5a"),  # 1 sidewalk (medium gray)
-	Color("3a3a3a"),  # 2 secondary road (dark gray)
-	Color("2f2820"),  # 3 side street (dark gray-brown, unpaved)
-	Color("404040"),  # 4 parking lot (gray)
-	Color("455040"),  # 5 yard / grass (faded green)
-	Color("4a4035"),  # 6 bare ground (faded brown)
-	Color("4a3a30"),  # 7 dirt road (warm brown)
-	Color("3a4a35"),  # 8 vegetation (desaturated olive)
-	Color("2a2520"),  # 9 rubble (dark warm gray-brown)
-	Color("3a4632"),  # 10 fence (darker green than yard, subtle property line)
+	Color("2a2a2a"),  # 0 main road - very dark gray (unchanged)
+	Color("5a5a5a"),  # 1 sidewalk - medium gray (unchanged)
+	Color("3a3a3a"),  # 2 secondary road - dark gray (unchanged)
+	Color("2f2820"),  # 3 side street - dark gray-brown (unchanged)
+	Color("404040"),  # 4 parking lot - gray (unchanged)
+	Color("444a36"),  # 5 yard - was #455040; muted toward dormant grass
+	                  #   end-of-winter / abandoned lawn family. Lower
+	                  #   saturation so units sit on top of it instead
+	                  #   of being eaten by it.
+	Color("46413a"),  # 6 bare ground - was #4a4035; gentler brown, less
+	                  #   aggressive against neighboring green. Industrial
+	                  #   zones sit closer to the residential palette family.
+	Color("45382e"),  # 7 dirt road - was #4a3a30; same softer-brown
+	                  #   treatment so dirt-road and bare-ground feel
+	                  #   like neighbors not warring colors.
+	Color("3c4032"),  # 8 vegetation - was #3a4a35; pulled toward gray,
+	                  #   reads as long-abandoned overgrowth rather than
+	                  #   lush wilderness.
+	Color("2a2520"),  # 9 rubble - dark warm gray-brown (unchanged)
+	Color("3c402e"),  # 10 fence - was #3a4632; aligned with the new yard
+	                  #   family so the property-line read stays subtle.
 ]
 
 
