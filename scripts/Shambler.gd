@@ -31,8 +31,27 @@ const SEARCH_REPATH_INTERVAL := 3.0
 # tiles (256 px) per Phase 2 spec.
 const PERSIST_RADIUS_PX := 256.0
 
-const ACQUISITION_TIME_MIN := 0.5
-const ACQUISITION_TIME_MAX := 1.5
+# Phase 2 acquisition delay scales with where the target sits within the
+# vision cone. Close + cone-center = fastest commit (target is unmistakable);
+# at edge or near max range = slower (could be a glimpse). Makes peeks at
+# close range risky and at distance safer.
+const ACQUISITION_CENTER_MIN := 0.4
+const ACQUISITION_CENTER_MAX := 0.8
+const ACQUISITION_EDGE_MIN := 1.2
+const ACQUISITION_EDGE_MAX := 2.0
+# Phase 2 range fuzziness - detection probability per perception tick
+# scales toward 0 at the edge of vision range.
+const RANGE_FUZZ_NEAR := 0.75  # at <75% range -> 100% detect
+const RANGE_FUZZ_FAR := 0.9    # 75-90% range -> 75% detect; 90-100% -> 40%
+const RANGE_FUZZ_PROB_NEAR := 0.75
+const RANGE_FUZZ_PROB_FAR := 0.40
+# Phase 2 hearing magnitude stochasticity - noise events near threshold
+# only sometimes trigger investigation. >=HEARING_RELIABLE always; in
+# the band [HEARING_MIN_EFFECTIVE..HEARING_RELIABLE] probability scales
+# linearly between HEARING_PROB_MIN and HEARING_PROB_MAX.
+const HEARING_RELIABLE := 15.0
+const HEARING_PROB_MIN := 0.30
+const HEARING_PROB_MAX := 0.70
 
 # Idle head turns - zombie pivots its facing every 10-15 sec while standing
 # still, simulating slow visual scanning. This is what makes peek-around-
@@ -220,7 +239,34 @@ func hear_noise(noise_pos: Vector2, magnitude: float, distance: float) -> void:
 	var effective: float = magnitude * attenuation
 	if effective < HEARING_MIN_EFFECTIVE:
 		return
+	# Phase 2 stochasticity: in the [HEARING_MIN_EFFECTIVE, HEARING_RELIABLE]
+	# band the noise might or might not trigger investigation. Probability
+	# scales linearly from HEARING_PROB_MIN at threshold to HEARING_PROB_MAX
+	# at reliable. Above HEARING_RELIABLE always triggers.
+	if effective < HEARING_RELIABLE:
+		var t: float = (effective - HEARING_MIN_EFFECTIVE) / (HEARING_RELIABLE - HEARING_MIN_EFFECTIVE)
+		var trigger_prob: float = lerp(HEARING_PROB_MIN, HEARING_PROB_MAX, t)
+		if randf() > trigger_prob:
+			return
 	investigate(noise_pos)
+
+
+func _compute_acquisition_delay(target_pos: Vector2) -> float:
+	# Acquisition timer scales with how "definitive" the sighting is.
+	# A target dead-center in the cone at close range is unmistakable
+	# (0.4-0.8 sec). A target glimpsed at the cone edge or near max range
+	# takes longer to commit to (1.2-2.0 sec). Edge_factor is the max of
+	# the angular fraction (offset / cone-half) and the range fraction
+	# (distance / max-range), each clamped to [0..1].
+	var to_target: Vector2 = target_pos - global_position
+	var distance: float = to_target.length()
+	var range_factor: float = clamp(distance / VISION_RANGE_PX, 0.0, 1.0)
+	var angle_offset: float = absf(_angle_diff(_facing_angle, to_target.angle()))
+	var angle_factor: float = clamp(angle_offset / VISION_CONE_HALF_RAD, 0.0, 1.0)
+	var edge_factor: float = maxf(range_factor, angle_factor)
+	var center_time: float = randf_range(ACQUISITION_CENTER_MIN, ACQUISITION_CENTER_MAX)
+	var edge_time: float = randf_range(ACQUISITION_EDGE_MIN, ACQUISITION_EDGE_MAX)
+	return lerp(center_time, edge_time, edge_factor)
 
 
 # Vision detection: distance, cone (with edge fuzziness), then LOS.
@@ -236,10 +282,19 @@ func _can_see(target_pos: Vector2) -> bool:
 	var angle_offset: float = absf(_angle_diff(_facing_angle, target_angle))
 	if angle_offset > VISION_CONE_HALF_RAD:
 		return false
-	# Edge fuzziness: targets within VISION_EDGE_FUZZ_RAD of the cone
-	# boundary detect at 50% per perception tick instead of 100%.
+	# Edge-of-cone fuzziness (Phase 1): targets within VISION_EDGE_FUZZ_RAD
+	# of the cone boundary detect at 50% per tick instead of 100%.
 	if angle_offset > VISION_CONE_HALF_RAD - VISION_EDGE_FUZZ_RAD:
 		if randf() > 0.5:
+			return false
+	# Range fuzziness (Phase 2): probability drops toward the max range
+	# edge. Beyond 75% range partial chance; beyond 90% range slim chance.
+	var range_factor: float = distance / VISION_RANGE_PX
+	if range_factor > RANGE_FUZZ_FAR:
+		if randf() > RANGE_FUZZ_PROB_FAR:
+			return false
+	elif range_factor > RANGE_FUZZ_NEAR:
+		if randf() > RANGE_FUZZ_PROB_NEAR:
 			return false
 	# LOS: walk segment against every building/wall rect. Buildings and
 	# walls block; ground, fences, other units do NOT block.
@@ -626,7 +681,7 @@ func _update_perception(_delta: float) -> void:
 		var maybe_visible = _find_visible_target()
 		if maybe_visible != null:
 			_acquiring_target = maybe_visible
-			_acquisition_timer = randf_range(ACQUISITION_TIME_MIN, ACQUISITION_TIME_MAX)
+			_acquisition_timer = _compute_acquisition_delay(maybe_visible.global_position)
 			_zombie_state = ZombieState.ACQUIRING
 		return
 	# Normal flow: search for a visible target.
@@ -640,7 +695,7 @@ func _update_perception(_delta: float) -> void:
 	if _zombie_state == ZombieState.ACQUIRING and _acquiring_target == best:
 		return
 	_acquiring_target = best
-	_acquisition_timer = randf_range(ACQUISITION_TIME_MIN, ACQUISITION_TIME_MAX)
+	_acquisition_timer = _compute_acquisition_delay(best.global_position)
 	_zombie_state = ZombieState.ACQUIRING
 
 
