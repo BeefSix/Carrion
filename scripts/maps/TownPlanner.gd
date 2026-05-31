@@ -676,51 +676,72 @@ func _paint_driveway(lot: Dictionary, building: Dictionary, grid: PackedByteArra
 # have back-to-back lots between them, and paint an alley strip at the
 # midpoint. Same for vertical road pairs.
 func step_6_alleys(lots: Array) -> Array:
+	# Bucket residential lots by back-edge position. Both horizontal-fronted
+	# (back edges at top/bottom = alleys run E-W) and vertical-fronted
+	# (back edges at left/right = alleys run N-S). Per user audit: density
+	# bumped substantially - threshold 4 -> 3, probability 0.55 -> 0.90 -
+	# so Tribal infiltration paths and Survivor courtyard cover are
+	# distributed across all four quadrants instead of just one or two.
 	var alleys: Array = []
-	# Group residential lots by which road they front and their side.
-	# Find pairs where back edges face each other.
-	# Simplified: find horizontal alley opportunities (paired horizontal
-	# roads with residential lots between them).
-	var horizontal_back_pairs: Dictionary = {}  # key: (y_top, y_bot), value: [lots in pair]
+	var h_back_pairs: Dictionary = {}
+	var v_back_pairs: Dictionary = {}
 	for lot in lots:
 		if not _is_residential(lot["zone"]):
 			continue
 		var rect: Rect2i = lot["rect"]
 		var frontage_dir: Vector2i = lot["frontage_dir"]
-		if frontage_dir.y == 0:
-			continue
-		# Lot back edge is opposite the frontage direction.
-		var back_y: int = 0
-		if frontage_dir.y < 0:
-			back_y = rect.position.y + rect.size.y  # south back edge
+		if frontage_dir.y != 0:
+			# Horizontal-fronted lot: back edge runs E-W.
+			var back_y: int = 0
+			if frontage_dir.y < 0:
+				back_y = rect.position.y + rect.size.y
+			else:
+				back_y = rect.position.y
+			var hkey: int = back_y / 4
+			if not h_back_pairs.has(hkey):
+				h_back_pairs[hkey] = []
+			h_back_pairs[hkey].append(lot)
 		else:
-			back_y = rect.position.y  # north back edge
-		# Place a row-key by approximate back_y (bucket by 4 tiles)
-		var key: int = back_y / 4
-		if not horizontal_back_pairs.has(key):
-			horizontal_back_pairs[key] = []
-		horizontal_back_pairs[key].append(lot)
-	# For each cluster with 4+ lots, add an alley at the cluster's back_y.
-	for key in horizontal_back_pairs.keys():
-		var cluster: Array = horizontal_back_pairs[key]
-		if cluster.size() < 4:
+			# Vertical-fronted lot: back edge runs N-S.
+			var back_x: int = 0
+			if frontage_dir.x < 0:
+				back_x = rect.position.x + rect.size.x
+			else:
+				back_x = rect.position.x
+			var vkey: int = back_x / 4
+			if not v_back_pairs.has(vkey):
+				v_back_pairs[vkey] = []
+			v_back_pairs[vkey].append(lot)
+	# Horizontal alleys (E-W).
+	for key in h_back_pairs.keys():
+		var cluster: Array = h_back_pairs[key]
+		if cluster.size() < 3:
 			continue
-		# Sample roughly 50-60% of clusters get an alley (per spec).
-		if _rng.randf() > 0.55:
+		if _rng.randf() > 0.90:  # 10% skip rate = 90% fire rate (spec target)
 			continue
-		var back_y: int = key * 4 + 2  # approximate alley y
+		var back_y: int = key * 4 + 2
 		var min_x: int = MAP_TILES
 		var max_x: int = 0
 		for lot in cluster:
 			var r: Rect2i = lot["rect"]
 			min_x = min(min_x, r.position.x)
 			max_x = max(max_x, r.position.x + r.size.x)
-		alleys.append({
-			"axis": "h",
-			"y": back_y,
-			"from": min_x,
-			"to": max_x,
-		})
+		alleys.append({ "axis": "h", "y": back_y, "from": min_x, "to": max_x })
+	# Vertical alleys (N-S).
+	for key in v_back_pairs.keys():
+		var cluster: Array = v_back_pairs[key]
+		if cluster.size() < 3:
+			continue
+		if _rng.randf() > 0.10:
+			continue
+		var back_x: int = key * 4 + 2
+		var min_y: int = MAP_TILES
+		var max_y: int = 0
+		for lot in cluster:
+			var r: Rect2i = lot["rect"]
+			min_y = min(min_y, r.position.y)
+			max_y = max(max_y, r.position.y + r.size.y)
+		alleys.append({ "axis": "v", "x": back_x, "from": min_y, "to": max_y })
 	return alleys
 
 
