@@ -99,9 +99,9 @@ const CLUSTER_BIAS_PROBABILITY := 0.45        # Bumped back up from 0.10 - densi
 # instead of picking independently. Keeps formed groups moving as one
 # unit instead of dispersing on independent direction picks.
 const COHESION_RADIUS_PX := 5.0 * 32.0      # 5 tiles
-const COHESION_PROBABILITY := 0.70           # 70% of picks inside a cluster follow
+const COHESION_PROBABILITY := 0.90           # was 0.70 - bumped for tighter cohesion
 const COHESION_NEIGHBOR_THRESHOLD := 2       # need 2+ neighbors to count as a cluster
-const COHESION_TARGET_JITTER := 24.0         # so followers don't stack on the exact pixel
+const COHESION_TARGET_JITTER := 14.0         # was 24 - tighter formation
 
 # Phase 2.5 state cascade: when one zombie transitions IDLE -> INVESTIGATE
 # or IDLE -> ACQUIRING, nearby idle zombies have a chance to follow with
@@ -611,13 +611,15 @@ func _tick_wander(delta: float) -> void:
 
 func _start_wander() -> void:
 	# Direction selection layers in priority order:
-	#   1. Cluster cohesion: if 2+ neighbors within 5 tiles, 70% chance to
-	#      copy the nearest cluster member's active wander target (with
-	#      small jitter). This is what keeps formed clusters moving as one.
-	#   2. Cluster centroid bias: 45% chance to bias toward the centroid of
-	#      ALL nearby zombies. Seeds clusters from sparse populations.
-	#   3. Env-scored candidate sampling: density gradient + decay +
-	#      buildings + open terrain + noise residue, weighted-random pick.
+	#   1. Passive cohesion: if 2+ neighbors are ALREADY wandering, copy
+	#      one of their targets (catches stragglers whose own timer fires
+	#      after a leader has already started moving).
+	#   2. Centroid bias: 45% chance to bias toward all-zombie centroid.
+	#   3. Env-scored candidate sampling: density / decay / buildings /
+	#      open terrain / noise residue weighted-random pick.
+	# After picking, ACTIVELY PUSH our wander to nearby idle neighbors
+	# so the cluster moves together instead of waiting for individual
+	# timers to fire.
 	var target: Vector2 = Vector2.ZERO
 	if randf() < COHESION_PROBABILITY:
 		target = _find_cluster_leader_target()
@@ -631,6 +633,54 @@ func _start_wander() -> void:
 	_wander_target = target
 	_wandering = true
 	_nav.target_position = _wander_target
+	_propagate_wander_to_cluster()
+
+
+func _propagate_wander_to_cluster() -> void:
+	# We just started wandering. Any nearby idle zombie who hasn't yet
+	# started their own wander gets pulled along with our destination
+	# (with small jitter). They reset their own _wander_timer so they
+	# don't immediately repick on next cycle.
+	var nearby_followers: Array = []
+	var nearby_count: int = 0
+	for other in get_tree().get_nodes_in_group("units"):
+		if other == self or not is_instance_valid(other):
+			continue
+		if other.faction != Faction.ZOMBIE:
+			continue
+		var d: float = global_position.distance_to(other.global_position)
+		if d > COHESION_RADIUS_PX:
+			continue
+		nearby_count += 1
+		if other.has_method("follow_leader_wander"):
+			nearby_followers.append(other)
+	if nearby_count < COHESION_NEIGHBOR_THRESHOLD:
+		return
+	for f in nearby_followers:
+		if randf() < COHESION_PROBABILITY:
+			f.follow_leader_wander(_wander_target)
+
+
+func follow_leader_wander(leader_target: Vector2) -> void:
+	# Called by a cluster leader who just picked a wander direction. We
+	# adopt their target with jitter and start moving immediately,
+	# regardless of our own _wander_timer state. Only fires if we are
+	# IDLE and not already wandering somewhere of our own.
+	if _zombie_state != ZombieState.IDLE:
+		return
+	if _wandering:
+		return
+	var jittered: Vector2 = leader_target + Vector2(
+		randf_range(-COHESION_TARGET_JITTER, COHESION_TARGET_JITTER),
+		randf_range(-COHESION_TARGET_JITTER, COHESION_TARGET_JITTER),
+	)
+	jittered.x = clamp(jittered.x, 50.0, 6094.0)
+	jittered.y = clamp(jittered.y, 50.0, 6094.0)
+	_wander_target = jittered
+	_wandering = true
+	_nav.target_position = _wander_target
+	# Reset our timer so we don't immediately repick on next cycle.
+	_wander_timer = randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
 
 
 # Public accessor so other Shamblers in the same cluster can copy our
