@@ -43,10 +43,10 @@ const TILE_RUBBLE := 9
 
 # Anchor positions (tile coords). Wilderness edge points come from the four
 # cardinal map edges where the main roads exit.
-const ANCHOR_SPAWN_NW := Vector2i(16, 16)
-const ANCHOR_SPAWN_NE := Vector2i(176, 16)
-const ANCHOR_SPAWN_SE := Vector2i(176, 176)
-const ANCHOR_SPAWN_SW := Vector2i(16, 176)
+const ANCHOR_SPAWN_NW := Vector2i(24, 24)
+const ANCHOR_SPAWN_NE := Vector2i(168, 24)
+const ANCHOR_SPAWN_SE := Vector2i(168, 168)
+const ANCHOR_SPAWN_SW := Vector2i(24, 168)
 const ANCHOR_DOWNTOWN := Vector2i(96, 96)
 const ANCHOR_INDUSTRIAL := Vector2i(32, 160)
 const ANCHOR_MEDICAL := Vector2i(160, 48)
@@ -106,10 +106,10 @@ func plan_town(seed_value: int = 1) -> Dictionary:
 	_paint_alleys(data["alleys"], data["tile_grid"])
 	step_7_wilderness_gradient(data["tile_grid"])
 	step_8_variation(data["lots"], data["buildings"], data["tile_grid"])
-	# Steps 9-12 stubbed; phase 4 implements.
-	data["affordances"] = []
-	data["spawn_zones"] = []
-	data["lootables"] = []
+	data["spawn_zones"] = step_10_spawn_clear_zones(data["lots"], data["buildings"], data["tile_grid"])
+	data["lootables"] = step_11_lootable_markers(data["buildings"])
+	data["affordances"] = step_9_affordances(data["tile_grid"], data["buildings"])
+	step_12_validate(data)
 	return data
 
 
@@ -870,17 +870,336 @@ func step_8_variation(lots: Array, buildings: Array, grid: PackedByteArray) -> v
 						grid[x + y * MAP_TILES] = TILE_VEGETATION
 
 
-func step_9_affordances(_grid: PackedByteArray, _buildings: Array) -> Array:
-	return []
+# ---------------------------------------------------------------------
+# Step 9 - per-tile affordances
+# ---------------------------------------------------------------------
+# Five properties per tile, stored as 5 parallel PackedByteArrays in the
+# returned Dictionary. Unit AI queries these to make tactical decisions
+# (cover-seeking, chokepoint defense, route preference). Affordances are
+# data only here; no AI consumes them yet.
+#
+# Watchlist failure mode: "80% of tiles in one category" / "every yard
+# marked contained-area" / "every alley marked chokepoint". Self-validation
+# below counts each category's tile share; if any single value exceeds
+# 60% of relevant tiles we log a warning so the rules can be tightened.
+
+# Coverage
+const COV_OPEN := 0
+const COV_PARTIAL := 1
+const COV_FULL := 2
+const COV_INTERIOR := 3
+# Containment
+const CTN_OPEN := 0
+const CTN_PASSAGE := 1
+const CTN_CHOKEPOINT := 2
+const CTN_CONTAINED := 3
+# Visibility
+const VIS_EXPOSED := 0
+const VIS_SHELTERED := 1
+const VIS_HIDDEN := 2
+# Connectivity (255 = N/A: tile isn't a path)
+const CNN_NONE := 255
+const CNN_THROUGH := 0
+const CNN_JUNCTION := 1
+const CNN_DEAD_END := 2
+# Construction
+const CST_BUILDABLE := 0
+const CST_SURFACE_ONLY := 1
+const CST_BLOCKED := 2
+const CST_RESTRICTED := 3
 
 
-func step_10_spawn_clear_zones(_lots: Array, _buildings: Array) -> Array:
-	return []
+func step_9_affordances(grid: PackedByteArray, _buildings: Array) -> Dictionary:
+	var size: int = MAP_TILES * MAP_TILES
+	var coverage := PackedByteArray()
+	var containment := PackedByteArray()
+	var visibility := PackedByteArray()
+	var connectivity := PackedByteArray()
+	var construction := PackedByteArray()
+	coverage.resize(size)
+	containment.resize(size)
+	visibility.resize(size)
+	connectivity.resize(size)
+	construction.resize(size)
+
+	for x in range(MAP_TILES):
+		for y in range(MAP_TILES):
+			var idx: int = x + y * MAP_TILES
+			var tile: int = grid[idx]
+			# Construction.
+			construction[idx] = _construction_for_tile(tile)
+			# Coverage: interior if rubble placeholder (building footprint),
+			# full at 1 tile from building, partial at 2-3 tiles, open beyond.
+			# Extended from radius 2 to 3 to align with the spec's "near
+			# walls = cover" intent and bring the OPEN distribution under
+			# 60% on a town this size.
+			var cov := COV_OPEN
+			if tile == TILE_RUBBLE and _is_building_placeholder(x, y, grid):
+				cov = COV_INTERIOR
+			else:
+				var nearest_b: int = _distance_to_building(x, y, grid, 3)
+				if nearest_b == 1:
+					cov = COV_FULL
+				elif nearest_b == 2 or nearest_b == 3:
+					cov = COV_PARTIAL
+			coverage[idx] = cov
+			# Visibility derived from coverage + tile context.
+			visibility[idx] = _visibility_from(cov, tile)
+			# Containment.
+			containment[idx] = _containment_for_tile(x, y, tile, grid)
+			# Connectivity: only set if tile is a path-type.
+			if _is_path_tile(tile):
+				connectivity[idx] = _connectivity_for(x, y, grid)
+			else:
+				connectivity[idx] = CNN_NONE
+
+	# Self-validate distribution.
+	_validate_affordance_distribution("coverage", coverage, size)
+	_validate_affordance_distribution("containment", containment, size)
+	_validate_affordance_distribution("visibility", visibility, size)
+	# Connectivity skipped - most tiles are CNN_NONE which is expected.
+	_validate_affordance_distribution("construction", construction, size)
+
+	return {
+		"coverage": coverage,
+		"containment": containment,
+		"visibility": visibility,
+		"connectivity": connectivity,
+		"construction": construction,
+	}
 
 
-func step_11_lootable_markers(_buildings: Array) -> Array:
-	return []
+func _construction_for_tile(tile: int) -> int:
+	match tile:
+		TILE_MAIN_ROAD, TILE_SECONDARY_ROAD, TILE_SIDE_STREET, TILE_DIRT_ROAD, TILE_SIDEWALK, TILE_PARKING_LOT:
+			return CST_SURFACE_ONLY
+		TILE_YARD, TILE_BARE_GROUND, TILE_VEGETATION:
+			return CST_BUILDABLE
+		TILE_RUBBLE:
+			# Rubble placeholders inside building footprints are blocked;
+			# rubble in wilderness is buildable. Distinguish by neighborhood.
+			return CST_BLOCKED  # conservative; phase 4 doesn't differentiate
+	return CST_BUILDABLE
 
 
-func step_12_validate(_data: Dictionary) -> Array:
-	return []
+func _is_path_tile(tile: int) -> bool:
+	return tile == TILE_MAIN_ROAD or tile == TILE_SECONDARY_ROAD or tile == TILE_SIDE_STREET or tile == TILE_DIRT_ROAD or tile == TILE_SIDEWALK
+
+
+func _is_building_placeholder(x: int, y: int, grid: PackedByteArray) -> bool:
+	# Building footprints are 3x3 or larger blocks of TILE_RUBBLE produced
+	# by step 5. A rubble tile with rubble neighbors in 4-connectivity is
+	# almost certainly a building footprint (not edge-band rubble).
+	var n := 0
+	for d in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]:
+		var nx: int = x + d.x
+		var ny: int = y + d.y
+		if nx < 0 or nx >= MAP_TILES or ny < 0 or ny >= MAP_TILES:
+			continue
+		if grid[nx + ny * MAP_TILES] == TILE_RUBBLE:
+			n += 1
+	return n >= 2
+
+
+func _distance_to_building(x: int, y: int, grid: PackedByteArray, max_d: int) -> int:
+	# Manhattan distance to the nearest building placeholder tile, capped
+	# at max_d. Returns max_d + 1 if no building within range.
+	for d in range(1, max_d + 1):
+		for dx in range(-d, d + 1):
+			for dy in range(-d, d + 1):
+				if abs(dx) + abs(dy) != d:
+					continue
+				var nx: int = x + dx
+				var ny: int = y + dy
+				if nx < 0 or nx >= MAP_TILES or ny < 0 or ny >= MAP_TILES:
+					continue
+				var tile: int = grid[nx + ny * MAP_TILES]
+				if tile == TILE_RUBBLE and _is_building_placeholder(nx, ny, grid):
+					return d
+	return max_d + 1
+
+
+func _visibility_from(cov: int, tile: int) -> int:
+	if cov == COV_INTERIOR:
+		return VIS_HIDDEN
+	if cov == COV_FULL or cov == COV_PARTIAL:
+		return VIS_SHELTERED
+	if tile == TILE_DIRT_ROAD and _is_path_tile(tile):  # alley
+		return VIS_SHELTERED
+	if tile == TILE_VEGETATION:
+		return VIS_SHELTERED  # vegetation cover
+	return VIS_EXPOSED
+
+
+func _containment_for_tile(x: int, y: int, tile: int, grid: PackedByteArray) -> int:
+	# Building interiors are not "contained-area" in the spec sense - that's
+	# for outdoor enclosed spaces (yards surrounded by buildings).
+	if tile == TILE_RUBBLE and _is_building_placeholder(x, y, grid):
+		return CTN_OPEN  # interior, doesn't apply
+	# Alleys = passage.
+	if tile == TILE_DIRT_ROAD and _is_path_tile(tile):
+		return CTN_PASSAGE
+	# Containment requires building walls on 3+ sides in a small radius.
+	if tile == TILE_YARD or tile == TILE_PARKING_LOT:
+		var walls_around := 0
+		for d in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]:
+			# Look 2 tiles out for a building wall.
+			for step in range(1, 3):
+				var nx: int = x + d.x * step
+				var ny: int = y + d.y * step
+				if nx < 0 or nx >= MAP_TILES or ny < 0 or ny >= MAP_TILES:
+					break
+				var nt: int = grid[nx + ny * MAP_TILES]
+				if nt == TILE_RUBBLE and _is_building_placeholder(nx, ny, grid):
+					walls_around += 1
+					break
+		if walls_around >= 3:
+			return CTN_CONTAINED
+	return CTN_OPEN
+
+
+func _connectivity_for(x: int, y: int, grid: PackedByteArray) -> int:
+	# Count road neighbors in 4-connectivity.
+	var path_neighbors := 0
+	for d in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]:
+		var nx: int = x + d.x
+		var ny: int = y + d.y
+		if nx < 0 or nx >= MAP_TILES or ny < 0 or ny >= MAP_TILES:
+			continue
+		if _is_path_tile(grid[nx + ny * MAP_TILES]):
+			path_neighbors += 1
+	if path_neighbors >= 3:
+		return CNN_JUNCTION
+	if path_neighbors <= 1:
+		return CNN_DEAD_END
+	return CNN_THROUGH
+
+
+func _validate_affordance_distribution(name: String, arr: PackedByteArray, total: int) -> void:
+	# Count each unique value; warn if any single value covers > 60% of tiles.
+	var counts: Dictionary = {}
+	for v in arr:
+		counts[v] = counts.get(v, 0) + 1
+	for k in counts.keys():
+		var frac: float = float(counts[k]) / float(total)
+		if frac > 0.60:
+			print("[TownPlanner] WARN: %s value %d covers %.1f%% of tiles - rules may be too loose" % [name, k, frac * 100.0])
+
+
+# ---------------------------------------------------------------------
+# Step 10 - spawn clear zones
+# ---------------------------------------------------------------------
+# Around each spawn anchor, clear a 16x16 zone of lots/buildings and set
+# tiles to yard. HQ goes at the center of each cleared zone at match start.
+const SPAWN_CLEAR_RADIUS := 8  # 16x16 zone = 8 tiles each direction from anchor
+
+
+func step_10_spawn_clear_zones(lots: Array, buildings: Array, grid: PackedByteArray) -> Array:
+	var zones: Array = []
+	var spawn_anchors := [
+		ANCHOR_SPAWN_NW, ANCHOR_SPAWN_NE, ANCHOR_SPAWN_SE, ANCHOR_SPAWN_SW,
+	]
+	for anchor in spawn_anchors:
+		var rect := Rect2i(
+			anchor.x - SPAWN_CLEAR_RADIUS,
+			anchor.y - SPAWN_CLEAR_RADIUS,
+			SPAWN_CLEAR_RADIUS * 2,
+			SPAWN_CLEAR_RADIUS * 2,
+		)
+		zones.append({"anchor": anchor, "rect": rect})
+		# Mark intersecting lots / buildings as removed.
+		for i in range(lots.size()):
+			var lot: Dictionary = lots[i]
+			var lr: Rect2i = lot["rect"]
+			if _rects_intersect(lr, rect):
+				lot["spawn_cleared"] = true
+				if i < buildings.size():
+					buildings[i]["spawn_cleared"] = true
+		# Paint clear zone tiles as yard.
+		for x in range(rect.position.x, rect.position.x + rect.size.x):
+			for y in range(rect.position.y, rect.position.y + rect.size.y):
+				if x < 0 or x >= MAP_TILES or y < 0 or y >= MAP_TILES:
+					continue
+				grid[x + y * MAP_TILES] = TILE_YARD
+	return zones
+
+
+func _rects_intersect(a: Rect2i, b: Rect2i) -> bool:
+	return a.position.x < b.position.x + b.size.x and \
+		a.position.x + a.size.x > b.position.x and \
+		a.position.y < b.position.y + b.size.y and \
+		a.position.y + a.size.y > b.position.y
+
+
+# ---------------------------------------------------------------------
+# Step 11 - lootable markers
+# ---------------------------------------------------------------------
+# Convert building data into Lootable spawn entries that Main consumes.
+# Zone -> Lootable.neighborhood_type. Spawn position = building rect
+# center in world pixels.
+func step_11_lootable_markers(buildings: Array) -> Array:
+	var lootables: Array = []
+	for b in buildings:
+		if b.get("vacant", false):
+			continue
+		if b.get("spawn_cleared", false):
+			continue
+		var zone: String = b["zone"]
+		var lootable_type: String = _lootable_type_for_zone(zone)
+		var rect: Rect2i = b["rect"]
+		var center_px := Vector2(
+			(float(rect.position.x) + float(rect.size.x) * 0.5) * IsoView.TILE_WORLD_PX,
+			(float(rect.position.y) + float(rect.size.y) * 0.5) * IsoView.TILE_WORLD_PX,
+		)
+		lootables.append({ "pos": center_px, "type": lootable_type })
+	# Rural farmhouses in the wilderness band - 6 scattered positions.
+	var rural_positions := [
+		Vector2i(10, 96), Vector2i(180, 96), Vector2i(96, 10), Vector2i(96, 180),
+		Vector2i(12, 60), Vector2i(180, 130),
+	]
+	for rp in rural_positions:
+		var center_px2 := Vector2(
+			float(rp.x) * IsoView.TILE_WORLD_PX,
+			float(rp.y) * IsoView.TILE_WORLD_PX,
+		)
+		lootables.append({ "pos": center_px2, "type": "residential" })
+	return lootables
+
+
+func _lootable_type_for_zone(zone: String) -> String:
+	match zone:
+		ZONE_DOWNTOWN:
+			# Mix of commercial and civic - alternate by index would be cleaner
+			# but for now everything in downtown is commercial.
+			return "commercial"
+		ZONE_INDUSTRIAL:
+			return "industrial"
+		ZONE_MEDICAL:
+			# Some are medical, some security
+			return "medical"
+	return "residential"
+
+
+# ---------------------------------------------------------------------
+# Step 12 - validation
+# ---------------------------------------------------------------------
+# Sanity check the final data. Print warnings; nothing is rejected.
+func step_12_validate(data: Dictionary) -> Array:
+	var warnings: Array = []
+	var lots_count: int = (data["lots"] as Array).size()
+	var buildings_count: int = (data["buildings"] as Array).size()
+	var lootables_count: int = (data["lootables"] as Array).size()
+	print("[TownPlanner] %d lots, %d buildings, %d lootables, %d alleys, %d spawn zones" % [
+		lots_count,
+		buildings_count,
+		lootables_count,
+		(data["alleys"] as Array).size(),
+		(data["spawn_zones"] as Array).size(),
+	])
+	if buildings_count > lots_count:
+		warnings.append("buildings exceed lots (should be 1:1)")
+		print("[TownPlanner] WARN: buildings (%d) > lots (%d)" % [buildings_count, lots_count])
+	if lootables_count == 0:
+		warnings.append("no lootables - step 11 failed")
+		print("[TownPlanner] WARN: no lootables generated")
+	return warnings
