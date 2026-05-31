@@ -113,6 +113,18 @@ const MAGNETIC_PROBABILITY := 0.75           # 75% of direction picks just head 
 const MAGNETIC_TRAVEL_FRACTION := 0.75       # travel 75% of the way (vs all the way - leaves room for jostle)
 const MAGNETIC_TRAVEL_MAX_PX := 280.0        # cap per cycle so cross-map magnetic doesn't teleport
 
+# Cluster stickiness: once a zombie is in a populated ZombieField cell,
+# its wander picks should mostly shuffle in place and its timer should
+# tick down slower. Without this, the 25% of picks that fall through
+# the magnetic check end up doing 96 px env-scored wanders - that's the
+# "running off in different directions" the user reported.
+const CLUSTER_SHUFFLE_DENSITY_THRESHOLD := 3   # cell has 3+ zombies -> sticky behavior
+const CLUSTER_SHUFFLE_PROBABILITY := 0.80      # 80% of picks in a populated cell shuffle in place
+const CLUSTER_SHUFFLE_RADIUS_PX := 24.0        # shuffle within +/- 24 px of current position
+const CLUSTER_TIMER_SCALE_LIGHT := 0.5         # 3-4 in cell -> 2x slower timer
+const CLUSTER_TIMER_SCALE_TIGHT := 0.2         # 5+ in cell -> 5x slower timer
+const CLUSTER_TIMER_TIGHT_THRESHOLD := 5
+
 # Phase 2.5 state cascade: when one zombie transitions IDLE -> INVESTIGATE
 # or IDLE -> ACQUIRING, nearby idle zombies have a chance to follow with
 # delayed propagation. Damped through three rings - primary 35%, secondary
@@ -614,24 +626,36 @@ func _tick_wander(delta: float) -> void:
 			_follow_navigation()
 	else:
 		velocity = Vector2.ZERO
-		_wander_timer -= delta
+		# Sticky timer: zombies in populated cells count down slower so
+		# clusters stay coherent for longer before the next pick cycle.
+		var scale: float = 1.0
+		var local_density: int = _zombie_field_density_here()
+		if local_density >= CLUSTER_TIMER_TIGHT_THRESHOLD:
+			scale = CLUSTER_TIMER_SCALE_TIGHT
+		elif local_density >= CLUSTER_SHUFFLE_DENSITY_THRESHOLD:
+			scale = CLUSTER_TIMER_SCALE_LIGHT
+		_wander_timer -= delta * scale
 		if _wander_timer <= 0.0:
 			_start_wander()
 
 
 func _start_wander() -> void:
-	# Direction selection layers in priority order:
-	#   1. Cohesion: copy a wandering leader's target (catches stragglers
-	#      and synchronizes already-formed clusters).
-	#   2. Magnetic: head toward the nearest zombie within 14 tiles. This
-	#      is the cold-start gravity that pulls separated zombies together
-	#      even when nobody is actively wandering yet.
-	#   3. Env-scored pick: density / decay / buildings / open terrain /
-	#      residue weighted-random fallback.
-	# After picking, actively push our target to nearby idle neighbors so
-	# the cluster moves as one unit.
+	# Direction selection priority:
+	#   0. Shuffle-in-place: if we're sitting in a populated ZombieField
+	#      cell (3+ zombies), 80% chance to just pick a tiny offset from
+	#      current position. Clusters stay put 4 out of 5 cycles.
+	#   1. Cohesion: copy a wandering leader's target.
+	#   2. Magnetic: head toward the nearest zombie within 14 tiles.
+	#   3. Env-scored: density / decay / buildings / open terrain pick.
+	# After picking, push our target to nearby idle neighbors.
 	var target: Vector2 = Vector2.ZERO
-	if randf() < COHESION_PROBABILITY:
+	var local_density: int = _zombie_field_density_here()
+	if local_density >= CLUSTER_SHUFFLE_DENSITY_THRESHOLD and randf() < CLUSTER_SHUFFLE_PROBABILITY:
+		target = global_position + Vector2(
+			randf_range(-CLUSTER_SHUFFLE_RADIUS_PX, CLUSTER_SHUFFLE_RADIUS_PX),
+			randf_range(-CLUSTER_SHUFFLE_RADIUS_PX, CLUSTER_SHUFFLE_RADIUS_PX),
+		)
+	if target == Vector2.ZERO and randf() < COHESION_PROBABILITY:
 		target = _find_cluster_leader_target()
 	if target == Vector2.ZERO and randf() < MAGNETIC_PROBABILITY:
 		target = _find_magnetic_target()
@@ -644,6 +668,13 @@ func _start_wander() -> void:
 	_wandering = true
 	_nav.target_position = _wander_target
 	_propagate_wander_to_cluster()
+
+
+func _zombie_field_density_here() -> int:
+	var zf = get_tree().get_first_node_in_group("zombie_field")
+	if zf == null or not zf.has_method("get_density_at"):
+		return 0
+	return zf.get_density_at(global_position)
 
 
 func _find_magnetic_target() -> Vector2:
