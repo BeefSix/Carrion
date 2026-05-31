@@ -106,6 +106,7 @@ func plan_town(seed_value: int = 1) -> Dictionary:
 	_paint_lot_fences(data["lots"], data["tile_grid"])
 	data["alleys"] = step_6_alleys(data["lots"])
 	_paint_alleys(data["alleys"], data["tile_grid"])
+	_blend_zone_boundaries(data["tile_grid"])
 	step_7_wilderness_gradient(data["tile_grid"])
 	step_8_variation(data["lots"], data["buildings"], data["tile_grid"])
 	data["spawn_zones"] = step_10_spawn_clear_zones(data["lots"], data["buildings"], data["tile_grid"])
@@ -745,6 +746,57 @@ func step_6_alleys(lots: Array) -> Array:
 			max_y = max(max_y, r.position.y + r.size.y)
 		alleys.append({ "axis": "v", "x": back_x, "from": min_y, "to": max_y })
 	return alleys
+
+
+# Zone-boundary blending: where residential yard meets industrial /
+# medical / downtown parking lot, the hard color cut reads as two
+# different maps colliding. This pass scans for yard/parking adjacency
+# within a 3-tile radius and replaces some boundary tiles with
+# transitional bare_ground or vegetation, producing a fade rather than
+# a wall. Patch-hash clustering means the mix forms small worn-spot
+# patches, not single-tile noise.
+const BLEND_RADIUS := 3
+
+
+func _blend_zone_boundaries(grid: PackedByteArray) -> void:
+	# First pass: identify lot-interior tiles within BLEND_RADIUS of an
+	# opposite-family lot interior. Skipped tiles include roads, sidewalks,
+	# buildings, fences, etc. - only yard <-> parking transitions count.
+	var to_blend: Array = []
+	for x in range(MAP_TILES):
+		for y in range(MAP_TILES):
+			var tile: int = grid[x + y * MAP_TILES]
+			if tile != TILE_YARD and tile != TILE_PARKING_LOT:
+				continue
+			var found_boundary: bool = false
+			for dx in range(-BLEND_RADIUS, BLEND_RADIUS + 1):
+				if found_boundary:
+					break
+				for dy in range(-BLEND_RADIUS, BLEND_RADIUS + 1):
+					if dx == 0 and dy == 0:
+						continue
+					var nx: int = x + dx
+					var ny: int = y + dy
+					if nx < 0 or nx >= MAP_TILES or ny < 0 or ny >= MAP_TILES:
+						continue
+					var nt: int = grid[nx + ny * MAP_TILES]
+					if (tile == TILE_YARD and nt == TILE_PARKING_LOT) or \
+						(tile == TILE_PARKING_LOT and nt == TILE_YARD):
+						to_blend.append([x, y])
+						found_boundary = true
+						break
+	# Second pass: apply transitional mix via patch-hash clustering.
+	# bare_ground is the bridge tile (sits between green yard and gray
+	# parking); occasional vegetation breaks the bridge band up further.
+	for entry in to_blend:
+		var x: int = entry[0]
+		var y: int = entry[1]
+		var p: int = _patch_value(x, y)
+		if p < 30:
+			grid[x + y * MAP_TILES] = TILE_BARE_GROUND
+		elif p < 40:
+			grid[x + y * MAP_TILES] = TILE_VEGETATION
+		# Otherwise keep current - the band is patchwork, not full overwrite.
 
 
 func _paint_lot_fences(lots: Array, grid: PackedByteArray) -> void:
