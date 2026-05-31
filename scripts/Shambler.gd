@@ -113,6 +113,23 @@ const MAGNETIC_TRAVEL_FRACTION := 0.75       # travel 75% of the way (vs all the
 const MAGNETIC_TRAVEL_MAX_PX := 280.0        # cap per cycle so cross-map magnetic doesn't teleport
 const MAGNETIC_GLOBAL_DENSITY_THRESHOLD := 3 # global densest cell must hold at least this many zombies to attract
 
+# Home pin: each zombie's persistent attachment to a local pool. When
+# near neighbors, the pin drifts to track the local centroid and
+# commit strength grows. When wandering, COMMITTED zombies pull toward
+# their pin (preserving their pool); UNCOMMITTED zombies pull toward
+# the global densest cell (so they go find a pool).
+# This is what produces multiple persistent dense spots instead of one
+# mega-pile: once a zombie commits to pool A, they don't get drawn
+# off to pool B even if B is bigger.
+const HOME_PIN_UPDATE_INTERVAL := 2.0
+const HOME_PIN_NEIGHBOR_RADIUS := 10.0 * 32.0  # 10 tiles to count as "in my pool"
+const HOME_PIN_NEIGHBOR_THRESHOLD := 2          # need 2+ to update + grow commit
+const HOME_PIN_DRIFT_RATE := 0.35               # how fast pin slides to new centroid
+const HOME_PIN_COMMIT_GAIN := 0.18              # per update tick when neighbors present
+const HOME_PIN_COMMIT_DECAY := 0.04             # per update tick when alone
+const HOME_PIN_COMMIT_THRESHOLD := 0.4          # pin used as magnetic target above this
+const HOME_PIN_COMMIT_MAX := 1.0
+
 # Cluster stickiness: once a zombie is in a populated ZombieField cell,
 # its wander picks should mostly shuffle in place and its timer should
 # tick down slower. Without this, the 25% of picks that fall through
@@ -197,6 +214,12 @@ var _is_captain: bool = true
 var _captain_check_timer: float = 0.0
 # Where we started our current wander leg, for pass-by capture distance.
 var _wander_start_pos: Vector2 = Vector2.ZERO
+# Home pin: persistent attachment to local pool. Vector2.ZERO until first
+# commitment forms. Strength 0..1 - we use the pin as magnetic target
+# only when strength >= HOME_PIN_COMMIT_THRESHOLD.
+var _home_pin: Vector2 = Vector2.ZERO
+var _home_pin_commit: float = 0.0
+var _home_pin_timer: float = 0.0
 # Cascade pending state - level we joined at (-1 = no pending), the
 # stimulus we'll investigate when the delay timer fires, and the timer.
 var _pending_cascade_level: int = -1
@@ -514,6 +537,13 @@ func _tick_idle_head_turn(delta: float) -> void:
 func _physics_process(delta: float) -> void:
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
 	_tick_facing(delta)
+	# Home pin tracking runs regardless of state - even chasing/investigating
+	# zombies should keep their pin updated when they're near neighbors, so
+	# that after they finish the chase they return to the same pool.
+	_home_pin_timer -= delta
+	if _home_pin_timer <= 0.0:
+		_home_pin_timer = HOME_PIN_UPDATE_INTERVAL
+		_update_home_pin()
 	# Drop tribal alignment when the timer runs out (force-spawned zombies
 	# revert to standard wild behavior).
 	if is_tribal_aligned:
@@ -737,28 +767,61 @@ func _zombie_field_density_here() -> int:
 	return zf.get_density_at(global_position)
 
 
+func _update_home_pin() -> void:
+	# Scan zombies within HOME_PIN_NEIGHBOR_RADIUS. If we have enough
+	# neighbors, drift our pin toward their centroid and grow commit.
+	# If alone, decay commit (slow loss of pool loyalty).
+	var sum: Vector2 = Vector2.ZERO
+	var count: int = 0
+	for other in get_tree().get_nodes_in_group("units"):
+		if other == self or not is_instance_valid(other):
+			continue
+		if other.faction != Faction.ZOMBIE:
+			continue
+		if global_position.distance_to(other.global_position) > HOME_PIN_NEIGHBOR_RADIUS:
+			continue
+		sum += other.global_position
+		count += 1
+	if count >= HOME_PIN_NEIGHBOR_THRESHOLD:
+		var centroid: Vector2 = sum / float(count)
+		if _home_pin == Vector2.ZERO:
+			_home_pin = centroid
+		else:
+			_home_pin = _home_pin.lerp(centroid, HOME_PIN_DRIFT_RATE)
+		_home_pin_commit = minf(_home_pin_commit + HOME_PIN_COMMIT_GAIN, HOME_PIN_COMMIT_MAX)
+	else:
+		_home_pin_commit = maxf(_home_pin_commit - HOME_PIN_COMMIT_DECAY, 0.0)
+		if _home_pin_commit <= 0.001:
+			_home_pin = Vector2.ZERO
+
+
 func _find_magnetic_target() -> Vector2:
-	# Two-tier magnetic attraction:
-	#   1. Global densest cell. If anywhere on the map has a cluster of
-	#      MAGNETIC_GLOBAL_DENSITY_THRESHOLD+ zombies, target it. This
-	#      pulls lone zombies toward the biggest pile regardless of
-	#      distance - "all zombies attracted to other zombies" requires
-	#      a map-wide signal.
-	#   2. Fallback: nearest individual zombie within MAGNETIC_RADIUS_PX.
-	#      Used when no big cluster exists yet (cold-start) or when we
-	#      ARE the big cluster (densest cell is our own).
-	var zf = get_tree().get_first_node_in_group("zombie_field")
-	if zf != null and zf.has_method("get_densest_cell_center"):
-		var densest_count: int = zf.get_densest_cell_count()
-		if densest_count >= MAGNETIC_GLOBAL_DENSITY_THRESHOLD:
-			var center: Vector2 = zf.get_densest_cell_center()
-			var to_center: Vector2 = center - global_position
-			# If the densest cell IS our own cell (we're in the big pile),
-			# fall through to the nearest-zombie inward nudge instead of
-			# targeting our own position.
-			if to_center.length_squared() > (64.0 * 64.0):
-				var travel_g: float = minf(to_center.length() * MAGNETIC_TRAVEL_FRACTION, MAGNETIC_TRAVEL_MAX_PX)
-				return global_position + to_center.normalized() * travel_g
+	# Three-tier magnetic attraction, decided by commitment:
+	#   1. Committed (home pin > threshold): target our pin. Preserves
+	#      pool identity - we don't get drawn off to a bigger pile
+	#      somewhere else. This is what allows MULTIPLE persistent
+	#      dense spots to form on the map.
+	#   2. Uncommitted + global pile exists: target densest cell on map.
+	#      Lone wanderers seek out the largest pool to join.
+	#   3. Fallback: nearest individual zombie within MAGNETIC_RADIUS_PX.
+	#      Used cold-start when no real pile exists yet.
+	if _home_pin_commit >= HOME_PIN_COMMIT_THRESHOLD and _home_pin != Vector2.ZERO:
+		var to_pin: Vector2 = _home_pin - global_position
+		if to_pin.length_squared() > (32.0 * 32.0):
+			var travel_p: float = minf(to_pin.length() * MAGNETIC_TRAVEL_FRACTION, MAGNETIC_TRAVEL_MAX_PX)
+			return global_position + to_pin.normalized() * travel_p
+		# Already at our pin - fall through to nearest-zombie nudge so
+		# we don't return our own position as target.
+	else:
+		var zf = get_tree().get_first_node_in_group("zombie_field")
+		if zf != null and zf.has_method("get_densest_cell_center"):
+			var densest_count: int = zf.get_densest_cell_count()
+			if densest_count >= MAGNETIC_GLOBAL_DENSITY_THRESHOLD:
+				var center: Vector2 = zf.get_densest_cell_center()
+				var to_center: Vector2 = center - global_position
+				if to_center.length_squared() > (64.0 * 64.0):
+					var travel_g: float = minf(to_center.length() * MAGNETIC_TRAVEL_FRACTION, MAGNETIC_TRAVEL_MAX_PX)
+					return global_position + to_center.normalized() * travel_g
 	# Fallback: nearest individual zombie.
 	var nearest = null
 	var nearest_dist: float = MAGNETIC_RADIUS_PX
