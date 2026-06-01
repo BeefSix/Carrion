@@ -23,9 +23,7 @@ func _ready() -> void:
 
 
 func _die() -> void:
-	var nf = get_tree().get_first_node_in_group("noise_field")
-	if nf != null:
-		nf.add_noise(global_position, DESTROY_NOISE)
+	Noise.emit(global_position, DESTROY_NOISE)
 	_refresh_neighbors()
 	super._die()
 

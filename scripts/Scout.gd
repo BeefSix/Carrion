@@ -187,9 +187,7 @@ func _tick_gather_channel(delta: float) -> void:
 			var room: int = CARRY_CAP - _carrying
 			var amount: int = min(SALVAGE_PER_CHANNEL, room)
 			_carrying += _target_lootable.take_salvage(amount)
-			var nf := get_tree().get_first_node_in_group("noise_field")
-			if nf != null:
-				nf.add_noise(global_position, LOOT_NOISE)
+			Noise.emit(global_position, LOOT_NOISE)
 		if _carrying >= CARRY_CAP:
 			_start_return_home()
 		else:

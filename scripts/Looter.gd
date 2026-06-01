@@ -363,6 +363,4 @@ func _find_nearest_command_post():
 
 
 func _emit_magnum_noise() -> void:
-	var nf := get_tree().get_first_node_in_group("noise_field")
-	if nf != null:
-		nf.add_noise(global_position, MAGNUM_NOISE)
+	Noise.emit(global_position, MAGNUM_NOISE)

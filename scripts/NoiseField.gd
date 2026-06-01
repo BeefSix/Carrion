@@ -8,6 +8,11 @@ const MIN_INTENSITY := 1.0
 const ATTRACT_INTERVAL := 0.4
 const MAP_SIZE := Vector2(6144, 6144)
 const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
+# Building occlusion. Each building between an emitter and a hearer multiplies
+# the effective intensity by this factor. Two buildings between -> 0.25x.
+# Integrates with the Survivor "engineered position" identity: firing from
+# within claimed buildings produces less zombie attention than firing outside.
+const BUILDING_NOISE_DAMP := 0.5
 
 const SMALL_THRESHOLD := 150.0
 const MEDIUM_THRESHOLD := 400.0
@@ -158,18 +163,52 @@ func _attract_zombies() -> void:
 		if u.has_method("hear_noise"):
 			for e in _emitters:
 				var d: float = u.global_position.distance_to(e.position)
-				u.hear_noise(e.position, e.intensity, d)
+				var eff: float = _attenuated_intensity(e.position, u.global_position, e.intensity)
+				u.hear_noise(e.position, eff, d)
 		elif u.has_method("investigate"):
 			var best_emitter = null
 			var best_intensity: float = 0.0
 			for e in _emitters:
-				var reach: float = min(e.intensity * REACH_PER_NOISE, MAX_REACH)
+				var eff: float = _attenuated_intensity(e.position, u.global_position, e.intensity)
+				var reach: float = min(eff * REACH_PER_NOISE, MAX_REACH)
 				var d: float = u.global_position.distance_to(e.position)
-				if d <= reach and e.intensity > best_intensity:
-					best_intensity = e.intensity
+				if d <= reach and eff > best_intensity:
+					best_intensity = eff
 					best_emitter = e
 			if best_emitter != null:
 				u.investigate(best_emitter.position)
+
+
+func _attenuated_intensity(emitter_pos: Vector2, hearer_pos: Vector2, base: float) -> float:
+	# Brute-force occluder count: iterate all buildings, segment-test against
+	# their rect. Per-attract-tick cost: zombies x emitters x buildings, ~tens
+	# of thousands of segment tests per second at scale - cheap math.
+	var occluders: int = 0
+	for b in get_tree().get_nodes_in_group("buildings"):
+		if not is_instance_valid(b) or not ("size_pixels" in b):
+			continue
+		var half: Vector2 = b.size_pixels * 0.5
+		var rect := Rect2(b.position - half, b.size_pixels)
+		if _segment_intersects_rect(emitter_pos, hearer_pos, rect):
+			occluders += 1
+	if occluders == 0:
+		return base
+	return base * pow(BUILDING_NOISE_DAMP, float(occluders))
+
+
+func _segment_intersects_rect(a: Vector2, b: Vector2, rect: Rect2) -> bool:
+	if rect.has_point(a) or rect.has_point(b):
+		return true
+	var tl := rect.position
+	var tr := Vector2(rect.position.x + rect.size.x, rect.position.y)
+	var bl := Vector2(rect.position.x, rect.position.y + rect.size.y)
+	var br := rect.position + rect.size
+	return (
+		Geometry2D.segment_intersects_segment(a, b, tl, tr) != null
+		or Geometry2D.segment_intersects_segment(a, b, tr, br) != null
+		or Geometry2D.segment_intersects_segment(a, b, br, bl) != null
+		or Geometry2D.segment_intersects_segment(a, b, bl, tl) != null
+	)
 
 
 func _trigger_horde(target: Vector2, size: int) -> void:

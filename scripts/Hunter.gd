@@ -152,6 +152,4 @@ func _kite_from(threat) -> void:
 
 
 func _emit_shot_noise() -> void:
-	var nf := get_tree().get_first_node_in_group("noise_field")
-	if nf != null:
-		nf.add_noise(global_position, NOISE_PER_SHOT)
+	Noise.emit(global_position, NOISE_PER_SHOT)
