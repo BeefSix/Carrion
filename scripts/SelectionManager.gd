@@ -293,9 +293,8 @@ func _form_squad_from_selection() -> void:
 
 
 func _player_faction_value() -> int:
-	# GameState.Faction (Military/Tribal/Survivor) -> Unit.Faction. The two enums
-	# differ - GameState omits Zombie/Neutral. Units carry the Unit.Faction value.
-	# For squad faction we want consistency with the units, so read from a unit.
+	# Faction is unified as GameState.Faction (consolidated 2026-06). Squad
+	# faction reads from a representative selected unit.
 	for u in _selected_units:
 		if is_instance_valid(u):
 			return u.faction

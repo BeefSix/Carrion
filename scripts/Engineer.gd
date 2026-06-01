@@ -265,7 +265,7 @@ func _find_nearest_hostile_in_range(range_px: float):
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction == Faction.SURVIVOR or u.faction == Faction.NEUTRAL:
+		if u.faction == GameState.Faction.SURVIVOR or u.faction == GameState.Faction.NEUTRAL:
 			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d <= best_dist:

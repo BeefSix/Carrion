@@ -374,7 +374,7 @@ func _broadcast_cascade(stimulus_pos: Vector2, level: int) -> void:
 	for other in get_tree().get_nodes_in_group("units"):
 		if other == self or not is_instance_valid(other):
 			continue
-		if other.faction != Faction.ZOMBIE:
+		if other.faction != GameState.Faction.ZOMBIE:
 			continue
 		if not other.has_method("on_cascade"):
 			continue
@@ -746,7 +746,7 @@ func _refresh_captain_status() -> void:
 	for other in get_tree().get_nodes_in_group("units"):
 		if other == self or not is_instance_valid(other):
 			continue
-		if other.faction != Faction.ZOMBIE:
+		if other.faction != GameState.Faction.ZOMBIE:
 			continue
 		if global_position.distance_to(other.global_position) > COHESION_RADIUS_PX:
 			continue
@@ -818,7 +818,7 @@ func _emit_ambient_noise() -> void:
 	for other in get_tree().get_nodes_in_group("units"):
 		if other == self or not is_instance_valid(other):
 			continue
-		if other.faction != Faction.ZOMBIE:
+		if other.faction != GameState.Faction.ZOMBIE:
 			continue
 		if not other.has_method("hear_noise"):
 			continue
@@ -845,7 +845,7 @@ func _update_home_pin() -> void:
 		for other in get_tree().get_nodes_in_group("units"):
 			if other == self or not is_instance_valid(other):
 				continue
-			if other.faction != Faction.ZOMBIE:
+			if other.faction != GameState.Faction.ZOMBIE:
 				continue
 			if global_position.distance_to(other.global_position) > HOME_PIN_NEIGHBOR_RADIUS:
 				continue
@@ -897,7 +897,7 @@ func _find_magnetic_target() -> Vector2:
 	for other in get_tree().get_nodes_in_group("units"):
 		if other == self or not is_instance_valid(other):
 			continue
-		if other.faction != Faction.ZOMBIE:
+		if other.faction != GameState.Faction.ZOMBIE:
 			continue
 		var d: float = global_position.distance_to(other.global_position)
 		if d < nearest_dist:
@@ -931,7 +931,7 @@ func _propagate_wander_to_cluster() -> void:
 		for other in get_tree().get_nodes_in_group("units"):
 			if other == self or not is_instance_valid(other):
 				continue
-			if other.faction != Faction.ZOMBIE:
+			if other.faction != GameState.Faction.ZOMBIE:
 				continue
 			var d: float = global_position.distance_to(other.global_position)
 			if d > COHESION_RADIUS_PX:
@@ -991,7 +991,7 @@ func _find_cluster_leader_target() -> Vector2:
 	for other in get_tree().get_nodes_in_group("units"):
 		if other == self or not is_instance_valid(other):
 			continue
-		if other.faction != Faction.ZOMBIE:
+		if other.faction != GameState.Faction.ZOMBIE:
 			continue
 		var d: float = global_position.distance_to(other.global_position)
 		if d > COHESION_RADIUS_PX:
@@ -1035,7 +1035,7 @@ func _cluster_bias_target() -> Vector2:
 	for other in get_tree().get_nodes_in_group("units"):
 		if other == self or not is_instance_valid(other):
 			continue
-		if other.faction != Faction.ZOMBIE:
+		if other.faction != GameState.Faction.ZOMBIE:
 			continue
 		var d: float = global_position.distance_to(other.global_position)
 		if d > CLUSTER_FAR_RADIUS_PX:
@@ -1202,7 +1202,7 @@ func _find_visible_target():
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction == Faction.ZOMBIE:
+		if u.faction == GameState.Faction.ZOMBIE:
 			continue
 		# Walkers are always invisible to zombie targeting - the load-bearing
 		# Tribal identity mechanic.
@@ -1210,7 +1210,7 @@ func _find_visible_target():
 			continue
 		# Force-spawned zombies treat all Tribal as ally during the 30-sec
 		# alignment window.
-		if is_tribal_aligned and u.faction == Faction.TRIBAL:
+		if is_tribal_aligned and u.faction == GameState.Faction.TRIBAL:
 			continue
 		if not _can_see(u.global_position):
 			continue

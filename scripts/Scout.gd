@@ -130,7 +130,7 @@ func _zombie_within_detect_range() -> bool:
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction != Faction.ZOMBIE:
+		if u.faction != GameState.Faction.ZOMBIE:
 			continue
 		if global_position.distance_to(u.global_position) <= ZOMBIE_DETECT_RANGE:
 			return true

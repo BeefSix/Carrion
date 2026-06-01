@@ -2,7 +2,12 @@ extends Node
 
 signal salvage_changed(new_value: int)
 
-enum Faction { MILITARY, TRIBAL, SURVIVOR }
+# Canonical project-wide Faction enum (consolidated 2026-06 per audit response
+# #7). Was previously split: GameState.Faction had 3 values, Unit.Faction had 5
+# with SURVIVOR at a different ordinal - latent bug if anything cross-compared
+# the two. Order preserves the previous Unit.Faction ordering so existing
+# scene files' faction = N values stay semantically correct without editing.
+enum Faction { MILITARY, TRIBAL, ZOMBIE, NEUTRAL, SURVIVOR }
 
 const STARTING_SALVAGE := 200
 

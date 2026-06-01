@@ -1,7 +1,6 @@
 class_name Unit
 extends CharacterBody2D
 
-enum Faction { MILITARY, TRIBAL, ZOMBIE, NEUTRAL, SURVIVOR }
 enum Command { IDLE, MOVE, ATTACK, GATHER, CONSTRUCT, FLEE, CREMATE }
 # Stance values (3-tier per the squad system design):
 #   AGGRESSIVE - engage hostiles in range during MOVE and IDLE
@@ -27,7 +26,7 @@ const PALETTE_TRIBAL := Color("8a6a3a")
 const PALETTE_ZOMBIE := Color("4a5a4a")
 const PALETTE_STRUCTURE := Color("4a4339")
 
-@export var faction: Faction = Faction.MILITARY
+@export var faction: GameState.Faction = GameState.GameState.Faction.MILITARY
 @export var max_hp: int = 100
 @export var body_color: Color = Color.WHITE
 @export var move_speed: float = 96.0
@@ -164,7 +163,7 @@ func _process(delta: float) -> void:
 	# because units move; cheap (one multiply + clamp). Zombies sort too, so
 	# we do this before the zombie-fast-path early return.
 	z_index = IsoView.z_for(global_position)
-	if faction == Faction.ZOMBIE:
+	if faction == GameState.Faction.ZOMBIE:
 		return
 	_tick_cremation(delta)
 	if _is_engaged():
@@ -178,7 +177,7 @@ func _is_engaged() -> bool:
 			continue
 		if u.faction == faction:
 			continue
-		if u.faction == Faction.NEUTRAL:
+		if u.faction == GameState.Faction.NEUTRAL:
 			continue
 		if global_position.distance_to(u.global_position) <= ENGAGEMENT_RANGE:
 			return true
@@ -246,7 +245,7 @@ func _die(attacker = null) -> void:
 func _should_leave_corpse(attacker) -> bool:
 	if attacker != null and "clean_kills" in attacker and attacker.clean_kills:
 		return false
-	if faction != Faction.MILITARY and faction != Faction.ZOMBIE:
+	if faction != GameState.Faction.MILITARY and faction != GameState.Faction.ZOMBIE:
 		return false
 	return randf() < corpse_base_chance
 
@@ -258,7 +257,7 @@ func _spawn_corpse() -> void:
 	var c = corpse_scene.instantiate()
 	c.position = global_position
 	c.original_max_hp = max_hp
-	c.was_military = (faction == Faction.MILITARY)
+	c.was_military = (faction == GameState.Faction.MILITARY)
 	c.veterancy_at_death = veterancy_level
 	c.return_delay = 30.0 + float(max_hp) / 5.0
 	get_parent().add_child(c)

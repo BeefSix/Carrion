@@ -99,7 +99,7 @@ func _recompute_density() -> void:
 	for u in get_tree().get_nodes_in_group("units"):
 		if not is_instance_valid(u):
 			continue
-		if u.faction != 2:  # Unit.Faction.ZOMBIE
+		if u.faction != GameState.Faction.ZOMBIE:
 			continue
 		var cell := _world_to_cell(u.global_position)
 		if cell.x < 0 or cell.x >= GRID_SIZE or cell.y < 0 or cell.y >= GRID_SIZE:
