@@ -325,7 +325,7 @@ func _input(event: InputEvent) -> void:
 			# Mouse is in iso since the camera lives in iso space; project
 			# back to world before injecting noise (NoiseField operates on
 			# world coords like the rest of gameplay).
-			Noise.emit(IsoView.screen_to_world(get_global_mouse_position()), DEV_NOISE_INJECT)
+			NoiseBus.emit(IsoView.screen_to_world(get_global_mouse_position()), DEV_NOISE_INJECT)
 		KEY_ESCAPE:
 			get_tree().change_scene_to_file("res://scenes/TitleScreen.tscn")
 

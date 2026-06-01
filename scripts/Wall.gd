@@ -23,7 +23,7 @@ func _ready() -> void:
 
 
 func _die() -> void:
-	Noise.emit(global_position, DESTROY_NOISE)
+	NoiseBus.emit(global_position, DESTROY_NOISE)
 	_refresh_neighbors()
 	super._die()
 

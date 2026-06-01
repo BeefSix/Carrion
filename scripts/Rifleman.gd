@@ -163,4 +163,4 @@ func _kite_from(threat) -> void:
 
 
 func _emit_shot_noise() -> void:
-	Noise.emit(global_position, NOISE_PER_SHOT)
+	NoiseBus.emit(global_position, NOISE_PER_SHOT)

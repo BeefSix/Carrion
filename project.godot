@@ -22,7 +22,7 @@ GameState="*res://autoloads/GameState.gd"
 IsoView="*res://autoloads/IsoView.gd"
 SquadManager="*res://autoloads/SquadManager.gd"
 ProjectileManager="*res://autoloads/ProjectileManager.gd"
-Noise="*res://autoloads/Noise.gd"
+NoiseBus="*res://autoloads/NoiseBus.gd"
 
 [display]
 

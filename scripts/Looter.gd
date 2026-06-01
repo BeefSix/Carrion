@@ -363,4 +363,4 @@ func _find_nearest_command_post():
 
 
 func _emit_magnum_noise() -> void:
-	Noise.emit(global_position, MAGNUM_NOISE)
+	NoiseBus.emit(global_position, MAGNUM_NOISE)

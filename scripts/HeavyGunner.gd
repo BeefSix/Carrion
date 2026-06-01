@@ -75,7 +75,7 @@ func _fire_at(target) -> void:
 	# Noise fires at fire-time (per the projectile design doc). Damage is
 	# deferred to projectile impact - area_radius > 0 routes through the
 	# Projectile's AOE handler.
-	Noise.emit(global_position, NOISE_PER_SHOT)
+	NoiseBus.emit(global_position, NOISE_PER_SHOT)
 	var spread: float = BASE_ACCURACY_DEG * (1.0 - squad_accuracy_bonus)
 	ProjectileManager.spawn_projectile({
 		"origin": global_position,
