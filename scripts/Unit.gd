@@ -3,7 +3,13 @@ extends CharacterBody2D
 
 enum Faction { MILITARY, TRIBAL, ZOMBIE, NEUTRAL, SURVIVOR }
 enum Command { IDLE, MOVE, ATTACK, GATHER, CONSTRUCT, FLEE, CREMATE }
-enum Stance { AGGRESSIVE, PASSIVE }
+# Stance values (3-tier per the squad system design):
+#   AGGRESSIVE - engage hostiles in range during MOVE and IDLE
+#   NEUTRAL    - engage only while IDLE (don't break formation while moving)
+#   PASSIVE    - never engage; hold fire even when idle
+# Squad Posture (in Squad.gd) maps directly: AGGRESSIVE -> AGGRESSIVE,
+# STANDARD -> NEUTRAL, DEFENSIVE -> PASSIVE.
+enum Stance { AGGRESSIVE, NEUTRAL, PASSIVE }
 
 const MIN_CORPSE_CHANCE := 0.05
 const ENGAGEMENT_RANGE := 256.0
@@ -40,10 +46,17 @@ var facing_dir: Vector2 = Vector2.DOWN
 var stance: Stance = Stance.AGGRESSIVE
 
 # Squad membership. Set/cleared by SquadManager. `commander` is the direct
-# superior in the command tree (Phase 4); for non-leaders this is the unit
-# leading their sub-tree. Squad leader's commander is null.
+# superior in the command tree; for non-leaders this is the unit leading
+# their sub-tree. Squad leader's commander is null.
 var squad: Squad = null
 var commander = null
+
+# Aura bonuses from squad command-tree ancestors. Computed by
+# SquadManager._tick_auras at 5Hz, zeroed when out of range / no chain.
+# squad_damage_bonus is multiplicative (0.05 = +5%). squad_accuracy_bonus
+# is stored but currently unused - Carrion has no projectile spread.
+var squad_damage_bonus: float = 0.0
+var squad_accuracy_bonus: float = 0.0
 
 var kills_count: int = 0
 var damage_dealt: float = 0.0
@@ -198,6 +211,10 @@ func _on_level_up(old_level: int, new_level: int) -> void:
 		current_hp = int(round(float(current_hp) * (hp_mult / old_hp_mult)))
 	queue_redraw()
 	print("[%s] Level up: %d -> %d (HP x%.2f, DMG x%.2f, SPD x%.2f)" % [name, old_level, new_level, hp_mult, damage_mult, speed_mult])
+	# If we leveled into the rank-2+ band while our squad was leaderless and
+	# scattering, the manager can promote us and end the scatter state.
+	if squad != null and new_level >= Squad.SEASONED:
+		SquadManager.on_unit_promoted(self)
 
 
 func get_effective_max_hp() -> int:
@@ -209,7 +226,10 @@ func get_effective_move_speed() -> float:
 
 
 func get_effective_damage(base_damage: int) -> int:
-	return int(round(base_damage * damage_mult))
+	# damage_mult comes from veterancy; squad_damage_bonus is the additive
+	# percentage from in-range command-tree ancestors (computed at 5Hz by
+	# SquadManager). Both multiply onto the base damage.
+	return int(round(base_damage * damage_mult * (1.0 + squad_damage_bonus)))
 
 
 func _die(attacker = null) -> void:

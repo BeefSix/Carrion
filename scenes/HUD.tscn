@@ -69,30 +69,12 @@ text = "Action 5"
 text = ""
 autowrap_mode = 2
 
-[node name="StancePanel" type="PanelContainer" parent="."]
-anchor_top = 1.0
-anchor_bottom = 1.0
-offset_left = 16.0
-offset_top = -56.0
-offset_right = 240.0
-offset_bottom = -16.0
-grow_vertical = 0
-
-[node name="HBox" type="HBoxContainer" parent="StancePanel"]
-
-[node name="StanceLabel" type="Label" parent="StancePanel/HBox"]
-size_flags_horizontal = 3
-text = "Stance: Aggressive"
-
-[node name="StanceButton" type="Button" parent="StancePanel/HBox"]
-text = "Toggle (X)"
-
 [node name="SquadSidebar" type="PanelContainer" parent="."]
 anchor_bottom = 1.0
 offset_left = 16.0
 offset_top = 72.0
 offset_right = 256.0
-offset_bottom = -72.0
+offset_bottom = -16.0
 
 [node name="VBox" type="VBoxContainer" parent="SquadSidebar"]
 
@@ -163,3 +145,25 @@ disabled = true
 size_flags_horizontal = 3
 text = "Merge..."
 disabled = true
+
+[node name="FormationRow" type="HBoxContainer" parent="SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox"]
+
+[node name="FormationLabel" type="Label" parent="SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/FormationRow"]
+text = "Formation"
+size_flags_horizontal = 3
+
+[node name="FormationOption" type="OptionButton" parent="SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/FormationRow"]
+
+[node name="PostureRow" type="HBoxContainer" parent="SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox"]
+
+[node name="PostureLabel" type="Label" parent="SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/PostureRow"]
+text = "Posture"
+size_flags_horizontal = 3
+
+[node name="PostureOption" type="OptionButton" parent="SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/PostureRow"]
+
+[node name="ScatterLabel" type="Label" parent="SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox"]
+visible = false
+text = "SCATTERED - reorganizing..."
+horizontal_alignment = 1
+modulate = Color(1, 0.6, 0.4, 1)

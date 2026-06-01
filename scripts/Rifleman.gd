@@ -26,6 +26,10 @@ func _physics_process(delta: float) -> void:
 			_try_shoot_in_range(delta)
 		return
 
+	if stance == Stance.PASSIVE:
+		velocity = Vector2.ZERO
+		return
+
 	var threat = _find_nearest_threat_in_range(KITE_RANGE)
 	if threat != null:
 		_kite_from(threat)

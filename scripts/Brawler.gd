@@ -25,6 +25,10 @@ func _physics_process(delta: float) -> void:
 			_try_strike_in_range(delta)
 		return
 
+	if stance == Stance.PASSIVE:
+		velocity = Vector2.ZERO
+		return
+
 	_retarget_timer -= delta
 	if _retarget_timer <= 0:
 		_retarget_timer = RETARGET_INTERVAL

@@ -28,8 +28,12 @@ var members: Array = []  # Array of Unit
 var leader = null  # Unit reference
 var formation: int = Formation.STANDARD
 var posture: int = Posture.STANDARD
-# Phase 4: time remaining in leaderless scatter state. 0.0 means not scattering.
+# Time remaining in leaderless scatter state. 0.0 means not scattering.
 var scatter_timer: float = 0.0
+# Precomputed command tree: commander Unit -> Array of direct subordinates.
+# Built / invalidated by SquadManager on membership / leader changes only.
+# Specialists (non-combat units) are attached under squad.leader.
+var command_tree: Dictionary = {}
 
 
 func get_capacity() -> int:
@@ -75,3 +79,11 @@ static func rank_name(level: int) -> String:
 		VETERAN: return "Veteran"
 		CAPTAIN: return "Captain"
 		_: return "Unknown"
+
+
+func is_scattering() -> bool:
+	return scatter_timer > 0.0
+
+
+func subordinates_of(commander) -> Array:
+	return command_tree.get(commander, [])

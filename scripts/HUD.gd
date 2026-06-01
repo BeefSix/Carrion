@@ -15,9 +15,6 @@ const FACTION_COLORS := {
 @onready var _actor_title: Label = $BuildingPanel/VBox/Title
 @onready var _status_label: Label = $BuildingPanel/VBox/StatusLabel
 @onready var _speed_label: Label = $SpeedIndicator
-@onready var _stance_panel: PanelContainer = $StancePanel
-@onready var _stance_label: Label = $StancePanel/HBox/StanceLabel
-@onready var _stance_button: Button = $StancePanel/HBox/StanceButton
 
 @onready var _faction_label: Label = $SquadSidebar/VBox/FactionHeader/FactionMargin/FactionVBox/FactionLabel
 @onready var _pop_label: Label = $SquadSidebar/VBox/FactionHeader/FactionMargin/FactionVBox/PopLabel
@@ -26,6 +23,9 @@ const FACTION_COLORS := {
 @onready var _empty_hint: Label = $SquadSidebar/VBox/EmptyHint
 @onready var _detail_separator: HSeparator = $SquadSidebar/VBox/DetailSeparator
 @onready var _squad_detail: PanelContainer = $SquadSidebar/VBox/SquadDetail
+@onready var _formation_option: OptionButton = $SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/FormationRow/FormationOption
+@onready var _posture_option: OptionButton = $SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/PostureRow/PostureOption
+@onready var _scatter_label: Label = $SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/ScatterLabel
 
 var _pop_refresh_timer: float = 0.0
 
@@ -60,8 +60,6 @@ func _ready() -> void:
 	_actor_panel.hide()
 	_status_label.visible = false
 	_speed_label.visible = false
-	_stance_panel.hide()
-	_stance_button.pressed.connect(_on_stance_button_pressed)
 	_action_buttons = [
 		$BuildingPanel/VBox/ActionButton,
 		$BuildingPanel/VBox/ActionButton2,
@@ -121,9 +119,35 @@ func _init_squad_sidebar() -> void:
 	_squad_detail.hide()
 	_detail_separator.hide()
 	_refresh_pop_count()
-	# Squad list is empty in Phase 1; the hint will hide automatically when squads
-	# exist (Phase 2 onward). For now it shows the form-squad prompt.
 	_refresh_empty_hint()
+	# Populate formation + posture dropdowns. Items are added once; selection
+	# is driven by the squad currently in the detail panel.
+	_formation_option.clear()
+	_formation_option.add_item("Standard", Squad.Formation.STANDARD)
+	_formation_option.add_item("Line", Squad.Formation.LINE)
+	_formation_option.add_item("Wedge", Squad.Formation.WEDGE)
+	_formation_option.add_item("Column", Squad.Formation.COLUMN)
+	_formation_option.add_item("Scattered", Squad.Formation.SCATTERED)
+	_formation_option.item_selected.connect(_on_formation_changed)
+	_posture_option.clear()
+	_posture_option.add_item("Standard", Squad.Posture.STANDARD)
+	_posture_option.add_item("Aggressive", Squad.Posture.AGGRESSIVE)
+	_posture_option.add_item("Defensive", Squad.Posture.DEFENSIVE)
+	_posture_option.item_selected.connect(_on_posture_changed)
+
+
+func _on_formation_changed(idx: int) -> void:
+	if _selected_squad == null:
+		return
+	var formation_id: int = _formation_option.get_item_id(idx)
+	SquadManager.set_formation(_selected_squad, formation_id)
+
+
+func _on_posture_changed(idx: int) -> void:
+	if _selected_squad == null:
+		return
+	var posture_id: int = _posture_option.get_item_id(idx)
+	SquadManager.set_posture(_selected_squad, posture_id)
 
 
 func _faction_name(f: int) -> String:
@@ -209,9 +233,14 @@ func _build_squad_row(squad: Squad) -> Control:
 	# One row = HBox: [name button (selects squad)] [rename btn] [count label] [disband btn]
 	var hbox := HBoxContainer.new()
 	var name_btn := Button.new()
-	name_btn.text = squad.display_name
+	var name_text: String = squad.display_name
+	if squad.is_scattering():
+		name_text += " (scattered)"
+	name_btn.text = name_text
 	name_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	if squad.is_scattering():
+		name_btn.modulate = Color(1, 0.7, 0.5)
 	name_btn.pressed.connect(_on_squad_row_selected.bind(squad.id))
 	hbox.add_child(name_btn)
 	var rename_btn := Button.new()
@@ -332,6 +361,29 @@ func _render_squad_detail(squad: Squad) -> void:
 	_detail_separator.show()
 	_wire_detail_buttons(squad)
 	_update_detail_buttons_state(squad)
+	_sync_dropdowns(squad)
+	_update_scatter_label(squad)
+
+
+func _sync_dropdowns(squad: Squad) -> void:
+	# Reflect the squad's current formation/posture in the dropdowns without
+	# re-firing item_selected (which would re-write the value).
+	for i in range(_formation_option.item_count):
+		if _formation_option.get_item_id(i) == squad.formation:
+			_formation_option.selected = i
+			break
+	for i in range(_posture_option.item_count):
+		if _posture_option.get_item_id(i) == squad.posture:
+			_posture_option.selected = i
+			break
+
+
+func _update_scatter_label(squad: Squad) -> void:
+	if squad.is_scattering():
+		_scatter_label.visible = true
+		_scatter_label.text = "SCATTERED - reorganizing... %.0fs" % squad.scatter_timer
+	else:
+		_scatter_label.visible = false
 
 
 func _wire_detail_buttons(squad: Squad) -> void:
@@ -463,17 +515,12 @@ func _on_selection_changed(units: Array, building) -> void:
 		_current_actor = null
 		_actor_panel.hide()
 
-	# Stance panel applies to combat units in the selection. Hidden when the
-	# selection contains no combat units.
+	# Combat units in the selection are still tracked for the X hotkey
+	# (per-unit stance override; the squad posture dropdown is the primary UI).
 	_selected_combat_units.clear()
 	for u in units:
 		if is_instance_valid(u) and u.is_in_group("combat_units"):
 			_selected_combat_units.append(u)
-	if _selected_combat_units.is_empty():
-		_stance_panel.hide()
-	else:
-		_stance_panel.show()
-		_refresh_stance_label()
 
 	# Squad detail: show the squad of the first selected unit that has one.
 	# If no selected unit is in a squad, the detail panel hides.
@@ -488,36 +535,32 @@ func _on_selection_changed(units: Array, building) -> void:
 		_hide_squad_detail()
 
 
-func _refresh_stance_label() -> void:
-	# Mixed-stance selection reads as whatever the first combat unit shows; the
-	# toggle then flips everyone to the opposite. Cheap to recompute per click.
-	if _selected_combat_units.is_empty():
-		return
-	var first = _selected_combat_units[0]
-	if not is_instance_valid(first):
-		return
-	var s: int = first.stance
-	_stance_label.text = "Stance: Aggressive" if s == Unit.Stance.AGGRESSIVE else "Stance: Passive"
-
-
-func _on_stance_button_pressed() -> void:
-	_apply_stance_toggle()
-
-
 func _apply_stance_toggle() -> void:
-	# Flip every combat unit in the current selection to the opposite of the
-	# first unit's stance. Called from the button and from the X hotkey
-	# (SelectionManager._unhandled_input).
+	# X hotkey: cycle stance on selected combat units (per-unit override).
+	# Sequence: AGGRESSIVE -> NEUTRAL -> PASSIVE -> AGGRESSIVE...
+	# Squad posture is the primary control; this is the keyboard escape hatch.
 	if _selected_combat_units.is_empty():
 		return
 	var first = _selected_combat_units[0]
 	if not is_instance_valid(first):
 		return
-	var target_stance: int = Unit.Stance.PASSIVE if first.stance == Unit.Stance.AGGRESSIVE else Unit.Stance.AGGRESSIVE
+	var target_stance: int
+	match first.stance:
+		Unit.Stance.AGGRESSIVE: target_stance = Unit.Stance.NEUTRAL
+		Unit.Stance.NEUTRAL: target_stance = Unit.Stance.PASSIVE
+		_: target_stance = Unit.Stance.AGGRESSIVE
 	for u in _selected_combat_units:
 		if is_instance_valid(u):
 			u.set_stance(target_stance)
-	_refresh_stance_label()
+	show_toast("Stance: " + _stance_name(target_stance))
+
+
+func _stance_name(s: int) -> String:
+	match s:
+		Unit.Stance.AGGRESSIVE: return "Aggressive"
+		Unit.Stance.NEUTRAL: return "Neutral"
+		Unit.Stance.PASSIVE: return "Passive"
+		_: return "?"
 
 
 func _has_actions(actor) -> bool:
@@ -543,6 +586,11 @@ func _process(delta: float) -> void:
 	if _pop_refresh_timer <= 0.0:
 		_pop_refresh_timer = POP_REFRESH_INTERVAL
 		_refresh_pop_count()
+
+	# Live scatter countdown for the displayed squad. Cheap update of one
+	# label - we don't re-render the full detail panel.
+	if _selected_squad != null and _selected_squad.is_scattering():
+		_update_scatter_label(_selected_squad)
 
 	# Toast fade-out.
 	if _toast_timer > 0.0:
