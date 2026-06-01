@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/HUD.gd" id="1_hud"]
+[ext_resource type="Script" path="res://scripts/SquadSidebar.gd" id="2_sidebar"]
 
 [node name="HUD" type="CanvasLayer"]
 script = ExtResource("1_hud")
@@ -75,6 +76,7 @@ offset_left = 16.0
 offset_top = 72.0
 offset_right = 256.0
 offset_bottom = -16.0
+script = ExtResource("2_sidebar")
 
 [node name="VBox" type="VBoxContainer" parent="SquadSidebar"]
 
