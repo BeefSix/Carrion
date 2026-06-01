@@ -14,6 +14,8 @@ const KITE_SPEED := 25.0
 # rebalance may swap to multi-tracer burst-fire per the projectile design doc.
 const PROJECTILE_SPEED := 1800.0
 const PROJECTILE_COLOR := Color(1.0, 0.78, 0.30)
+# Wider cone than Rifleman: HG is sustained-fire, less aimed.
+const BASE_ACCURACY_DEG := 8.0
 
 var _target = null
 var _attack_cooldown := 0.0
@@ -76,6 +78,7 @@ func _fire_at(target) -> void:
 	var nf := get_tree().get_first_node_in_group("noise_field")
 	if nf != null:
 		nf.add_noise(global_position, NOISE_PER_SHOT)
+	var spread: float = BASE_ACCURACY_DEG * (1.0 - squad_accuracy_bonus)
 	ProjectileManager.spawn_projectile({
 		"origin": global_position,
 		"target_pos": target.global_position,
@@ -85,6 +88,8 @@ func _fire_at(target) -> void:
 		"firer": self,
 		"faction": faction,
 		"area_radius": AOE_RADIUS,
+		"spread_deg": spread,
+		"style": Projectile.Style.TRACER,
 		"color": PROJECTILE_COLOR,
 		"visual_length": 18.0,
 		"visual_width": 2.5,

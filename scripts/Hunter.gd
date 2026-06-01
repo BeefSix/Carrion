@@ -11,6 +11,8 @@ const KITE_SPEED := 30.0
 # Projectile config: dark organic-toned arrow per Tribal faction identity.
 const PROJECTILE_SPEED := 900.0
 const PROJECTILE_COLOR := Color(0.45, 0.35, 0.22)
+# Tighter cone than Rifleman: Hunter is a deliberate aimed shooter.
+const BASE_ACCURACY_DEG := 3.0
 
 var _target = null
 var _attack_cooldown := 0.0
@@ -69,6 +71,7 @@ func _try_shoot_in_range(delta: float) -> void:
 
 
 func _fire_at(target) -> void:
+	var spread: float = BASE_ACCURACY_DEG * (1.0 - squad_accuracy_bonus)
 	ProjectileManager.spawn_projectile({
 		"origin": global_position,
 		"target_pos": target.global_position,
@@ -77,9 +80,11 @@ func _fire_at(target) -> void:
 		"speed": PROJECTILE_SPEED,
 		"firer": self,
 		"faction": faction,
+		"spread_deg": spread,
+		"style": Projectile.Style.ARROW,
 		"color": PROJECTILE_COLOR,
-		"visual_length": 12.0,
-		"visual_width": 1.5,
+		"visual_length": 16.0,
+		"visual_width": 2.0,
 	})
 
 

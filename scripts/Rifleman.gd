@@ -11,6 +11,10 @@ const KITE_SPEED := 30.0
 # Projectile config: yellow-orange tracer per Military faction identity.
 const PROJECTILE_SPEED := 1600.0
 const PROJECTILE_COLOR := Color(0.95, 0.72, 0.30)
+# Base accuracy in degrees. Lower = tighter cone. Squad accuracy bonus (from
+# leadership aura) reduces effective spread multiplicatively:
+# effective_spread = BASE_ACCURACY_DEG * (1.0 - squad_accuracy_bonus).
+const BASE_ACCURACY_DEG := 4.0
 
 var _target = null
 var _attack_cooldown := 0.0
@@ -72,6 +76,7 @@ func _try_shoot_in_range(delta: float) -> void:
 func _fire_at(target) -> void:
 	# Spawns a direct-fire projectile. Damage resolves on impact, not here.
 	# Noise still fires at the call site (fire-time, per the projectile spec).
+	var spread: float = BASE_ACCURACY_DEG * (1.0 - squad_accuracy_bonus)
 	ProjectileManager.spawn_projectile({
 		"origin": global_position,
 		"target_pos": target.global_position,
@@ -80,6 +85,8 @@ func _fire_at(target) -> void:
 		"speed": PROJECTILE_SPEED,
 		"firer": self,
 		"faction": faction,
+		"spread_deg": spread,
+		"style": Projectile.Style.TRACER,
 		"color": PROJECTILE_COLOR,
 		"visual_length": 14.0,
 		"visual_width": 2.0,

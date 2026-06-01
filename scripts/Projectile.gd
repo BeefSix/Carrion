@@ -9,6 +9,13 @@ extends Area2D
 # World-space gameplay coords; iso-projected in _draw to match Unit/Corpse.
 
 enum Type { DIRECT, ARCING }
+# Visual style controls how _draw renders the projectile in flight. Matches
+# each faction's projectile identity.
+#   TRACER - Military: bright thin line trailing the head (rifle/HG bullets)
+#   ARROW  - Tribal: triangular head + thin shaft + fletching polygon
+#   BOLT   - Survivor: dark elongated rectangle (crossbow bolt). Reserved -
+#            no Survivor combat unit currently fires projectiles.
+enum Style { TRACER, ARROW, BOLT }
 
 # Friendly fire applies damage to anyone the projectile hits regardless of
 # faction. The doc explicitly opts in. Flip to false if balance breaks.
@@ -31,6 +38,7 @@ var faction: int = 0  # Unit.Faction; used for friendly-fire decision
 var visual_color: Color = Color(0.95, 0.7, 0.3)
 var visual_length: float = 14.0
 var visual_width: float = 2.0
+var visual_style: int = Style.TRACER
 
 var _time_alive: float = 0.0
 var _resolved: bool = false
@@ -56,11 +64,20 @@ func configure(config: Dictionary) -> void:
 	visual_color = config.get("color", visual_color)
 	visual_length = config.get("visual_length", visual_length)
 	visual_width = config.get("visual_width", visual_width)
+	visual_style = config.get("style", Style.TRACER)
 	position = origin
 	var dir: Vector2 = target_pos - origin
 	if dir.length_squared() < 0.01:
 		dir = Vector2.RIGHT
-	velocity = dir.normalized() * speed
+	dir = dir.normalized()
+	# Accuracy spread: rotate the aim vector by a random angle within
+	# +/- spread_deg. Effective spread is computed by the firer (base
+	# accuracy minus the leadership-aura accuracy bonus).
+	var spread_deg: float = config.get("spread_deg", 0.0)
+	if spread_deg > 0.0:
+		var offset_deg: float = randf_range(-spread_deg, spread_deg)
+		dir = dir.rotated(deg_to_rad(offset_deg))
+	velocity = dir * speed
 	rotation = dir.angle()
 
 
@@ -140,10 +157,67 @@ func _despawn() -> void:
 
 func _draw() -> void:
 	# Iso shift: render at iso-projected screen position. Same pattern as
-	# Unit/Corpse/Building.
+	# Unit/Corpse/Building. All coordinates below are local to the projectile;
+	# the iso transform places the local origin at the iso screen position.
 	var iso_offset: Vector2 = IsoView.world_to_screen(position) - position
 	draw_set_transform(iso_offset, 0.0, Vector2.ONE)
-	# Phase 1: simple tracer line trailing behind the projectile head.
 	var dir: Vector2 = velocity.normalized() if velocity.length_squared() > 0 else Vector2.RIGHT
+	match visual_style:
+		Style.TRACER:
+			_draw_tracer(dir)
+		Style.ARROW:
+			_draw_arrow(dir)
+		Style.BOLT:
+			_draw_bolt(dir)
+
+
+func _draw_tracer(dir: Vector2) -> void:
+	# Bright thin line trailing behind the head. Slight head highlight makes
+	# the leading point more visible at flight speed.
 	var tail: Vector2 = -dir * visual_length
 	draw_line(tail, Vector2.ZERO, visual_color, visual_width)
+	draw_circle(Vector2.ZERO, visual_width * 0.6, visual_color.lightened(0.3))
+
+
+func _draw_arrow(dir: Vector2) -> void:
+	# Triangular head + thin shaft + small fletching. Drawn pointing along
+	# the +X axis in local space, then implicitly rotated via the velocity
+	# direction (we orient geometry using `dir` and a perpendicular).
+	var perp: Vector2 = Vector2(-dir.y, dir.x)
+	var head_len: float = max(visual_length * 0.30, 4.0)
+	var head_half_w: float = max(visual_width, 2.0)
+	var shaft_len: float = visual_length - head_len
+	# Shaft: thin line from tail to base of head.
+	var shaft_back: Vector2 = -dir * visual_length
+	var head_base: Vector2 = -dir * head_len
+	draw_line(shaft_back, head_base, visual_color, max(visual_width * 0.6, 1.0))
+	# Head: triangle from base back-corners to point at origin.
+	var head_pts := PackedVector2Array([
+		Vector2.ZERO,
+		head_base + perp * head_half_w,
+		head_base - perp * head_half_w,
+	])
+	draw_colored_polygon(head_pts, visual_color)
+	# Fletching: small splayed triangle near the tail.
+	var fletch_inset: Vector2 = -dir * (visual_length * 0.85)
+	var fletch_half: float = max(visual_width * 1.3, 2.5)
+	var fletch_pts := PackedVector2Array([
+		shaft_back,
+		fletch_inset + perp * fletch_half,
+		fletch_inset - perp * fletch_half,
+	])
+	draw_colored_polygon(fletch_pts, visual_color.darkened(0.25))
+
+
+func _draw_bolt(dir: Vector2) -> void:
+	# Dark elongated rectangle. Reserved for future Survivor crossbow.
+	var perp: Vector2 = Vector2(-dir.y, dir.x)
+	var half_w: float = max(visual_width * 0.6, 1.0)
+	var tail: Vector2 = -dir * visual_length
+	var pts := PackedVector2Array([
+		Vector2.ZERO + perp * half_w,
+		Vector2.ZERO - perp * half_w,
+		tail - perp * half_w,
+		tail + perp * half_w,
+	])
+	draw_colored_polygon(pts, visual_color)
