@@ -9,6 +9,12 @@ const RETARGET_INTERVAL := 0.3
 const KITE_RANGE := 80.0
 const KITE_SPEED := 25.0
 
+# Projectile config: brighter/wider tracer per Military identity. AOE damage
+# applied at impact preserves the previous instant-AOE behavior. Future
+# rebalance may swap to multi-tracer burst-fire per the projectile design doc.
+const PROJECTILE_SPEED := 1800.0
+const PROJECTILE_COLOR := Color(1.0, 0.78, 0.30)
+
 var _target = null
 var _attack_cooldown := 0.0
 var _retarget_timer := 0.0
@@ -44,12 +50,12 @@ func _physics_process(delta: float) -> void:
 	if _target != null and is_instance_valid(_target):
 		var dist := global_position.distance_to(_target.global_position)
 		if dist <= ATTACK_RANGE and _attack_cooldown <= 0:
-			_fire_aoe(_target.global_position)
+			_fire_at(_target)
 			_attack_cooldown = ATTACK_PERIOD
 
 
 func _try_shoot_in_range(delta: float) -> void:
-	# Attack-while-moving: AOE-fire opportunistically at hostiles within
+	# Attack-while-moving: fire opportunistically at hostiles within
 	# ATTACK_RANGE. No kiting (honor move order). Cooldown shared with idle path.
 	_retarget_timer -= delta
 	if _retarget_timer <= 0:
@@ -59,8 +65,30 @@ func _try_shoot_in_range(delta: float) -> void:
 		return
 	var dist := global_position.distance_to(_target.global_position)
 	if dist <= ATTACK_RANGE and _attack_cooldown <= 0:
-		_fire_aoe(_target.global_position)
+		_fire_at(_target)
 		_attack_cooldown = ATTACK_PERIOD
+
+
+func _fire_at(target) -> void:
+	# Noise fires at fire-time (per the projectile design doc). Damage is
+	# deferred to projectile impact - area_radius > 0 routes through the
+	# Projectile's AOE handler.
+	var nf := get_tree().get_first_node_in_group("noise_field")
+	if nf != null:
+		nf.add_noise(global_position, NOISE_PER_SHOT)
+	ProjectileManager.spawn_projectile({
+		"origin": global_position,
+		"target_pos": target.global_position,
+		"target": target,
+		"damage": float(get_effective_damage(ATTACK_DAMAGE)),
+		"speed": PROJECTILE_SPEED,
+		"firer": self,
+		"faction": faction,
+		"area_radius": AOE_RADIUS,
+		"color": PROJECTILE_COLOR,
+		"visual_length": 18.0,
+		"visual_width": 2.5,
+	})
 
 
 func _find_nearest_zombie():
@@ -128,21 +156,3 @@ func _kite_from(threat) -> void:
 	move_and_slide()
 
 
-func _fire_aoe(center: Vector2) -> void:
-	var nf := get_tree().get_first_node_in_group("noise_field")
-	if nf != null:
-		nf.add_noise(global_position, NOISE_PER_SHOT)
-	for u in get_tree().get_nodes_in_group("units"):
-		if not is_instance_valid(u):
-			continue
-		if u.faction == faction or u.faction == Faction.NEUTRAL:
-			continue
-		if u.global_position.distance_to(center) <= AOE_RADIUS:
-			u.take_damage(get_effective_damage(ATTACK_DAMAGE), self)
-	# Splash damage to opposing HQ if in AOE radius
-	var enemy_group: String = "player_buildings" if is_in_group("ai_units") else "ai_buildings"
-	for b in get_tree().get_nodes_in_group(enemy_group):
-		if not is_instance_valid(b) or not b.is_in_group("hq"):
-			continue
-		if b.global_position.distance_to(center) <= AOE_RADIUS:
-			b.take_damage(get_effective_damage(ATTACK_DAMAGE))

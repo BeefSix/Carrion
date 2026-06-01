@@ -8,6 +8,10 @@ const RETARGET_INTERVAL := 0.3
 const KITE_RANGE := 100.0
 const KITE_SPEED := 30.0
 
+# Projectile config: dark organic-toned arrow per Tribal faction identity.
+const PROJECTILE_SPEED := 900.0
+const PROJECTILE_COLOR := Color(0.45, 0.35, 0.22)
+
 var _target = null
 var _attack_cooldown := 0.0
 var _retarget_timer := 0.0
@@ -43,7 +47,7 @@ func _physics_process(delta: float) -> void:
 	if _target != null and is_instance_valid(_target):
 		var dist := global_position.distance_to(_target.global_position)
 		if dist <= ATTACK_RANGE and _attack_cooldown <= 0:
-			_target.take_damage(get_effective_damage(ATTACK_DAMAGE), self)
+			_fire_at(_target)
 			_attack_cooldown = ATTACK_PERIOD
 			_emit_shot_noise()
 
@@ -59,9 +63,24 @@ func _try_shoot_in_range(delta: float) -> void:
 		return
 	var dist := global_position.distance_to(_target.global_position)
 	if dist <= ATTACK_RANGE and _attack_cooldown <= 0:
-		_target.take_damage(get_effective_damage(ATTACK_DAMAGE), self)
+		_fire_at(_target)
 		_attack_cooldown = ATTACK_PERIOD
 		_emit_shot_noise()
+
+
+func _fire_at(target) -> void:
+	ProjectileManager.spawn_projectile({
+		"origin": global_position,
+		"target_pos": target.global_position,
+		"target": target,
+		"damage": float(get_effective_damage(ATTACK_DAMAGE)),
+		"speed": PROJECTILE_SPEED,
+		"firer": self,
+		"faction": faction,
+		"color": PROJECTILE_COLOR,
+		"visual_length": 12.0,
+		"visual_width": 1.5,
+	})
 
 
 # Tribal Hunters fight survivors and military, NOT zombies.

@@ -22,6 +22,10 @@ func reset_match() -> void:
 	# without stale references from the previous run.
 	if SquadManager != null:
 		SquadManager.reset()
+	# Projectiles in flight from the previous match must be freed before the
+	# next one starts; otherwise they'd resolve damage in the new world.
+	if ProjectileManager != null:
+		ProjectileManager.cleanup_all()
 
 
 func can_spend(amount: int) -> bool:
