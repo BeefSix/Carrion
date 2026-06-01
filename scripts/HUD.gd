@@ -220,8 +220,13 @@ func _refresh_squad_row(squad: Squad) -> void:
 	if node == null:
 		_add_squad_row(squad)
 		return
-	# Replace in place to keep ordering.
+	# IMPORTANT: remove_child is immediate; queue_free is deferred. If we
+	# only queue_free, the old node still occupies the "Squad_<id>" name slot
+	# when we add the new row, so Godot silently renames the new row to
+	# "Squad_<id>@2". Next refresh fails to find the canonical name and
+	# falls through to _add_squad_row, accumulating ghost rows forever.
 	var idx: int = node.get_index()
+	_squad_list.remove_child(node)
 	node.queue_free()
 	var row := _build_squad_row(squad)
 	row.name = "Squad_%d" % squad.id
@@ -347,8 +352,11 @@ func _render_squad_detail(squad: Squad) -> void:
 	var members_vbox: VBoxContainer = $SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/DetailMembers
 	detail_title.text = "%s  (%d/%d)" % [squad.display_name, squad.members.size(), squad.get_capacity()]
 	# Wipe and re-render members. Reset split checks to match current membership
-	# (any prior checks against removed units would be stale).
+	# (any prior checks against removed units would be stale). Immediate
+	# remove_child matters less here than in _refresh_squad_row (no name
+	# collision risk on anonymous children) but is cheaper and clearer.
 	for c in members_vbox.get_children():
+		members_vbox.remove_child(c)
 		c.queue_free()
 	_split_checks.clear()
 	for u in squad.members:
