@@ -235,7 +235,12 @@ func _refresh_squad_row(squad: Squad) -> void:
 
 
 func _build_squad_row(squad: Squad) -> Control:
-	# One row = HBox: [name button (selects squad)] [rename btn] [count label] [disband btn]
+	# Row layout: [name button] [count label] [disband btn]
+	# Name button interactions:
+	#   left click          -> select squad members on the map
+	#   left double-click   -> select + center camera on squad centroid
+	#   right click         -> swap to inline LineEdit for rename
+	# Tooltip on the name button surfaces these to the player.
 	var hbox := HBoxContainer.new()
 	var name_btn := Button.new()
 	var name_text: String = squad.display_name
@@ -244,16 +249,12 @@ func _build_squad_row(squad: Squad) -> Control:
 	name_btn.text = name_text
 	name_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	name_btn.tooltip_text = "Click: select  •  Double-click: focus camera  •  Right-click: rename"
 	if squad.is_scattering():
 		name_btn.modulate = Color(1, 0.7, 0.5)
 	name_btn.pressed.connect(_on_squad_row_selected.bind(squad.id))
+	name_btn.gui_input.connect(_on_squad_name_gui_input.bind(squad.id))
 	hbox.add_child(name_btn)
-	var rename_btn := Button.new()
-	rename_btn.text = "R"
-	rename_btn.tooltip_text = "Rename squad"
-	rename_btn.custom_minimum_size = Vector2(24, 0)
-	rename_btn.pressed.connect(_on_squad_row_rename.bind(squad.id))
-	hbox.add_child(rename_btn)
 	var count_label := Label.new()
 	count_label.text = "%d/%d" % [squad.members.size(), squad.get_capacity()]
 	count_label.custom_minimum_size = Vector2(36, 0)
@@ -266,6 +267,36 @@ func _build_squad_row(squad: Squad) -> Control:
 	disband_btn.pressed.connect(_on_squad_row_disband.bind(squad.id))
 	hbox.add_child(disband_btn)
 	return hbox
+
+
+func _on_squad_name_gui_input(event: InputEvent, squad_id: int) -> void:
+	if not (event is InputEventMouseButton) or not event.pressed:
+		return
+	if event.button_index == MOUSE_BUTTON_RIGHT:
+		_on_squad_row_rename(squad_id)
+		return
+	if event.button_index == MOUSE_BUTTON_LEFT and event.double_click:
+		# Single click already routed via pressed signal -> select. Double-click
+		# adds the camera focus on top. Selection stays valid through both.
+		_focus_camera_on_squad(squad_id)
+
+
+func _focus_camera_on_squad(squad_id: int) -> void:
+	var squad := SquadManager.get_squad_by_id(squad_id)
+	if squad == null:
+		return
+	var sum := Vector2.ZERO
+	var n: int = 0
+	for u in squad.members:
+		if is_instance_valid(u):
+			sum += u.global_position
+			n += 1
+	if n == 0:
+		return
+	var centroid: Vector2 = sum / float(n)
+	var cam := get_tree().get_first_node_in_group("rts_camera")
+	if cam != null and cam.has_method("center_on_world"):
+		cam.center_on_world(centroid)
 
 
 func _on_squad_row_rename(squad_id: int) -> void:

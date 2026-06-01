@@ -6,6 +6,16 @@ const ZOOM_MIN := 0.5
 const ZOOM_MAX := 2.5
 
 
+func _ready() -> void:
+	add_to_group("rts_camera")
+
+
+# Jump the camera to a world-space point. World coords stay in gameplay space;
+# Camera2D lives in iso screen-space (Phase 2), so project before assigning.
+func center_on_world(world_pos: Vector2) -> void:
+	position = IsoView.world_to_screen(world_pos)
+
+
 func _process(delta: float) -> void:
 	var direction := Vector2.ZERO
 	if Input.is_key_pressed(KEY_W):
