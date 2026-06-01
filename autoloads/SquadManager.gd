@@ -186,3 +186,101 @@ func rename_squad(squad: Squad, new_name: String) -> void:
 		return
 	squad.display_name = new_name.substr(0, 24)
 	squad_updated.emit(squad)
+
+
+# Split: removes `members_to_move` from `source` and forms a new squad with them.
+# Both resulting squads must be valid (>=2 members, rank-2+ leader). Returns
+# the new Squad on success, String error on failure.
+func split_squad(source: Squad, members_to_move: Array) -> Variant:
+	if source == null:
+		return "No source squad."
+	if members_to_move.size() < 2:
+		return "Split requires at least 2 units."
+	# All units must belong to source.
+	for u in members_to_move:
+		if not is_instance_valid(u) or u.squad != source:
+			return "Selected units don't all belong to this squad."
+	# Compute remaining set.
+	var remaining: Array = []
+	for u in source.members:
+		if not (u in members_to_move):
+			remaining.append(u)
+	if remaining.size() < 2:
+		return "Remaining squad would have fewer than 2 units."
+	# Both halves need a rank-2+ leader candidate.
+	if _highest_rank(members_to_move) < Squad.SEASONED:
+		return "Split squad requires at least one Seasoned or higher unit."
+	if _highest_rank(remaining) < Squad.SEASONED:
+		return "Remaining squad would have no leader."
+	# Capacity check for both halves.
+	if members_to_move.size() > Squad.CAPACITY_BY_RANK.get(_highest_rank(members_to_move), 0):
+		return "Split selection exceeds new leader's capacity."
+	if remaining.size() > Squad.CAPACITY_BY_RANK.get(_highest_rank(remaining), 0):
+		return "Remaining squad would exceed leader capacity."
+	# Detach moved members from source first - this clears u.squad so the
+	# create_squad validation pre-check (u.squad != null) doesn't reject them.
+	for u in members_to_move:
+		source.members.erase(u)
+		u.squad = null
+		u.commander = null
+	# Form the new squad.
+	var result = create_squad(members_to_move, source.faction)
+	if result is String:
+		# Should not happen given the upfront validation; restore source as a
+		# best-effort rollback before returning the error.
+		for u in members_to_move:
+			u.squad = source
+			source.members.append(u)
+		source.sort_members()
+		return result
+	# Reassign leader on the source (its old leader may have moved).
+	_assign_leader_internal(source)
+	source.sort_members()
+	squad_membership_changed.emit(source)
+	squad_leader_changed.emit(source)
+	return result
+
+
+# Merge: moves all of source's members into target, disbands source. Combined
+# membership must fit target's leader-capacity. Returns "" on success, error msg
+# on failure.
+func merge_squads(target: Squad, source: Squad) -> String:
+	if target == null or source == null:
+		return "Invalid squads."
+	if target == source:
+		return "Cannot merge a squad with itself."
+	if target.faction != source.faction:
+		return "Squads must be the same faction."
+	# Capacity check: combined membership and the strongest possible leader from
+	# the union must satisfy capacity. (Target may gain a higher-rank leader from
+	# source after merge.)
+	var combined_size: int = target.members.size() + source.members.size()
+	var combined_rank: int = max(_highest_rank(target.members), _highest_rank(source.members))
+	if combined_size > Squad.CAPACITY_BY_RANK.get(combined_rank, 0):
+		return "Combined squad would exceed leader capacity."
+	# Move members from source into target.
+	for u in source.members:
+		if not is_instance_valid(u):
+			continue
+		u.squad = target
+		target.members.append(u)
+	# Disband source (members already reassigned, so source.members.clear()
+	# would orphan them - just remove source from the registry without iterating
+	# its members).
+	source.members.clear()
+	_squads.erase(source.id)
+	squad_disbanded.emit(source)
+	# Reassign target leader from the new combined pool.
+	_assign_leader_internal(target)
+	target.sort_members()
+	squad_membership_changed.emit(target)
+	squad_leader_changed.emit(target)
+	return ""
+
+
+func _highest_rank(units: Array) -> int:
+	var best: int = 0
+	for u in units:
+		if is_instance_valid(u) and u.veterancy_level > best:
+			best = u.veterancy_level
+	return best

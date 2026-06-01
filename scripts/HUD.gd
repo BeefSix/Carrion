@@ -39,6 +39,19 @@ var _selected_squad: Squad = null
 var _toast_label: Label = null
 var _toast_timer: float = 0.0
 
+# Split state: per-member checkbox values for the currently-displayed detail squad.
+# Rebuilt when the squad changes; queried when the Split button is pressed.
+var _split_checks: Dictionary = {}  # Unit -> bool
+
+# Disband confirmation dialog (built lazily).
+var _confirm_dialog: ConfirmationDialog = null
+var _pending_disband_id: int = -1
+
+# Merge target picker (PopupMenu, built on demand).
+var _merge_popup: PopupMenu = null
+# Maps PopupMenu item index -> target squad id, for the currently-open merge.
+var _merge_targets: Array = []
+
 
 func _ready() -> void:
 	add_to_group("hud")
@@ -193,8 +206,7 @@ func _refresh_squad_row(squad: Squad) -> void:
 
 
 func _build_squad_row(squad: Squad) -> Control:
-	# One row = HBox with [name button (selects squad)] [count label] [disband btn]
-	# Phase 3 will add Focus + Rename icons.
+	# One row = HBox: [name button (selects squad)] [rename btn] [count label] [disband btn]
 	var hbox := HBoxContainer.new()
 	var name_btn := Button.new()
 	name_btn.text = squad.display_name
@@ -202,6 +214,12 @@ func _build_squad_row(squad: Squad) -> Control:
 	name_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	name_btn.pressed.connect(_on_squad_row_selected.bind(squad.id))
 	hbox.add_child(name_btn)
+	var rename_btn := Button.new()
+	rename_btn.text = "R"
+	rename_btn.tooltip_text = "Rename squad"
+	rename_btn.custom_minimum_size = Vector2(24, 0)
+	rename_btn.pressed.connect(_on_squad_row_rename.bind(squad.id))
+	hbox.add_child(rename_btn)
 	var count_label := Label.new()
 	count_label.text = "%d/%d" % [squad.members.size(), squad.get_capacity()]
 	count_label.custom_minimum_size = Vector2(36, 0)
@@ -214,6 +232,49 @@ func _build_squad_row(squad: Squad) -> Control:
 	disband_btn.pressed.connect(_on_squad_row_disband.bind(squad.id))
 	hbox.add_child(disband_btn)
 	return hbox
+
+
+func _on_squad_row_rename(squad_id: int) -> void:
+	# Swap the row's name Button for an editable LineEdit. Enter confirms,
+	# Esc / focus_exited reverts. Inline rename per the design doc.
+	var squad := SquadManager.get_squad_by_id(squad_id)
+	if squad == null:
+		return
+	var row := _squad_list.get_node_or_null("Squad_%d" % squad_id)
+	if row == null:
+		return
+	var name_btn = row.get_child(0)
+	if not (name_btn is Button):
+		return
+	var line_edit := LineEdit.new()
+	line_edit.text = squad.display_name
+	line_edit.max_length = 24
+	line_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	line_edit.text_submitted.connect(_on_rename_submitted.bind(squad_id))
+	line_edit.focus_exited.connect(_on_rename_cancelled.bind(squad_id))
+	row.remove_child(name_btn)
+	name_btn.queue_free()
+	row.add_child(line_edit)
+	row.move_child(line_edit, 0)
+	line_edit.grab_focus()
+	line_edit.select_all()
+
+
+func _on_rename_submitted(new_text: String, squad_id: int) -> void:
+	var squad := SquadManager.get_squad_by_id(squad_id)
+	if squad == null:
+		return
+	SquadManager.rename_squad(squad, new_text)
+	# squad_updated signal rebuilds the row.
+
+
+func _on_rename_cancelled(squad_id: int) -> void:
+	# Rebuild the row to restore the name button. Idempotent: refresh handles
+	# the case where the row was already replaced by a submit.
+	var squad := SquadManager.get_squad_by_id(squad_id)
+	if squad == null:
+		return
+	_refresh_squad_row(squad)
 
 
 func _on_squad_row_selected(squad_id: int) -> void:
@@ -229,7 +290,21 @@ func _on_squad_row_disband(squad_id: int) -> void:
 	var squad := SquadManager.get_squad_by_id(squad_id)
 	if squad == null:
 		return
-	# Phase 3 adds a confirmation prompt. Phase 2 just disbands directly.
+	if _confirm_dialog == null:
+		_confirm_dialog = ConfirmationDialog.new()
+		_confirm_dialog.title = "Disband Squad"
+		_confirm_dialog.confirmed.connect(_on_disband_confirmed)
+		add_child(_confirm_dialog)
+	_pending_disband_id = squad_id
+	_confirm_dialog.dialog_text = "Disband %s? Members will return to ungrouped state." % squad.display_name
+	_confirm_dialog.popup_centered()
+
+
+func _on_disband_confirmed() -> void:
+	var squad := SquadManager.get_squad_by_id(_pending_disband_id)
+	_pending_disband_id = -1
+	if squad == null:
+		return
 	SquadManager.disband_squad(squad)
 
 
@@ -242,16 +317,53 @@ func _render_squad_detail(squad: Squad) -> void:
 	var detail_title: Label = $SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/DetailTitle
 	var members_vbox: VBoxContainer = $SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/DetailMembers
 	detail_title.text = "%s  (%d/%d)" % [squad.display_name, squad.members.size(), squad.get_capacity()]
-	# Wipe and re-render members.
+	# Wipe and re-render members. Reset split checks to match current membership
+	# (any prior checks against removed units would be stale).
 	for c in members_vbox.get_children():
 		c.queue_free()
+	_split_checks.clear()
 	for u in squad.members:
 		if not is_instance_valid(u):
 			continue
+		_split_checks[u] = false
 		var row := _build_member_row(u, squad)
 		members_vbox.add_child(row)
 	_squad_detail.show()
 	_detail_separator.show()
+	_wire_detail_buttons(squad)
+	_update_detail_buttons_state(squad)
+
+
+func _wire_detail_buttons(squad: Squad) -> void:
+	# Connect split/merge once per render. Disconnect prior connections so the
+	# bound squad id doesn't carry stale references after a re-render.
+	var split_btn: Button = $SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/DetailButtons/SplitButton
+	var merge_btn: Button = $SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/DetailButtons/MergeButton
+	for c in split_btn.pressed.get_connections():
+		split_btn.pressed.disconnect(c.callable)
+	for c in merge_btn.pressed.get_connections():
+		merge_btn.pressed.disconnect(c.callable)
+	split_btn.pressed.connect(_on_split_pressed.bind(squad.id))
+	merge_btn.pressed.connect(_on_merge_pressed.bind(squad.id))
+
+
+func _update_detail_buttons_state(squad: Squad) -> void:
+	var split_btn: Button = $SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/DetailButtons/SplitButton
+	var merge_btn: Button = $SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/DetailButtons/MergeButton
+	var checked_count: int = 0
+	for v in _split_checks.values():
+		if v:
+			checked_count += 1
+	# Split needs at least 2 checked AND at least 2 unchecked.
+	var unchecked_count: int = _split_checks.size() - checked_count
+	split_btn.disabled = not (checked_count >= 2 and unchecked_count >= 2)
+	# Merge needs at least one other squad of same faction.
+	var has_target: bool = false
+	for s in SquadManager.get_all_squads():
+		if s != squad and s.faction == squad.faction:
+			has_target = true
+			break
+	merge_btn.disabled = not has_target
 
 
 func _hide_squad_detail() -> void:
@@ -261,6 +373,11 @@ func _hide_squad_detail() -> void:
 
 func _build_member_row(u, squad: Squad) -> Control:
 	var hbox := HBoxContainer.new()
+	# Checkbox marks unit for split. Toggling re-evaluates split-button enabled state.
+	var check := CheckBox.new()
+	check.button_pressed = _split_checks.get(u, false)
+	check.toggled.connect(_on_member_check_toggled.bind(u, squad))
+	hbox.add_child(check)
 	var name_label := Label.new()
 	var leader_marker: String = "* " if u == squad.leader else "  "
 	name_label.text = "%s%s (%s)" % [leader_marker, u.name, Squad.rank_name(u.veterancy_level)]
@@ -273,6 +390,60 @@ func _build_member_row(u, squad: Squad) -> Control:
 	hp_label.custom_minimum_size = Vector2(60, 0)
 	hbox.add_child(hp_label)
 	return hbox
+
+
+func _on_member_check_toggled(checked: bool, u, squad: Squad) -> void:
+	_split_checks[u] = checked
+	_update_detail_buttons_state(squad)
+
+
+func _on_split_pressed(squad_id: int) -> void:
+	var squad := SquadManager.get_squad_by_id(squad_id)
+	if squad == null:
+		return
+	var to_move: Array = []
+	for u in _split_checks.keys():
+		if _split_checks[u] and is_instance_valid(u):
+			to_move.append(u)
+	var result = SquadManager.split_squad(squad, to_move)
+	if result is String:
+		show_toast(result)
+
+
+func _on_merge_pressed(squad_id: int) -> void:
+	var squad := SquadManager.get_squad_by_id(squad_id)
+	if squad == null:
+		return
+	# Build a PopupMenu listing same-faction squads (excluding self).
+	if _merge_popup == null:
+		_merge_popup = PopupMenu.new()
+		_merge_popup.id_pressed.connect(_on_merge_target_picked)
+		add_child(_merge_popup)
+	_merge_popup.clear()
+	_merge_targets.clear()
+	for s in SquadManager.get_all_squads():
+		if s == squad or s.faction != squad.faction:
+			continue
+		_merge_targets.append({"source_id": squad_id, "target_id": s.id})
+		_merge_popup.add_item("Merge into %s" % s.display_name, _merge_targets.size() - 1)
+	if _merge_popup.item_count == 0:
+		return
+	var btn: Button = $SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/DetailButtons/MergeButton
+	_merge_popup.position = btn.global_position + Vector2(0, btn.size.y)
+	_merge_popup.popup()
+
+
+func _on_merge_target_picked(idx: int) -> void:
+	if idx < 0 or idx >= _merge_targets.size():
+		return
+	var pair = _merge_targets[idx]
+	var source := SquadManager.get_squad_by_id(pair["source_id"])
+	var target := SquadManager.get_squad_by_id(pair["target_id"])
+	if source == null or target == null:
+		return
+	var err: String = SquadManager.merge_squads(target, source)
+	if err != "":
+		show_toast(err)
 
 
 func _on_salvage_changed(value: int) -> void:
