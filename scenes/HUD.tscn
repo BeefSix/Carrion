@@ -70,10 +70,13 @@ text = ""
 autowrap_mode = 2
 
 [node name="StancePanel" type="PanelContainer" parent="."]
+anchor_top = 1.0
+anchor_bottom = 1.0
 offset_left = 16.0
-offset_top = 72.0
+offset_top = -56.0
 offset_right = 240.0
-offset_bottom = 112.0
+offset_bottom = -16.0
+grow_vertical = 0
 
 [node name="HBox" type="HBoxContainer" parent="StancePanel"]
 
@@ -83,3 +86,80 @@ text = "Stance: Aggressive"
 
 [node name="StanceButton" type="Button" parent="StancePanel/HBox"]
 text = "Toggle (X)"
+
+[node name="SquadSidebar" type="PanelContainer" parent="."]
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 72.0
+offset_right = 256.0
+offset_bottom = -72.0
+
+[node name="VBox" type="VBoxContainer" parent="SquadSidebar"]
+
+[node name="FactionHeader" type="PanelContainer" parent="SquadSidebar/VBox"]
+
+[node name="FactionMargin" type="MarginContainer" parent="SquadSidebar/VBox/FactionHeader"]
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_bottom = 6
+
+[node name="FactionVBox" type="VBoxContainer" parent="SquadSidebar/VBox/FactionHeader/FactionMargin"]
+
+[node name="FactionLabel" type="Label" parent="SquadSidebar/VBox/FactionHeader/FactionMargin/FactionVBox"]
+text = "Military"
+
+[node name="PopLabel" type="Label" parent="SquadSidebar/VBox/FactionHeader/FactionMargin/FactionVBox"]
+text = "Units: 0"
+
+[node name="EclipseLabel" type="Label" parent="SquadSidebar/VBox/FactionHeader/FactionMargin/FactionVBox"]
+text = "Eclipse: stable"
+modulate = Color(0.75, 0.75, 0.75, 1)
+
+[node name="SquadsTitle" type="Label" parent="SquadSidebar/VBox"]
+text = "Squads"
+horizontal_alignment = 1
+
+[node name="SquadScroll" type="ScrollContainer" parent="SquadSidebar/VBox"]
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="SquadList" type="VBoxContainer" parent="SquadSidebar/VBox/SquadScroll"]
+size_flags_horizontal = 3
+
+[node name="EmptyHint" type="Label" parent="SquadSidebar/VBox"]
+text = "No squads. Press G with selected units to form one."
+autowrap_mode = 2
+modulate = Color(0.7, 0.7, 0.7, 1)
+horizontal_alignment = 1
+
+[node name="DetailSeparator" type="HSeparator" parent="SquadSidebar/VBox"]
+
+[node name="SquadDetail" type="PanelContainer" parent="SquadSidebar/VBox"]
+visible = false
+
+[node name="DetailMargin" type="MarginContainer" parent="SquadSidebar/VBox/SquadDetail"]
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_bottom = 6
+
+[node name="DetailVBox" type="VBoxContainer" parent="SquadSidebar/VBox/SquadDetail/DetailMargin"]
+
+[node name="DetailTitle" type="Label" parent="SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox"]
+text = "Squad Detail"
+horizontal_alignment = 1
+
+[node name="DetailMembers" type="VBoxContainer" parent="SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox"]
+
+[node name="DetailButtons" type="HBoxContainer" parent="SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox"]
+
+[node name="SplitButton" type="Button" parent="SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/DetailButtons"]
+size_flags_horizontal = 3
+text = "Split"
+disabled = true
+
+[node name="MergeButton" type="Button" parent="SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/DetailButtons"]
+size_flags_horizontal = 3
+text = "Merge..."
+disabled = true

@@ -2,6 +2,13 @@ extends CanvasLayer
 
 const MAX_ACTIONS := 5
 
+const POP_REFRESH_INTERVAL := 0.5
+const FACTION_COLORS := {
+	GameState.Faction.MILITARY: Color("5a6644"),
+	GameState.Faction.SURVIVOR: Color("7a5c3c"),
+	GameState.Faction.TRIBAL: Color("8a6a3a"),
+}
+
 @onready var _salvage_label: Label = $SalvagePanel/MarginContainer/SalvageLabel
 @onready var _actor_panel: PanelContainer = $BuildingPanel
 @onready var _actor_title: Label = $BuildingPanel/VBox/Title
@@ -10,6 +17,16 @@ const MAX_ACTIONS := 5
 @onready var _stance_panel: PanelContainer = $StancePanel
 @onready var _stance_label: Label = $StancePanel/HBox/StanceLabel
 @onready var _stance_button: Button = $StancePanel/HBox/StanceButton
+
+@onready var _faction_label: Label = $SquadSidebar/VBox/FactionHeader/FactionMargin/FactionVBox/FactionLabel
+@onready var _pop_label: Label = $SquadSidebar/VBox/FactionHeader/FactionMargin/FactionVBox/PopLabel
+@onready var _eclipse_label: Label = $SquadSidebar/VBox/FactionHeader/FactionMargin/FactionVBox/EclipseLabel
+@onready var _squad_list: VBoxContainer = $SquadSidebar/VBox/SquadScroll/SquadList
+@onready var _empty_hint: Label = $SquadSidebar/VBox/EmptyHint
+@onready var _detail_separator: HSeparator = $SquadSidebar/VBox/DetailSeparator
+@onready var _squad_detail: PanelContainer = $SquadSidebar/VBox/SquadDetail
+
+var _pop_refresh_timer: float = 0.0
 
 var _action_buttons: Array = []
 var _current_actor = null
@@ -39,6 +56,43 @@ func _ready() -> void:
 	var sel_mgr := get_tree().get_first_node_in_group("selection_manager")
 	if sel_mgr != null:
 		sel_mgr.selection_changed.connect(_on_selection_changed)
+	_init_squad_sidebar()
+
+
+func _init_squad_sidebar() -> void:
+	# Faction header: name + accent color modulate so the player can see at a glance
+	# which faction they're commanding. Pop count + Eclipse meter refresh in _process.
+	var fkey: int = GameState.player_faction
+	_faction_label.text = _faction_name(fkey)
+	if FACTION_COLORS.has(fkey):
+		_faction_label.modulate = FACTION_COLORS[fkey]
+	_eclipse_label.text = "Eclipse: stable"  # placeholder until Eclipse system lands
+	_squad_detail.hide()
+	_detail_separator.hide()
+	_refresh_pop_count()
+	# Squad list is empty in Phase 1; the hint will hide automatically when squads
+	# exist (Phase 2 onward). For now it shows the form-squad prompt.
+	_refresh_empty_hint()
+
+
+func _faction_name(f: int) -> String:
+	match f:
+		GameState.Faction.MILITARY: return "Military"
+		GameState.Faction.SURVIVOR: return "Survivor"
+		GameState.Faction.TRIBAL: return "Tribal"
+		_: return "Unknown"
+
+
+func _refresh_pop_count() -> void:
+	var n: int = get_tree().get_nodes_in_group("player_units").size()
+	_pop_label.text = "Units: %d" % n
+
+
+func _refresh_empty_hint() -> void:
+	# Phase 1: no squads exist yet, so the hint is always visible. Phase 2 will
+	# toggle this based on the actual squad list.
+	var has_squads: bool = _squad_list.get_child_count() > 0
+	_empty_hint.visible = not has_squads
 
 
 func _on_salvage_changed(value: int) -> void:
@@ -115,12 +169,17 @@ func _on_action_pressed(index: int) -> void:
 			_current_actor.do_action(index)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if is_equal_approx(Engine.time_scale, 1.0):
 		_speed_label.visible = false
 	else:
 		_speed_label.visible = true
 		_speed_label.text = "Speed: %.0fx" % Engine.time_scale
+
+	_pop_refresh_timer -= delta
+	if _pop_refresh_timer <= 0.0:
+		_pop_refresh_timer = POP_REFRESH_INTERVAL
+		_refresh_pop_count()
 
 	if _current_actor == null or not is_instance_valid(_current_actor):
 		return
