@@ -17,6 +17,11 @@ var ai_enabled: bool = false
 
 func reset_match() -> void:
 	salvage = STARTING_SALVAGE
+	# SquadManager owns per-match state (squad registry, NATO name counter,
+	# next-id allocator). Clear it so a new match starts at Alpha/id=1
+	# without stale references from the previous run.
+	if SquadManager != null:
+		SquadManager.reset()
 
 
 func can_spend(amount: int) -> bool:

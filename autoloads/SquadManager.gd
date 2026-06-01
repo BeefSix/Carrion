@@ -12,7 +12,12 @@ signal squad_leader_changed(squad: Squad)
 # Aura range: 6 tiles. Subordinate must be within this distance of an ancestor
 # for that ancestor to contribute to the subordinate's aura bonus.
 const AURA_RANGE_PX := 6.0 * 32.0
+const AURA_RANGE_PX_SQ := AURA_RANGE_PX * AURA_RANGE_PX
 const AURA_TICK_INTERVAL := 0.2  # 5Hz - dynamic proximity check only.
+# Bonus per rank-level above the subordinate, per ancestor. 0.05 = +5%.
+# Seasoned at d=1: +5%. Veteran at d=1/2: +10%/+5%. Captain at d=1/2/3:
+# +15%/+10%/+5%. Single tuning knob for the entire leadership system.
+const AURA_PERCENT_PER_LEVEL := 0.05
 const SCATTER_DURATION := 90.0
 
 # Posture -> per-unit Stance mapping. Squad posture writes through to all
@@ -176,11 +181,10 @@ func on_member_died(unit) -> void:
 	var squad: Squad = unit.squad
 	if not _squads.has(squad.id):
 		return
-	# Subordinates of the dying unit need a new commander. Per the doc: if the
-	# dying unit was a sub-leader, the highest-rank survivor among their direct
-	# subordinates auto-promotes to take their slot. If none survive at rank-2+,
-	# absorption falls through to whichever ancestor is next up the chain.
-	var orphans: Array = squad.subordinates_of(unit).duplicate()
+	# Subordinates of the dying unit need a new commander. We delegate that to
+	# _rebuild_command_tree below - it reassigns the survivor pool from
+	# scratch using the rank ladder, which handles orphan absorption
+	# deterministically without per-orphan logic here.
 	squad.members.erase(unit)
 	unit.squad = null
 	unit.commander = null
@@ -215,9 +219,6 @@ func on_member_died(unit) -> void:
 	# from the remaining rank pool deterministically.
 	_rebuild_command_tree(squad)
 	squad_membership_changed.emit(squad)
-	# Orphans returned at top of function (kept in case future logic wants
-	# per-orphan handling). Currently unused beyond the tree rebuild.
-	var _suppress_unused := orphans
 
 
 func get_all_squads() -> Array:
@@ -226,14 +227,6 @@ func get_all_squads() -> Array:
 
 func get_squad_by_id(id: int) -> Squad:
 	return _squads.get(id, null)
-
-
-# Lookup helper used by the sidebar when the player clicks on a unit and we
-# need to know which squad to highlight.
-func squad_of(unit) -> Squad:
-	if unit == null or not is_instance_valid(unit):
-		return null
-	return unit.squad
 
 
 func rename_squad(squad: Squad, new_name: String) -> void:
@@ -329,6 +322,12 @@ func merge_squads(target: Squad, source: Squad) -> String:
 	# Reassign target leader from the new combined pool.
 	_assign_leader_internal(target)
 	target.sort_members()
+	# If target was scattering and merge brought in a rank-2+ leader candidate,
+	# end the scatter state immediately. Without this clear, the squad ends up
+	# with a valid leader AND a ticking scatter timer - aura zeroed, detail
+	# panel shows "(scattered)" despite having a real chain of command.
+	if target.scatter_timer > 0.0 and target.leader != null:
+		target.scatter_timer = 0.0
 	_rebuild_command_tree(target)
 	squad_membership_changed.emit(target)
 	squad_leader_changed.emit(target)
@@ -446,8 +445,9 @@ func _compute_aura_for(unit) -> float:
 	var depth: int = 1
 	var cur = unit.commander
 	while cur != null and is_instance_valid(cur):
-		if unit.global_position.distance_to(cur.global_position) <= AURA_RANGE_PX:
-			var per_level: float = max(0.0, float(cur.veterancy_level - depth)) * 0.05
+		# Squared-distance compare saves a sqrt per ancestor per tick.
+		if unit.global_position.distance_squared_to(cur.global_position) <= AURA_RANGE_PX_SQ:
+			var per_level: float = max(0.0, float(cur.veterancy_level - depth)) * AURA_PERCENT_PER_LEVEL
 			bonus += per_level
 		cur = cur.commander
 		depth += 1
@@ -508,7 +508,7 @@ func set_posture(squad: Squad, posture: int) -> void:
 	squad.posture = posture
 	var target_stance: int = POSTURE_TO_STANCE.get(posture, Unit.Stance.NEUTRAL)
 	for m in squad.members:
-		if is_instance_valid(m) and "stance" in m:
+		if is_instance_valid(m):
 			m.set_stance(target_stance)
 	squad_updated.emit(squad)
 
