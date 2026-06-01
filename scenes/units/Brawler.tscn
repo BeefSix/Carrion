@@ -18,8 +18,8 @@ size_px = 24
 shape = SubResource("RectangleShape2D_brawler")
 
 [node name="NavigationAgent" type="NavigationAgent2D" parent="."]
-path_desired_distance = 8.0
+path_desired_distance = 16.0
 target_desired_distance = 24.0
 radius = 12.0
 max_speed = 96.0
-avoidance_enabled = true
+avoidance_enabled = false

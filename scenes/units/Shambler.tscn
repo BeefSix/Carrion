@@ -18,8 +18,8 @@ size_px = 22
 shape = SubResource("CircleShape2D_shambler")
 
 [node name="NavigationAgent" type="NavigationAgent2D" parent="."]
-path_desired_distance = 8.0
+path_desired_distance = 16.0
 target_desired_distance = 24.0
 radius = 11.0
 max_speed = 48.0
-avoidance_enabled = true
+avoidance_enabled = false
