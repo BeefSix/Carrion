@@ -74,6 +74,12 @@ func _color_for_level(level: int) -> Color:
 
 
 func _draw() -> void:
+	# Iso shift: match Unit/Building _draw so the corpse renders at the iso-projected
+	# screen position. Without this the rect draws at raw world coords and ends up
+	# offset (visually toward the top of the map) relative to surrounding iso geometry.
+	var iso_offset: Vector2 = IsoView.world_to_screen(position) - position
+	draw_set_transform(iso_offset, 0.0, Vector2.ONE)
+
 	var half := SIZE / 2.0
 	draw_rect(Rect2(-half, SIZE), Color(0.14, 0.09, 0.07))
 	var bar_width: float = 16.0
