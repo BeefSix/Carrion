@@ -20,8 +20,11 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 	if current_command == Command.MOVE:
-		if not _follow_navigation():
+		var still_moving := _follow_navigation()
+		if not still_moving:
 			current_command = Command.IDLE
+		elif stance == Stance.AGGRESSIVE:
+			_try_shoot_in_range(delta)
 		return
 
 	var threat = _find_nearest_threat_in_range(KITE_RANGE)
@@ -39,6 +42,21 @@ func _physics_process(delta: float) -> void:
 		if dist <= ATTACK_RANGE and _attack_cooldown <= 0:
 			_fire_aoe(_target.global_position)
 			_attack_cooldown = ATTACK_PERIOD
+
+
+func _try_shoot_in_range(delta: float) -> void:
+	# Attack-while-moving: AOE-fire opportunistically at hostiles within
+	# ATTACK_RANGE. No kiting (honor move order). Cooldown shared with idle path.
+	_retarget_timer -= delta
+	if _retarget_timer <= 0:
+		_retarget_timer = RETARGET_INTERVAL
+		_target = _find_nearest_zombie()
+	if _target == null or not is_instance_valid(_target):
+		return
+	var dist := global_position.distance_to(_target.global_position)
+	if dist <= ATTACK_RANGE and _attack_cooldown <= 0:
+		_fire_aoe(_target.global_position)
+		_attack_cooldown = ATTACK_PERIOD
 
 
 func _find_nearest_zombie():

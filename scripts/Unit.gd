@@ -3,6 +3,7 @@ extends CharacterBody2D
 
 enum Faction { MILITARY, TRIBAL, ZOMBIE, NEUTRAL, SURVIVOR }
 enum Command { IDLE, MOVE, ATTACK, GATHER, CONSTRUCT, FLEE, CREMATE }
+enum Stance { AGGRESSIVE, PASSIVE }
 
 const MIN_CORPSE_CHANCE := 0.05
 const ENGAGEMENT_RANGE := 256.0
@@ -32,6 +33,11 @@ var current_hp: int
 var current_command: Command = Command.IDLE
 var selected: bool = false
 var facing_dir: Vector2 = Vector2.DOWN
+# Per-unit stance. Aggressive (default): combat units engage hostiles in range
+# while following a MOVE order. Passive: combat units ignore everything during
+# MOVE, only attacking when idle. Squad-level posture (future work) will write
+# through to this field.
+var stance: Stance = Stance.AGGRESSIVE
 
 var kills_count: int = 0
 var damage_dealt: float = 0.0
@@ -60,6 +66,14 @@ func _ready() -> void:
 func move_to(world_pos: Vector2) -> void:
 	_nav.target_position = world_pos
 	current_command = Command.MOVE
+
+
+func toggle_stance() -> void:
+	stance = Stance.PASSIVE if stance == Stance.AGGRESSIVE else Stance.AGGRESSIVE
+
+
+func set_stance(s: int) -> void:
+	stance = s
 
 
 func cremate_target(corpse) -> void:

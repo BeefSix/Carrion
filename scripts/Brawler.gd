@@ -18,8 +18,11 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 	if current_command == Command.MOVE:
-		if not _follow_navigation():
+		var still_moving := _follow_navigation()
+		if not still_moving:
 			current_command = Command.IDLE
+		elif stance == Stance.AGGRESSIVE:
+			_try_strike_in_range(delta)
 		return
 
 	_retarget_timer -= delta
@@ -40,6 +43,23 @@ func _physics_process(delta: float) -> void:
 	else:
 		_nav.target_position = _target.global_position
 		_follow_navigation()
+
+
+func _try_strike_in_range(delta: float) -> void:
+	# Attack-while-moving (melee): hit only if a hostile is already within
+	# ATTACK_RANGE. Do NOT deviate from the nav path to chase - the player's
+	# move order has priority. _delta is unused but kept for symmetry with the
+	# ranged-unit helpers.
+	_retarget_timer -= delta
+	if _retarget_timer <= 0:
+		_retarget_timer = RETARGET_INTERVAL
+		_target = _find_nearest_hostile()
+	if _target == null or not is_instance_valid(_target):
+		return
+	var dist := global_position.distance_to(_target.global_position)
+	if dist <= ATTACK_RANGE and _attack_cooldown <= 0:
+		_target.take_damage(get_effective_damage(ATTACK_DAMAGE), self)
+		_attack_cooldown = ATTACK_PERIOD
 
 
 # Survivor Brawler engages anything that isn't a Survivor or neutral - zombies,

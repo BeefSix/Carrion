@@ -68,3 +68,18 @@ text = "Action 5"
 [node name="StatusLabel" type="Label" parent="BuildingPanel/VBox"]
 text = ""
 autowrap_mode = 2
+
+[node name="StancePanel" type="PanelContainer" parent="."]
+offset_left = 16.0
+offset_top = 72.0
+offset_right = 240.0
+offset_bottom = 112.0
+
+[node name="HBox" type="HBoxContainer" parent="StancePanel"]
+
+[node name="StanceLabel" type="Label" parent="StancePanel/HBox"]
+size_flags_horizontal = 3
+text = "Stance: Aggressive"
+
+[node name="StanceButton" type="Button" parent="StancePanel/HBox"]
+text = "Toggle (X)"

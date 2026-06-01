@@ -83,6 +83,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	# collision shapes, building.position, unit.position) all stay in world
 	# coords - so we project iso back to world at the boundary before passing
 	# to handlers.
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_X:
+			var hud := get_tree().get_first_node_in_group("hud")
+			if hud != null and hud.has_method("_apply_stance_toggle"):
+				hud._apply_stance_toggle()
+			return
+
 	if _placing_wall:
 		if event is InputEventMouseButton and event.pressed:
 			if event.button_index == MOUSE_BUTTON_LEFT:
