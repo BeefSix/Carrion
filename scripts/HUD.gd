@@ -3,6 +3,7 @@ extends CanvasLayer
 const MAX_ACTIONS := 5
 
 const POP_REFRESH_INTERVAL := 0.5
+const TOAST_LIFETIME := 3.5
 const FACTION_COLORS := {
 	GameState.Faction.MILITARY: Color("5a6644"),
 	GameState.Faction.SURVIVOR: Color("7a5c3c"),
@@ -34,6 +35,10 @@ var _current_actor = null
 # combat selection (not just single-actor BuildingPanel selections).
 var _selected_combat_units: Array = []
 
+var _selected_squad: Squad = null
+var _toast_label: Label = null
+var _toast_timer: float = 0.0
+
 
 func _ready() -> void:
 	add_to_group("hud")
@@ -57,6 +62,39 @@ func _ready() -> void:
 	if sel_mgr != null:
 		sel_mgr.selection_changed.connect(_on_selection_changed)
 	_init_squad_sidebar()
+	_init_toast()
+	SquadManager.squad_created.connect(_on_squad_created)
+	SquadManager.squad_disbanded.connect(_on_squad_disbanded)
+	SquadManager.squad_updated.connect(_on_squad_updated)
+	SquadManager.squad_membership_changed.connect(_on_squad_membership_changed)
+	SquadManager.squad_leader_changed.connect(_on_squad_leader_changed)
+
+
+func _init_toast() -> void:
+	# Toast is a center-screen-bottom Label that fades out. Used for squad
+	# validation errors and other transient notifications.
+	_toast_label = Label.new()
+	_toast_label.anchor_left = 0.5
+	_toast_label.anchor_right = 0.5
+	_toast_label.anchor_top = 1.0
+	_toast_label.anchor_bottom = 1.0
+	_toast_label.offset_left = -300.0
+	_toast_label.offset_right = 300.0
+	_toast_label.offset_top = -100.0
+	_toast_label.offset_bottom = -64.0
+	_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_toast_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_toast_label.modulate = Color(1, 0.85, 0.7, 0)
+	add_child(_toast_label)
+
+
+func show_toast(msg: String) -> void:
+	if _toast_label == null:
+		return
+	_toast_label.text = msg
+	_toast_label.modulate = Color(1, 0.85, 0.7, 1)
+	_toast_timer = TOAST_LIFETIME
 
 
 func _init_squad_sidebar() -> void:
@@ -89,10 +127,152 @@ func _refresh_pop_count() -> void:
 
 
 func _refresh_empty_hint() -> void:
-	# Phase 1: no squads exist yet, so the hint is always visible. Phase 2 will
-	# toggle this based on the actual squad list.
-	var has_squads: bool = _squad_list.get_child_count() > 0
+	var has_squads: bool = SquadManager.get_all_squads().size() > 0
 	_empty_hint.visible = not has_squads
+
+
+# ----- Squad signal handlers -----
+
+func _on_squad_created(squad: Squad) -> void:
+	_add_squad_row(squad)
+	_refresh_empty_hint()
+
+
+func _on_squad_disbanded(squad: Squad) -> void:
+	_remove_squad_row(squad.id)
+	if _selected_squad == squad:
+		_selected_squad = null
+		_hide_squad_detail()
+	_refresh_empty_hint()
+
+
+func _on_squad_updated(squad: Squad) -> void:
+	_refresh_squad_row(squad)
+	if _selected_squad == squad:
+		_render_squad_detail(squad)
+
+
+func _on_squad_membership_changed(squad: Squad) -> void:
+	_refresh_squad_row(squad)
+	if _selected_squad == squad:
+		_render_squad_detail(squad)
+
+
+func _on_squad_leader_changed(squad: Squad) -> void:
+	_refresh_squad_row(squad)
+	if _selected_squad == squad:
+		_render_squad_detail(squad)
+
+
+# ----- Squad list rendering -----
+
+func _add_squad_row(squad: Squad) -> void:
+	var row := _build_squad_row(squad)
+	row.name = "Squad_%d" % squad.id
+	_squad_list.add_child(row)
+
+
+func _remove_squad_row(squad_id: int) -> void:
+	var node := _squad_list.get_node_or_null("Squad_%d" % squad_id)
+	if node != null:
+		node.queue_free()
+
+
+func _refresh_squad_row(squad: Squad) -> void:
+	var node := _squad_list.get_node_or_null("Squad_%d" % squad.id)
+	if node == null:
+		_add_squad_row(squad)
+		return
+	# Replace in place to keep ordering.
+	var idx: int = node.get_index()
+	node.queue_free()
+	var row := _build_squad_row(squad)
+	row.name = "Squad_%d" % squad.id
+	_squad_list.add_child(row)
+	_squad_list.move_child(row, idx)
+
+
+func _build_squad_row(squad: Squad) -> Control:
+	# One row = HBox with [name button (selects squad)] [count label] [disband btn]
+	# Phase 3 will add Focus + Rename icons.
+	var hbox := HBoxContainer.new()
+	var name_btn := Button.new()
+	name_btn.text = squad.display_name
+	name_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	name_btn.pressed.connect(_on_squad_row_selected.bind(squad.id))
+	hbox.add_child(name_btn)
+	var count_label := Label.new()
+	count_label.text = "%d/%d" % [squad.members.size(), squad.get_capacity()]
+	count_label.custom_minimum_size = Vector2(36, 0)
+	count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hbox.add_child(count_label)
+	var disband_btn := Button.new()
+	disband_btn.text = "X"
+	disband_btn.tooltip_text = "Disband squad"
+	disband_btn.custom_minimum_size = Vector2(28, 0)
+	disband_btn.pressed.connect(_on_squad_row_disband.bind(squad.id))
+	hbox.add_child(disband_btn)
+	return hbox
+
+
+func _on_squad_row_selected(squad_id: int) -> void:
+	var squad := SquadManager.get_squad_by_id(squad_id)
+	if squad == null:
+		return
+	var sel_mgr := get_tree().get_first_node_in_group("selection_manager")
+	if sel_mgr != null and sel_mgr.has_method("select_squad"):
+		sel_mgr.select_squad(squad)
+
+
+func _on_squad_row_disband(squad_id: int) -> void:
+	var squad := SquadManager.get_squad_by_id(squad_id)
+	if squad == null:
+		return
+	# Phase 3 adds a confirmation prompt. Phase 2 just disbands directly.
+	SquadManager.disband_squad(squad)
+
+
+# ----- Squad detail panel -----
+
+func _render_squad_detail(squad: Squad) -> void:
+	if squad == null:
+		_hide_squad_detail()
+		return
+	var detail_title: Label = $SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/DetailTitle
+	var members_vbox: VBoxContainer = $SquadSidebar/VBox/SquadDetail/DetailMargin/DetailVBox/DetailMembers
+	detail_title.text = "%s  (%d/%d)" % [squad.display_name, squad.members.size(), squad.get_capacity()]
+	# Wipe and re-render members.
+	for c in members_vbox.get_children():
+		c.queue_free()
+	for u in squad.members:
+		if not is_instance_valid(u):
+			continue
+		var row := _build_member_row(u, squad)
+		members_vbox.add_child(row)
+	_squad_detail.show()
+	_detail_separator.show()
+
+
+func _hide_squad_detail() -> void:
+	_squad_detail.hide()
+	_detail_separator.hide()
+
+
+func _build_member_row(u, squad: Squad) -> Control:
+	var hbox := HBoxContainer.new()
+	var name_label := Label.new()
+	var leader_marker: String = "* " if u == squad.leader else "  "
+	name_label.text = "%s%s (%s)" % [leader_marker, u.name, Squad.rank_name(u.veterancy_level)]
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if u == squad.leader:
+		name_label.modulate = Color(1.0, 0.95, 0.7)
+	hbox.add_child(name_label)
+	var hp_label := Label.new()
+	hp_label.text = "HP %d/%d" % [u.current_hp, u.get_effective_max_hp()]
+	hp_label.custom_minimum_size = Vector2(60, 0)
+	hbox.add_child(hp_label)
+	return hbox
 
 
 func _on_salvage_changed(value: int) -> void:
@@ -123,6 +303,18 @@ func _on_selection_changed(units: Array, building) -> void:
 	else:
 		_stance_panel.show()
 		_refresh_stance_label()
+
+	# Squad detail: show the squad of the first selected unit that has one.
+	# If no selected unit is in a squad, the detail panel hides.
+	_selected_squad = null
+	for u in units:
+		if is_instance_valid(u) and u.squad != null:
+			_selected_squad = u.squad
+			break
+	if _selected_squad != null:
+		_render_squad_detail(_selected_squad)
+	else:
+		_hide_squad_detail()
 
 
 func _refresh_stance_label() -> void:
@@ -180,6 +372,14 @@ func _process(delta: float) -> void:
 	if _pop_refresh_timer <= 0.0:
 		_pop_refresh_timer = POP_REFRESH_INTERVAL
 		_refresh_pop_count()
+
+	# Toast fade-out.
+	if _toast_timer > 0.0:
+		_toast_timer -= delta
+		if _toast_timer <= 0.0:
+			_toast_label.modulate.a = 0.0
+		elif _toast_timer < 1.0:
+			_toast_label.modulate.a = _toast_timer  # last second fades
 
 	if _current_actor == null or not is_instance_valid(_current_actor):
 		return

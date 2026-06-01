@@ -89,6 +89,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			if hud != null and hud.has_method("_apply_stance_toggle"):
 				hud._apply_stance_toggle()
 			return
+		if event.keycode == KEY_G:
+			_form_squad_from_selection()
+			return
 
 	if _placing_wall:
 		if event is InputEventMouseButton and event.pressed:
@@ -256,6 +259,47 @@ func _emit_change() -> void:
 
 func get_selected() -> Array:
 	return _selected_units.duplicate()
+
+
+# Public: select all members of a squad. Used by the sidebar squad-row click.
+# Camera does NOT auto-center per the design doc - the player chooses where to look.
+func select_squad(squad: Squad) -> void:
+	if squad == null:
+		return
+	_clear_selection()
+	for u in squad.members:
+		if is_instance_valid(u):
+			_add_to_selection(u)
+	_emit_change()
+
+
+func _form_squad_from_selection() -> void:
+	# G hotkey path. Routes through SquadManager which handles validation,
+	# leader assignment, and naming. On validation failure, shows a HUD toast
+	# instead of forming.
+	if _selected_units.is_empty():
+		return
+	var faction: int = _player_faction_value()
+	var result = SquadManager.create_squad(_selected_units.duplicate(), faction)
+	if result is String:
+		var hud := get_tree().get_first_node_in_group("hud")
+		if hud != null and hud.has_method("show_toast"):
+			hud.show_toast(result)
+		return
+	# Successful creation - the sidebar will update via SquadManager signals.
+	# Keep current selection (the newly-squaded units are still selected, which
+	# triggers the detail panel for the new squad).
+	_emit_change()
+
+
+func _player_faction_value() -> int:
+	# GameState.Faction (Military/Tribal/Survivor) -> Unit.Faction. The two enums
+	# differ - GameState omits Zombie/Neutral. Units carry the Unit.Faction value.
+	# For squad faction we want consistency with the units, so read from a unit.
+	for u in _selected_units:
+		if is_instance_valid(u):
+			return u.faction
+	return -1
 
 
 func _draw() -> void:

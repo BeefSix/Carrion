@@ -39,6 +39,12 @@ var facing_dir: Vector2 = Vector2.DOWN
 # through to this field.
 var stance: Stance = Stance.AGGRESSIVE
 
+# Squad membership. Set/cleared by SquadManager. `commander` is the direct
+# superior in the command tree (Phase 4); for non-leaders this is the unit
+# leading their sub-tree. Squad leader's commander is null.
+var squad: Squad = null
+var commander = null
+
 var kills_count: int = 0
 var damage_dealt: float = 0.0
 var combat_time: float = 0.0
@@ -207,6 +213,11 @@ func get_effective_damage(base_damage: int) -> int:
 
 
 func _die(attacker = null) -> void:
+	# Notify SquadManager before queueing the unit for deletion - the manager
+	# needs valid references to clean up commander/squad fields and trigger
+	# succession.
+	if squad != null:
+		SquadManager.on_member_died(self)
 	if _should_leave_corpse(attacker):
 		_spawn_corpse()
 	queue_free()
