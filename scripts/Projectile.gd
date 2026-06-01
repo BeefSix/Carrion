@@ -23,6 +23,12 @@ const FRIENDLY_FIRE_ENABLED := true
 # Safety despawn. A projectile that misses everything despawns rather than
 # flying forever and leaking memory.
 const DEFAULT_LIFETIME := 5.0
+# Bullets chip walls and buildings at reduced effectiveness. AOE / explosives
+# remain the efficient siege options per the audit response #3.
+const BUILDING_DAMAGE_FRACTION := 0.15
+# Collision mask for the per-frame motion raycast. Bit 0 = units (CharacterBody2D),
+# bit 1 = walls/buildings (StaticBody2D on layer 2). Matches scene mask.
+const MOTION_MASK := 3
 
 var damage: float = 10.0
 var speed: float = 800.0
@@ -46,7 +52,9 @@ var _resolved: bool = false
 
 func _ready() -> void:
 	add_to_group("projectiles")
-	body_entered.connect(_on_body_entered)
+	# Collision detection is done per-frame via raycast in _physics_process to
+	# avoid tunneling at high speeds. body_entered is unreliable for fast
+	# projectiles because the area can leap past a target between frames.
 
 
 func configure(config: Dictionary) -> void:
@@ -88,23 +96,44 @@ func _physics_process(delta: float) -> void:
 	if _time_alive >= DEFAULT_LIFETIME:
 		_despawn()
 		return
-	position += velocity * delta
+	# Per-frame raycast from current to next position. At 1600 px/s and 60Hz
+	# physics, projectiles travel ~27 px per frame - larger than typical unit
+	# collision shapes (~22 px). Area2D body_entered relies on overlap at
+	# physics-frame snapshots, so fast projectiles silently tunnel past targets.
+	# Raycasting catches everything in the swept path.
+	var new_pos: Vector2 = position + velocity * delta
+	var space := get_world_2d().direct_space_state
+	var query := PhysicsRayQueryParameters2D.create(position, new_pos, MOTION_MASK)
+	# Exclude the firer's RID so the projectile doesn't immediately collide with
+	# its own shooter on spawn. is_instance_valid guards against firer being
+	# freed mid-flight (the projectile keeps flying).
+	if firer != null and is_instance_valid(firer):
+		query.exclude = [firer.get_rid()]
+	var hit: Dictionary = space.intersect_ray(query)
+	if not hit.is_empty():
+		position = hit.get("position", new_pos)
+		z_index = IsoView.z_for(position)
+		queue_redraw()
+		_resolve_collision(hit.get("collider", null))
+		return
+	position = new_pos
 	z_index = IsoView.z_for(position)
 	queue_redraw()
 
 
-func _on_body_entered(body) -> void:
-	if _resolved:
+func _resolve_collision(collider) -> void:
+	if collider == null:
+		_despawn()
 		return
-	# Ignore the firer for the first frame to avoid spawn-collision when the
-	# projectile spawns inside the firer's collision shape.
-	if body == firer:
+	if collider.is_in_group("units"):
+		_resolve_impact_on_unit(collider)
 		return
-	if body.is_in_group("units"):
-		_resolve_impact_on_unit(body)
-		return
-	# Walls + buildings absorb without taking damage. Both are StaticBody2D
-	# tagged "buildings" or "walls". Anything else solid: despawn safely.
+	# Buildings (walls included) take reduced damage from bullets. AOE/explosives
+	# remain the efficient siege option; bullets chip slowly.
+	if collider.is_in_group("buildings"):
+		if collider.has_method("take_damage"):
+			var reduced: int = max(1, int(round(damage * BUILDING_DAMAGE_FRACTION)))
+			collider.take_damage(reduced)
 	_despawn()
 
 
