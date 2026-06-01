@@ -9,7 +9,8 @@ const KITE_RANGE := 100.0
 const KITE_SPEED := 30.0
 
 # Projectile config: dark organic-toned arrow per Tribal faction identity.
-const PROJECTILE_SPEED := 900.0
+# Slower than Military per the design doc's 0.4-0.7s arrow flight target.
+const PROJECTILE_SPEED := 500.0
 const PROJECTILE_COLOR := Color(0.45, 0.35, 0.22)
 # Tighter cone than Rifleman: Hunter is a deliberate aimed shooter.
 const BASE_ACCURACY_DEG := 3.0
@@ -83,7 +84,7 @@ func _fire_at(target) -> void:
 		"spread_deg": spread,
 		"style": Projectile.Style.ARROW,
 		"color": PROJECTILE_COLOR,
-		"visual_length": 16.0,
+		"visual_length": 20.0,
 		"visual_width": 2.0,
 	})
 

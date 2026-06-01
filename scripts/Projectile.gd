@@ -161,7 +161,12 @@ func _draw() -> void:
 	# the iso transform places the local origin at the iso screen position.
 	var iso_offset: Vector2 = IsoView.world_to_screen(position) - position
 	draw_set_transform(iso_offset, 0.0, Vector2.ONE)
-	var dir: Vector2 = velocity.normalized() if velocity.length_squared() > 0 else Vector2.RIGHT
+	# IMPORTANT: visual direction must be the iso-projected velocity, not the
+	# world velocity. Iso projection skews motion: world-east maps to
+	# screen-(east + south). If we drew the tracer along world velocity, the
+	# line geometry would never align with the projectile's actual screen path
+	# - reading as "flying from all over."
+	var dir: Vector2 = _iso_direction(velocity)
 	match visual_style:
 		Style.TRACER:
 			_draw_tracer(dir)
@@ -171,12 +176,27 @@ func _draw() -> void:
 			_draw_bolt(dir)
 
 
+func _iso_direction(world_velocity: Vector2) -> Vector2:
+	# Project world velocity through the iso transform (linear part) to get
+	# the screen-space direction of motion. Matches IsoView.world_to_screen's
+	# coefficients: screen_x = world_x - world_y, screen_y = 0.75*(world_x + world_y).
+	var sv := Vector2(
+		world_velocity.x - world_velocity.y,
+		(world_velocity.x + world_velocity.y) * 0.75,
+	)
+	if sv.length_squared() < 0.01:
+		return Vector2.RIGHT
+	return sv.normalized()
+
+
 func _draw_tracer(dir: Vector2) -> void:
-	# Bright thin line trailing behind the head. Slight head highlight makes
-	# the leading point more visible at flight speed.
+	# Bright trailing line + a meaningfully-sized head so the eye can track
+	# the projectile across frames at 1500+ px/s flight speeds.
 	var tail: Vector2 = -dir * visual_length
 	draw_line(tail, Vector2.ZERO, visual_color, visual_width)
-	draw_circle(Vector2.ZERO, visual_width * 0.6, visual_color.lightened(0.3))
+	# Head: larger bright dot. visual_width is the line thickness (~2 px);
+	# the head is a small filled circle ~3 px so it reads as a bright point.
+	draw_circle(Vector2.ZERO, max(visual_width * 1.5, 2.5), visual_color.lightened(0.35))
 
 
 func _draw_arrow(dir: Vector2) -> void:
