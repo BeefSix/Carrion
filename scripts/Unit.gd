@@ -26,7 +26,7 @@ const PALETTE_TRIBAL := Color("8a6a3a")
 const PALETTE_ZOMBIE := Color("4a5a4a")
 const PALETTE_STRUCTURE := Color("4a4339")
 
-@export var faction: GameState.Faction = GameState.GameState.Faction.MILITARY
+@export var faction: GameState.Faction = GameState.Faction.MILITARY
 @export var max_hp: int = 100
 @export var body_color: Color = Color.WHITE
 @export var move_speed: float = 96.0
