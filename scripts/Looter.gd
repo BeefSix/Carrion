@@ -18,7 +18,7 @@ const MAGNUM_NOISE := 20.0
 
 # Projectile config: heavier brass-toned bullet to read as a magnum round.
 # Slightly bigger and a touch darker than Rifleman's bullet, slower than HG.
-const PROJECTILE_SPEED := 550.0
+const PROJECTILE_SPEED := 275.0
 const PROJECTILE_COLOR := Color(0.92, 0.66, 0.30)
 const BASE_ACCURACY_DEG := 5.0  # mid-range between Rifleman (4) and HG (8)
 const HUNT_VISION := 384.0

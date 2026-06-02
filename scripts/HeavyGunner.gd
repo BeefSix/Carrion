@@ -12,7 +12,7 @@ const KITE_SPEED := 25.0
 # Projectile config: bright yellow bullet, slightly bigger than Rifleman.
 # Slow enough to read as a discrete projectile mid-flight. AOE damage at
 # impact preserves the previous instant-AOE behavior.
-const PROJECTILE_SPEED := 600.0
+const PROJECTILE_SPEED := 300.0
 const PROJECTILE_COLOR := Color(1.0, 0.82, 0.35)
 # Wider cone than Rifleman: HG is sustained-fire, less aimed.
 const BASE_ACCURACY_DEG := 8.0

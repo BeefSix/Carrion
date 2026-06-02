@@ -9,9 +9,8 @@ const KITE_RANGE := 100.0
 const KITE_SPEED := 30.0
 
 # Projectile config: small yellow bullet. Slow enough to read as a discrete
-# bullet in flight (~0.4 sec across typical ATTACK_RANGE rather than the
-# 0.13 sec a 1600 px/s tracer takes).
-const PROJECTILE_SPEED := 500.0
+# bullet in flight (~0.85 sec across typical ATTACK_RANGE).
+const PROJECTILE_SPEED := 250.0
 const PROJECTILE_COLOR := Color(0.95, 0.78, 0.35)
 # Base accuracy in degrees. Lower = tighter cone. Squad accuracy bonus (from
 # leadership aura) reduces effective spread multiplicatively:
