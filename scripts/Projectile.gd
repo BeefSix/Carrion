@@ -96,7 +96,11 @@ func configure(config: Dictionary) -> void:
 		var offset_deg: float = randf_range(-spread_deg, spread_deg)
 		dir = dir.rotated(deg_to_rad(offset_deg))
 	velocity = dir * speed
-	rotation = dir.angle()
+	# IMPORTANT: do NOT set node rotation. The draw helpers use _iso_direction
+	# to orient their own geometry; setting rotation here rotates the
+	# draw_set_transform iso_offset around the node origin, sending the bullet
+	# to a position-and-velocity-dependent wrong spot on screen.
+	rotation = 0.0
 	# Set z_index from frame 0 (otherwise the default 0 lets ground/buildings
 	# render over the bullet for one frame before _physics_process catches up).
 	z_index = IsoView.z_for(position)
