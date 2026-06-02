@@ -88,7 +88,7 @@ func _fire_at(target) -> void:
 		"spread_deg": spread,
 		"style": Projectile.Style.BULLET,
 		"color": PROJECTILE_COLOR,
-		"visual_width": 3.2,  # bullet radius in px (slightly bigger than Rifleman)
+		"visual_width": 7.0,  # bullet radius in px - large for visibility test
 	})
 
 

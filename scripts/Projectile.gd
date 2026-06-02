@@ -97,6 +97,9 @@ func configure(config: Dictionary) -> void:
 		dir = dir.rotated(deg_to_rad(offset_deg))
 	velocity = dir * speed
 	rotation = dir.angle()
+	# Set z_index from frame 0 (otherwise the default 0 lets ground/buildings
+	# render over the bullet for one frame before _physics_process catches up).
+	z_index = IsoView.z_for(position)
 
 
 func _physics_process(delta: float) -> void:
@@ -249,13 +252,12 @@ func _iso_direction(world_velocity: Vector2) -> Vector2:
 
 
 func _draw_bullet() -> void:
-	# Small filled circle at the head position. Reads as a single bullet in
-	# flight, not a streak. visual_width is the radius. Use with projectile
-	# speeds under ~700 px/s so the bullet is visible mid-flight rather than
-	# tunneling across the screen between frames.
-	var r: float = max(visual_width, 1.5)
-	# Dark outer ring helps the bullet read against light terrain/units.
-	draw_circle(Vector2.ZERO, r + 0.8, visual_color.darkened(0.5))
+	# Filled circle at the head position. visual_width is the radius. Use
+	# with slow projectile speeds so the bullet is visible mid-flight rather
+	# than tunneling between frames.
+	var r: float = max(visual_width, 2.0)
+	# Bright outer halo + opaque core for visibility on varied terrain.
+	draw_circle(Vector2.ZERO, r + 1.5, Color(0, 0, 0, 0.6))  # dark halo
 	draw_circle(Vector2.ZERO, r, visual_color)
 
 
