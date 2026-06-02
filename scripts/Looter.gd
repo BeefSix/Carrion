@@ -17,8 +17,7 @@ const MAGNUM_RANGE := 128.0
 const MAGNUM_NOISE := 20.0
 
 # Projectile config: heavier brass-toned bullet to read as a magnum round.
-# Slightly bigger and a touch darker than Rifleman's bullet, slower than HG.
-const PROJECTILE_SPEED := 275.0
+# Speed is 2x move_speed (set at fire time). Looter at 96 -> 192 px/s.
 const PROJECTILE_COLOR := Color(0.92, 0.66, 0.30)
 const BASE_ACCURACY_DEG := 5.0  # mid-range between Rifleman (4) and HG (8)
 const HUNT_VISION := 384.0
@@ -246,7 +245,7 @@ func _fire_at(target) -> void:
 		"target_pos": target.global_position,
 		"target": target,
 		"damage": float(get_effective_damage(MAGNUM_DAMAGE)),
-		"speed": PROJECTILE_SPEED,
+		"speed": move_speed * 2.0,
 		"firer": self,
 		"faction": faction,
 		"spread_deg": spread,

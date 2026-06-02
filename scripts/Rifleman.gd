@@ -8,9 +8,9 @@ const RETARGET_INTERVAL := 0.3
 const KITE_RANGE := 100.0
 const KITE_SPEED := 30.0
 
-# Projectile config: small yellow bullet. Slow enough to read as a discrete
-# bullet in flight (~0.85 sec across typical ATTACK_RANGE).
-const PROJECTILE_SPEED := 250.0
+# Projectile config: small yellow bullet. Speed is 2x the firer's move_speed
+# (computed at fire time) so each bullet visibly outpaces the shooter but
+# stays slow enough to track. Rifleman at 80 move_speed -> 160 px/s bullets.
 const PROJECTILE_COLOR := Color(0.95, 0.78, 0.35)
 # Base accuracy in degrees. Lower = tighter cone. Squad accuracy bonus (from
 # leadership aura) reduces effective spread multiplicatively:
@@ -83,7 +83,7 @@ func _fire_at(target) -> void:
 		"target_pos": target.global_position,
 		"target": target,
 		"damage": float(get_effective_damage(ATTACK_DAMAGE)),
-		"speed": PROJECTILE_SPEED,
+		"speed": move_speed * 2.0,
 		"firer": self,
 		"faction": faction,
 		"spread_deg": spread,

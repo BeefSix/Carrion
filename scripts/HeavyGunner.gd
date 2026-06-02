@@ -10,9 +10,8 @@ const KITE_RANGE := 80.0
 const KITE_SPEED := 25.0
 
 # Projectile config: bright yellow bullet, slightly bigger than Rifleman.
-# Slow enough to read as a discrete projectile mid-flight. AOE damage at
-# impact preserves the previous instant-AOE behavior.
-const PROJECTILE_SPEED := 300.0
+# Speed is 2x move_speed (set at fire time). HG at 64 move_speed -> 128 px/s.
+# AOE damage at impact preserves the previous instant-AOE behavior.
 const PROJECTILE_COLOR := Color(1.0, 0.82, 0.35)
 # Wider cone than Rifleman: HG is sustained-fire, less aimed.
 const BASE_ACCURACY_DEG := 8.0
@@ -82,7 +81,7 @@ func _fire_at(target) -> void:
 		"target_pos": target.global_position,
 		"target": target,
 		"damage": float(get_effective_damage(ATTACK_DAMAGE)),
-		"speed": PROJECTILE_SPEED,
+		"speed": move_speed * 2.0,
 		"firer": self,
 		"faction": faction,
 		"area_radius": AOE_RADIUS,
