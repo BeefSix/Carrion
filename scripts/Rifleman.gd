@@ -83,13 +83,13 @@ func _fire_at(target) -> void:
 		"target_pos": target.global_position,
 		"target": target,
 		"damage": float(get_effective_damage(ATTACK_DAMAGE)),
-		"speed": move_speed * 2.0,
+		"speed": move_speed * 4.0,
 		"firer": self,
 		"faction": faction,
 		"spread_deg": spread,
 		"style": Projectile.Style.BULLET,
 		"color": PROJECTILE_COLOR,
-		"visual_width": 6.0,  # bullet radius in px - large for visibility test
+		"visual_width": 2.5,  # bullet radius in px
 	})
 
 

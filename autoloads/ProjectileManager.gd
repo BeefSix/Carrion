@@ -29,14 +29,6 @@ var _active_projectiles: Array = []
 
 
 func spawn_projectile(config: Dictionary):
-	# DEBUG: temporary log to confirm projectiles are being spawned. Remove
-	# after diagnosing the "I don't see any bullets" report.
-	print("[Projectile] spawn at %s -> %s speed=%.0f style=%d" % [
-		config.get("origin", Vector2.ZERO),
-		config.get("target_pos", Vector2.ZERO),
-		config.get("speed", 0.0),
-		config.get("style", -1),
-	])
 	var proj = PROJECTILE_SCENE.instantiate()
 	proj.configure(config)
 	# Parent under the firer's parent (Main) so world coords stay consistent.
