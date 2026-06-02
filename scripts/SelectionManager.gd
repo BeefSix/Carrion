@@ -132,6 +132,23 @@ func _handle_right_click(world_pos: Vector2) -> void:
 	var is_infested: bool = (target_lootable != null) and ("is_infested" in target_lootable) and target_lootable.is_infested
 	var is_damaged: bool = (target_building != null) and ("current_hp" in target_building) and ("max_hp" in target_building) and target_building.current_hp < target_building.max_hp
 
+	# First pass: count how many units will receive a plain move command. They
+	# get distributed formation targets so they don't converge on a single
+	# point (which produces the "straying / teleporting back" pile-up).
+	var move_unit_count: int = 0
+	for u in _selected_units:
+		if not is_instance_valid(u):
+			continue
+		var has_corpse_action: bool = target_corpse != null and u.is_in_group("combat_units")
+		var has_repair_action: bool = target_building != null and is_damaged and u.has_method("repair_at")
+		var has_force_spawn_action: bool = target_lootable != null and is_infested and u.has_method("force_spawn_at")
+		var has_gather_action: bool = target_lootable != null and u.has_method("gather_from")
+		if has_corpse_action or has_repair_action or has_force_spawn_action or has_gather_action:
+			continue
+		if u.has_method("move_to"):
+			move_unit_count += 1
+
+	var move_index: int = 0
 	for u in _selected_units:
 		if not is_instance_valid(u):
 			continue
@@ -147,7 +164,31 @@ func _handle_right_click(world_pos: Vector2) -> void:
 		elif target_lootable != null and u.has_method("gather_from"):
 			u.gather_from(target_lootable)
 		elif u.has_method("move_to"):
-			u.move_to(world_pos)
+			var per_unit_target: Vector2 = _formation_position(world_pos, move_index, move_unit_count)
+			u.move_to(per_unit_target)
+			move_index += 1
+
+
+# Concentric-ring formation. 1 unit at center, 6 in first ring at FORMATION_SPACING,
+# 12 in second ring at 2*spacing, 18 in third at 3*spacing, ...
+# Each unit gets a distinct world target so they don't pile up at one point and
+# the physics solver doesn't need to push overlapping bodies apart (which read
+# as straying-then-teleporting-back).
+const FORMATION_SPACING := 32.0
+
+func _formation_position(center: Vector2, index: int, total: int) -> Vector2:
+	if total <= 1 or index == 0:
+		return center
+	# Find which ring this index lands in.
+	var ring: int = 1
+	var positions_before_ring: int = 1
+	while index >= positions_before_ring + 6 * ring:
+		positions_before_ring += 6 * ring
+		ring += 1
+	var ring_index: int = index - positions_before_ring
+	var ring_count: int = 6 * ring
+	var angle: float = (float(ring_index) / float(ring_count)) * TAU
+	return center + Vector2(cos(angle), sin(angle)) * (FORMATION_SPACING * float(ring))
 
 
 func _find_building_at(world_pos: Vector2):

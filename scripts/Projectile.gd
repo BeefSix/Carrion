@@ -20,9 +20,10 @@ enum Type { DIRECT, ARCING }
 #   BOLT   - Survivor: dark elongated rectangle (crossbow bolt). Reserved.
 enum Style { TRACER, ARROW, BOLT, BULLET }
 
-# Friendly fire applies damage to anyone the projectile hits regardless of
-# faction. The doc explicitly opts in. Flip to false if balance breaks.
-const FRIENDLY_FIRE_ENABLED := true
+# Friendly fire pass-through: same-faction units don't take projectile damage
+# when this is false. Per user feedback - the design tension between "bullets
+# are physical" and "your own troops cluster in formation" lands on the latter.
+const FRIENDLY_FIRE_ENABLED := false
 # Safety despawn. A projectile that misses everything despawns rather than
 # flying forever and leaking memory.
 const DEFAULT_LIFETIME := 5.0
@@ -48,6 +49,11 @@ var visual_color: Color = Color(0.95, 0.7, 0.3)
 var visual_length: float = 14.0
 var visual_width: float = 2.0
 var visual_style: int = Style.TRACER
+# Render height above the iso ground (in screen pixels). Default ~10 px puts
+# the projectile at chest/gun height of a standard size_px=22 unit silhouette
+# rather than at the unit's feet. The Unit silhouette extends roughly y=-1
+# (feet) to y=-16 (head) in iso-screen space; chest is around y=-10.
+var visual_height: float = 10.0
 
 var _time_alive: float = 0.0
 var _resolved: bool = false
@@ -76,6 +82,7 @@ func configure(config: Dictionary) -> void:
 	visual_length = config.get("visual_length", visual_length)
 	visual_width = config.get("visual_width", visual_width)
 	visual_style = config.get("style", Style.TRACER)
+	visual_height = config.get("visual_height", visual_height)
 	position = origin
 	var dir: Vector2 = target_pos - origin
 	if dir.length_squared() < 0.01:
@@ -188,10 +195,11 @@ func _despawn() -> void:
 
 
 func _draw() -> void:
-	# Iso shift: render at iso-projected screen position. Same pattern as
-	# Unit/Corpse/Building. All coordinates below are local to the projectile;
-	# the iso transform places the local origin at the iso screen position.
-	var iso_offset: Vector2 = IsoView.world_to_screen(position) - position
+	# Iso shift: render at iso-projected screen position, raised by
+	# visual_height so the bullet appears at the firer's chest/gun height
+	# rather than at their feet (the unit silhouette extends UP from the
+	# iso-projected world position, so the world position is at the feet).
+	var iso_offset: Vector2 = IsoView.world_to_screen(position, visual_height) - position
 	draw_set_transform(iso_offset, 0.0, Vector2.ONE)
 	# Visual direction is the iso-projected velocity, not the world velocity.
 	# Iso projection skews motion: world-east maps to screen-(east + south).
@@ -201,8 +209,8 @@ func _draw() -> void:
 	# the tracer's tail point is visual_length px behind the head - which is
 	# behind/off-screen-of the firing unit until the projectile has moved a
 	# tracer-length forward. Reads as "tracer flying from behind the unit."
-	var origin_iso: Vector2 = IsoView.world_to_screen(origin)
-	var pos_iso: Vector2 = IsoView.world_to_screen(position)
+	var origin_iso: Vector2 = IsoView.world_to_screen(origin, visual_height)
+	var pos_iso: Vector2 = IsoView.world_to_screen(position, visual_height)
 	var iso_travel: float = origin_iso.distance_to(pos_iso)
 	var effective_length: float = min(visual_length, iso_travel)
 	match visual_style:

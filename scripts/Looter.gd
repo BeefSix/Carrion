@@ -15,6 +15,12 @@ const MAGNUM_DAMAGE := 22
 const MAGNUM_PERIOD := 2.5
 const MAGNUM_RANGE := 128.0
 const MAGNUM_NOISE := 20.0
+
+# Projectile config: heavier brass-toned bullet to read as a magnum round.
+# Slightly bigger and a touch darker than Rifleman's bullet, slower than HG.
+const PROJECTILE_SPEED := 550.0
+const PROJECTILE_COLOR := Color(0.92, 0.66, 0.30)
+const BASE_ACCURACY_DEG := 5.0  # mid-range between Rifleman (4) and HG (8)
 const HUNT_VISION := 384.0
 const SALVAGE_PER_KILL := 25
 const CARRY_CAP := 25
@@ -67,6 +73,12 @@ var _avoid_retarget_timer: float = 0.0
 var _patrol_target: Vector2 = Vector2.ZERO
 var _patrol_scan_timer: float = 0.0
 
+# Salvage award on kill credit. Damage now resolves at projectile-impact time,
+# not at fire time, so we can't check "did the zombie die from this shot?"
+# inline. Instead we watch kills_count for an increment and award salvage on
+# the delta. Kills only credit when the target actually dies (per Unit base).
+var _last_kills_count: int = 0
+
 
 func move_to(world_pos: Vector2) -> void:
 	super.move_to(world_pos)
@@ -78,6 +90,19 @@ func move_to(world_pos: Vector2) -> void:
 func _physics_process(delta: float) -> void:
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
 	_retarget_timer = max(0.0, _retarget_timer - delta)
+
+	# Projectile-delayed kill detection. If kills_count incremented since last
+	# tick, a projectile we fired landed and killed something. Award salvage
+	# and transition to return-home, the same state changes the old inline
+	# damage path produced at fire-time.
+	if kills_count > _last_kills_count:
+		var new_kills: int = kills_count - _last_kills_count
+		_last_kills_count = kills_count
+		_carrying = min(_carrying + new_kills * SALVAGE_PER_KILL, CARRY_CAP)
+		_last_kill_pos = global_position
+		_has_kill = true
+		_target_zombie = null
+		_start_return_home()
 
 	if current_command == Command.MOVE:
 		if not _follow_navigation():
@@ -208,15 +233,27 @@ func _tick_hunt_fire() -> void:
 	if _attack_cooldown <= 0.0:
 		_attack_cooldown = MAGNUM_PERIOD
 		_emit_magnum_noise()
-		var was_alive: bool = _target_zombie.current_hp > 0
-		_target_zombie.take_damage(get_effective_damage(MAGNUM_DAMAGE), self)
-		if was_alive and (not is_instance_valid(_target_zombie) or _target_zombie.current_hp <= 0):
-			_carrying = min(_carrying + SALVAGE_PER_KILL, CARRY_CAP)
-			_last_kill_pos = global_position
-			_has_kill = true
-			_target_zombie = null
-			# Carry cap forces immediate return — no lingering after kill.
-			_start_return_home()
+		# Damage now resolves at projectile-impact time. The kills_count delta
+		# check at the top of _physics_process picks up the kill credit and
+		# triggers the return-home transition.
+		_fire_at(_target_zombie)
+
+
+func _fire_at(target) -> void:
+	var spread: float = BASE_ACCURACY_DEG * (1.0 - squad_accuracy_bonus)
+	ProjectileManager.spawn_projectile({
+		"origin": global_position,
+		"target_pos": target.global_position,
+		"target": target,
+		"damage": float(get_effective_damage(MAGNUM_DAMAGE)),
+		"speed": PROJECTILE_SPEED,
+		"firer": self,
+		"faction": faction,
+		"spread_deg": spread,
+		"style": Projectile.Style.BULLET,
+		"color": PROJECTILE_COLOR,
+		"visual_width": 2.8,
+	})
 
 
 func _tick_return_home() -> void:
