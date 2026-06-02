@@ -8,9 +8,11 @@ const RETARGET_INTERVAL := 0.3
 const KITE_RANGE := 100.0
 const KITE_SPEED := 30.0
 
-# Projectile config: yellow-orange tracer per Military faction identity.
-const PROJECTILE_SPEED := 1600.0
-const PROJECTILE_COLOR := Color(0.95, 0.72, 0.30)
+# Projectile config: small yellow bullet. Slow enough to read as a discrete
+# bullet in flight (~0.4 sec across typical ATTACK_RANGE rather than the
+# 0.13 sec a 1600 px/s tracer takes).
+const PROJECTILE_SPEED := 500.0
+const PROJECTILE_COLOR := Color(0.95, 0.78, 0.35)
 # Base accuracy in degrees. Lower = tighter cone. Squad accuracy bonus (from
 # leadership aura) reduces effective spread multiplicatively:
 # effective_spread = BASE_ACCURACY_DEG * (1.0 - squad_accuracy_bonus).
@@ -86,10 +88,9 @@ func _fire_at(target) -> void:
 		"firer": self,
 		"faction": faction,
 		"spread_deg": spread,
-		"style": Projectile.Style.TRACER,
+		"style": Projectile.Style.BULLET,
 		"color": PROJECTILE_COLOR,
-		"visual_length": 22.0,
-		"visual_width": 2.0,
+		"visual_width": 2.5,  # bullet radius in px
 	})
 
 

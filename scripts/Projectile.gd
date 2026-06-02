@@ -11,11 +11,14 @@ extends Area2D
 enum Type { DIRECT, ARCING }
 # Visual style controls how _draw renders the projectile in flight. Matches
 # each faction's projectile identity.
-#   TRACER - Military: bright thin line trailing the head (rifle/HG bullets)
-#   ARROW  - Tribal: triangular head + thin shaft + fletching polygon
-#   BOLT   - Survivor: dark elongated rectangle (crossbow bolt). Reserved -
-#            no Survivor combat unit currently fires projectiles.
-enum Style { TRACER, ARROW, BOLT }
+#   BULLET - Military: small bright dot. Reads as an individual bullet, not
+#            a tracer streak. Use with slower projectile speeds.
+#   TRACER - Legacy long-line tracer. Replaced by BULLET for Military but
+#            kept in the enum for future fast-projectile mechanics.
+#   ARROW  - Tribal: triangular head + thin shaft + fletching polygon.
+#            Elongated geometry is what makes an arrow read as an arrow.
+#   BOLT   - Survivor: dark elongated rectangle (crossbow bolt). Reserved.
+enum Style { TRACER, ARROW, BOLT, BULLET }
 
 # Friendly fire applies damage to anyone the projectile hits regardless of
 # faction. The doc explicitly opts in. Flip to false if balance breaks.
@@ -203,6 +206,8 @@ func _draw() -> void:
 	var iso_travel: float = origin_iso.distance_to(pos_iso)
 	var effective_length: float = min(visual_length, iso_travel)
 	match visual_style:
+		Style.BULLET:
+			_draw_bullet()
 		Style.TRACER:
 			_draw_tracer(dir, effective_length)
 		Style.ARROW:
@@ -222,6 +227,17 @@ func _iso_direction(world_velocity: Vector2) -> Vector2:
 	if sv.length_squared() < 0.01:
 		return Vector2.RIGHT
 	return sv.normalized()
+
+
+func _draw_bullet() -> void:
+	# Small filled circle at the head position. Reads as a single bullet in
+	# flight, not a streak. visual_width is the radius. Use with projectile
+	# speeds under ~700 px/s so the bullet is visible mid-flight rather than
+	# tunneling across the screen between frames.
+	var r: float = max(visual_width, 1.5)
+	# Dark outer ring helps the bullet read against light terrain/units.
+	draw_circle(Vector2.ZERO, r + 0.8, visual_color.darkened(0.5))
+	draw_circle(Vector2.ZERO, r, visual_color)
 
 
 func _draw_tracer(dir: Vector2, length: float) -> void:

@@ -9,11 +9,11 @@ const RETARGET_INTERVAL := 0.3
 const KITE_RANGE := 80.0
 const KITE_SPEED := 25.0
 
-# Projectile config: brighter/wider tracer per Military identity. AOE damage
-# applied at impact preserves the previous instant-AOE behavior. Future
-# rebalance may swap to multi-tracer burst-fire per the projectile design doc.
-const PROJECTILE_SPEED := 1800.0
-const PROJECTILE_COLOR := Color(1.0, 0.78, 0.30)
+# Projectile config: bright yellow bullet, slightly bigger than Rifleman.
+# Slow enough to read as a discrete projectile mid-flight. AOE damage at
+# impact preserves the previous instant-AOE behavior.
+const PROJECTILE_SPEED := 600.0
+const PROJECTILE_COLOR := Color(1.0, 0.82, 0.35)
 # Wider cone than Rifleman: HG is sustained-fire, less aimed.
 const BASE_ACCURACY_DEG := 8.0
 
@@ -87,10 +87,9 @@ func _fire_at(target) -> void:
 		"faction": faction,
 		"area_radius": AOE_RADIUS,
 		"spread_deg": spread,
-		"style": Projectile.Style.TRACER,
+		"style": Projectile.Style.BULLET,
 		"color": PROJECTILE_COLOR,
-		"visual_length": 28.0,
-		"visual_width": 2.5,
+		"visual_width": 3.2,  # bullet radius in px (slightly bigger than Rifleman)
 	})
 
 
