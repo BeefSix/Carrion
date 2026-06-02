@@ -114,11 +114,22 @@ func _physics_process(delta: float) -> void:
 	var new_pos: Vector2 = position + velocity * delta
 	var space := get_world_2d().direct_space_state
 	var query := PhysicsRayQueryParameters2D.create(position, new_pos, MOTION_MASK)
-	# Exclude the firer's RID so the projectile doesn't immediately collide with
-	# its own shooter on spawn. is_instance_valid guards against firer being
-	# freed mid-flight (the projectile keeps flying).
+	# Exclude the firer's RID + all same-faction units when friendly fire is off.
+	# Without the friendly exclusion, the raycast returns the nearest friendly
+	# unit in formation - the projectile then snaps there and despawns,
+	# producing a "flash at random friendly position" effect from the player's
+	# perspective. Excluding friendlies makes bullets cleanly pass through
+	# allies and resolve at the intended enemy / wall / building.
+	var excludes: Array[RID] = []
 	if firer != null and is_instance_valid(firer):
-		query.exclude = [firer.get_rid()]
+		excludes.append(firer.get_rid())
+	if not FRIENDLY_FIRE_ENABLED:
+		for u in get_tree().get_nodes_in_group("units"):
+			if not is_instance_valid(u) or u == firer:
+				continue
+			if u.faction == faction:
+				excludes.append(u.get_rid())
+	query.exclude = excludes
 	var hit: Dictionary = space.intersect_ray(query)
 	if not hit.is_empty():
 		position = hit.get("position", new_pos)
