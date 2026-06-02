@@ -190,19 +190,25 @@ func _draw() -> void:
 	# the iso transform places the local origin at the iso screen position.
 	var iso_offset: Vector2 = IsoView.world_to_screen(position) - position
 	draw_set_transform(iso_offset, 0.0, Vector2.ONE)
-	# IMPORTANT: visual direction must be the iso-projected velocity, not the
-	# world velocity. Iso projection skews motion: world-east maps to
-	# screen-(east + south). If we drew the tracer along world velocity, the
-	# line geometry would never align with the projectile's actual screen path
-	# - reading as "flying from all over."
+	# Visual direction is the iso-projected velocity, not the world velocity.
+	# Iso projection skews motion: world-east maps to screen-(east + south).
 	var dir: Vector2 = _iso_direction(velocity)
+	# Clamp the visible length to actual iso-screen distance traveled from the
+	# origin so the tail never extends behind the firer. Otherwise, at spawn
+	# the tracer's tail point is visual_length px behind the head - which is
+	# behind/off-screen-of the firing unit until the projectile has moved a
+	# tracer-length forward. Reads as "tracer flying from behind the unit."
+	var origin_iso: Vector2 = IsoView.world_to_screen(origin)
+	var pos_iso: Vector2 = IsoView.world_to_screen(position)
+	var iso_travel: float = origin_iso.distance_to(pos_iso)
+	var effective_length: float = min(visual_length, iso_travel)
 	match visual_style:
 		Style.TRACER:
-			_draw_tracer(dir)
+			_draw_tracer(dir, effective_length)
 		Style.ARROW:
-			_draw_arrow(dir)
+			_draw_arrow(dir, effective_length)
 		Style.BOLT:
-			_draw_bolt(dir)
+			_draw_bolt(dir, effective_length)
 
 
 func _iso_direction(world_velocity: Vector2) -> Vector2:
@@ -218,37 +224,42 @@ func _iso_direction(world_velocity: Vector2) -> Vector2:
 	return sv.normalized()
 
 
-func _draw_tracer(dir: Vector2) -> void:
+func _draw_tracer(dir: Vector2, length: float) -> void:
 	# Bright trailing line + a meaningfully-sized head so the eye can track
-	# the projectile across frames at 1500+ px/s flight speeds.
-	var tail: Vector2 = -dir * visual_length
-	draw_line(tail, Vector2.ZERO, visual_color, visual_width)
-	# Head: larger bright dot. visual_width is the line thickness (~2 px);
-	# the head is a small filled circle ~3 px so it reads as a bright point.
-	draw_circle(Vector2.ZERO, max(visual_width * 1.5, 2.5), visual_color.lightened(0.35))
+	# the projectile across frames at 1500+ px/s flight speeds. length is
+	# clamped by the caller to actual travel-from-origin so the tail never
+	# extends behind the firer at spawn.
+	var tail: Vector2 = -dir * length
+	if length > 0.5:
+		draw_line(tail, Vector2.ZERO, visual_color, visual_width)
+	draw_circle(Vector2.ZERO, max(visual_width * 1.2, 2.0), visual_color.lightened(0.35))
 
 
-func _draw_arrow(dir: Vector2) -> void:
-	# Triangular head + thin shaft + small fletching. Drawn pointing along
-	# the +X axis in local space, then implicitly rotated via the velocity
-	# direction (we orient geometry using `dir` and a perpendicular).
+func _draw_arrow(dir: Vector2, length: float) -> void:
+	# Triangular head + thin shaft + small fletching. length is clamped by the
+	# caller to actual travel-from-origin so the tail never extends behind
+	# the firer at spawn. When length < head_len, only the head draws.
+	if length <= 0.5:
+		return
 	var perp: Vector2 = Vector2(-dir.y, dir.x)
 	var head_len: float = max(visual_length * 0.30, 4.0)
 	var head_half_w: float = max(visual_width, 2.0)
-	var shaft_len: float = visual_length - head_len
-	# Shaft: thin line from tail to base of head.
-	var shaft_back: Vector2 = -dir * visual_length
-	var head_base: Vector2 = -dir * head_len
-	draw_line(shaft_back, head_base, visual_color, max(visual_width * 0.6, 1.0))
-	# Head: triangle from base back-corners to point at origin.
+	# Head: triangle from base back-corners to point at origin (always drawn).
+	var head_base_offset: float = min(head_len, length)
+	var head_base: Vector2 = -dir * head_base_offset
 	var head_pts := PackedVector2Array([
 		Vector2.ZERO,
 		head_base + perp * head_half_w,
 		head_base - perp * head_half_w,
 	])
 	draw_colored_polygon(head_pts, visual_color)
-	# Fletching: small splayed triangle near the tail.
-	var fletch_inset: Vector2 = -dir * (visual_length * 0.85)
+	# Shaft + fletching only render once travel >= head_len so the arrow
+	# doesn't visibly stretch backward in the first frames.
+	if length <= head_len + 1.0:
+		return
+	var shaft_back: Vector2 = -dir * length
+	draw_line(shaft_back, head_base, visual_color, max(visual_width * 0.6, 1.0))
+	var fletch_inset: Vector2 = -dir * (length * 0.85)
 	var fletch_half: float = max(visual_width * 1.3, 2.5)
 	var fletch_pts := PackedVector2Array([
 		shaft_back,
@@ -258,11 +269,14 @@ func _draw_arrow(dir: Vector2) -> void:
 	draw_colored_polygon(fletch_pts, visual_color.darkened(0.25))
 
 
-func _draw_bolt(dir: Vector2) -> void:
+func _draw_bolt(dir: Vector2, length: float) -> void:
 	# Dark elongated rectangle. Reserved for future Survivor crossbow.
+	# length clamped by caller for spawn-frame tail-behind-firer prevention.
+	if length <= 0.5:
+		return
 	var perp: Vector2 = Vector2(-dir.y, dir.x)
 	var half_w: float = max(visual_width * 0.6, 1.0)
-	var tail: Vector2 = -dir * visual_length
+	var tail: Vector2 = -dir * length
 	var pts := PackedVector2Array([
 		Vector2.ZERO + perp * half_w,
 		Vector2.ZERO - perp * half_w,

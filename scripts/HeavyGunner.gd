@@ -89,8 +89,8 @@ func _fire_at(target) -> void:
 		"spread_deg": spread,
 		"style": Projectile.Style.TRACER,
 		"color": PROJECTILE_COLOR,
-		"visual_length": 36.0,
-		"visual_width": 3.0,
+		"visual_length": 28.0,
+		"visual_width": 2.5,
 	})
 
 
