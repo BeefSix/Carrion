@@ -58,6 +58,11 @@ var visual_height: float = 10.0
 var _time_alive: float = 0.0
 var _resolved: bool = false
 
+# Smoke trail: recent world positions stored for fading-puff render behind
+# the bullet. Capped at TRAIL_MAX entries; older entries drop off.
+const TRAIL_MAX := 6
+var _trail_points: Array = []
+
 
 func _ready() -> void:
 	add_to_group("projectiles")
@@ -144,6 +149,10 @@ func _physics_process(delta: float) -> void:
 		queue_redraw()
 		_resolve_collision(hit.get("collider", null))
 		return
+	# Record the position we're leaving so the smoke trail has a sample for it.
+	_trail_points.append(position)
+	if _trail_points.size() > TRAIL_MAX:
+		_trail_points.pop_front()
 	position = new_pos
 	z_index = IsoView.z_for(position)
 	queue_redraw()
@@ -256,13 +265,49 @@ func _iso_direction(world_velocity: Vector2) -> Vector2:
 
 
 func _draw_bullet() -> void:
-	# Filled circle at the head position. visual_width is the radius. Use
-	# with slow projectile speeds so the bullet is visible mid-flight rather
-	# than tunneling between frames.
+	# Elongated bullet-shaped polygon with smoke trail puffs trailing behind.
+	# visual_width is the bullet's half-width; length is derived as a multiple
+	# of that. All coordinates here are in canvas-item space; the iso transform
+	# was applied at the top of _draw().
 	var r: float = max(visual_width, 2.0)
-	# Bright outer halo + opaque core for visibility on varied terrain.
-	draw_circle(Vector2.ZERO, r + 1.5, Color(0, 0, 0, 0.6))  # dark halo
-	draw_circle(Vector2.ZERO, r, visual_color)
+	var dir: Vector2 = _iso_direction(velocity)
+
+	# Smoke trail first (renders behind the bullet). Each past world position
+	# is iso-projected and drawn as a fading gray puff. Older points are more
+	# faded and slightly smaller; newer points are nearly as bright as smoke.
+	var current_iso: Vector2 = IsoView.world_to_screen(position, visual_height)
+	var trail_count: int = _trail_points.size()
+	for i in range(trail_count):
+		var p_iso: Vector2 = IsoView.world_to_screen(_trail_points[i], visual_height)
+		var local_offset: Vector2 = p_iso - current_iso
+		# i = 0 is OLDEST entry; trail_count - 1 is newest. Map oldest -> small/faint,
+		# newest -> larger/visible.
+		var t: float = float(i + 1) / float(trail_count + 1)  # 0..1
+		var alpha: float = t * 0.40
+		var puff_r: float = r * (0.5 + t * 0.5)
+		draw_circle(local_offset, puff_r, Color(0.75, 0.75, 0.75, alpha))
+
+	# Bullet shape: pointed nose + curved body + rounded tail. Octagonal
+	# approximation of a bullet silhouette oriented along iso direction.
+	var perp: Vector2 = Vector2(-dir.y, dir.x)
+	var length: float = r * 2.8
+	var hw: float = r * 0.85
+	var body_pts := PackedVector2Array([
+		dir * (length * 0.5),                            # tip
+		dir * (length * 0.25) - perp * hw * 0.55,        # nose right shoulder
+		-perp * hw,                                       # mid right
+		-dir * (length * 0.35) - perp * hw * 0.7,        # back right
+		-dir * (length * 0.5),                            # tail
+		-dir * (length * 0.35) + perp * hw * 0.7,        # back left
+		perp * hw,                                        # mid left
+		dir * (length * 0.25) + perp * hw * 0.55,        # nose left shoulder
+	])
+	# Dark outline slightly larger than body.
+	var outline_pts := PackedVector2Array()
+	for p in body_pts:
+		outline_pts.append(p * 1.25)
+	draw_colored_polygon(outline_pts, Color(0, 0, 0, 0.55))
+	draw_colored_polygon(body_pts, visual_color)
 
 
 func _draw_tracer(dir: Vector2, length: float) -> void:
