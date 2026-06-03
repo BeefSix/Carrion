@@ -143,13 +143,22 @@ var _town_data: Dictionary = {}
 
 func _ready() -> void:
 	GameState.reset_match()
-	# Process-based town generation. TownPlanner runs its 12-step pipeline
-	# and hands back the tile_grid + lots + buildings + lootables. Phase 1
-	# only steps 1-3 are populated; later phases (buildings, lootables)
-	# come online as those steps are implemented.
-	var planner = TOWN_PLANNER_SCRIPT.new()
-	_town_data = planner.plan_town()
-	$GroundTiles.apply_tile_grid(_town_data["tile_grid"])
+	# Dev CLI override: --ridley flag (after Godot's -- separator) forces the
+	# image-to-map PoC path. Lets headless testing skip the TitleScreen.
+	var user_args := OS.get_cmdline_user_args()
+	if "--ridley" in user_args:
+		GameState.custom_map_path = "res://assets/maps/ridley_data.json"
+	# Image-to-map PoC: when GameState.custom_map_path is set, load that JSON
+	# instead of running TownPlanner. The image is rendered as an iso-projected
+	# Polygon2D background covering the world's diamond view space.
+	if GameState.custom_map_path != "":
+		_load_custom_map(GameState.custom_map_path)
+	else:
+		# Standard procedural town generation. TownPlanner runs its 12-step
+		# pipeline and hands back tile_grid + lots + buildings + lootables.
+		var planner = TOWN_PLANNER_SCRIPT.new()
+		_town_data = planner.plan_town()
+		$GroundTiles.apply_tile_grid(_town_data["tile_grid"])
 	_spawn_hq()
 	_spawn_lootables()
 	_rebake_navigation()
@@ -159,6 +168,123 @@ func _ready() -> void:
 	else:
 		_spawn_inert_opposing_hq()
 	_install_win_overlay()
+
+
+# Image-to-map: load extracted map data + render the source image as
+# iso-projected background. Maps image categories to GroundTiles indices and
+# adapts the building list into the _town_data["lootables"] shape that
+# _spawn_lootables already consumes.
+func _load_custom_map(json_path: String) -> void:
+	var f := FileAccess.open(json_path, FileAccess.READ)
+	if f == null:
+		push_warning("Custom map JSON not found: %s. Falling back to procedural." % json_path)
+		var planner = TOWN_PLANNER_SCRIPT.new()
+		_town_data = planner.plan_town()
+		$GroundTiles.apply_tile_grid(_town_data["tile_grid"])
+		return
+	var raw: String = f.get_as_text()
+	f.close()
+	var data = JSON.parse_string(raw)
+	if data == null:
+		push_warning("Custom map JSON parse failed. Falling back to procedural.")
+		var planner2 = TOWN_PLANNER_SCRIPT.new()
+		_town_data = planner2.plan_town()
+		$GroundTiles.apply_tile_grid(_town_data["tile_grid"])
+		return
+
+	# Image category -> GroundTiles atlas index. Categories from the Python
+	# pipeline: 0=open, 1=road, 2=parking, 3=building, 4=athletic, 5=water,
+	# 6=rail. GroundTiles indices: see scripts/GroundTiles.gd TILE_COLORS.
+	const CATEGORY_TO_GROUND_TILE := {
+		0: 5,   # open -> yard
+		1: 2,   # road -> secondary road
+		2: 4,   # parking -> parking lot
+		3: 6,   # building -> bare ground (actual building footprints layered on top)
+		4: 5,   # athletic -> yard (green)
+		5: 8,   # water -> vegetation (placeholder; no water tile in atlas)
+		6: 7,   # rail -> dirt road
+	}
+	const TILE_COUNT := 192
+	var tile_rows: Array = data.get("tile_grid", [])
+	var grid := PackedByteArray()
+	grid.resize(TILE_COUNT * TILE_COUNT)
+	for y in range(TILE_COUNT):
+		if y >= tile_rows.size():
+			continue
+		var row: String = tile_rows[y]
+		for x in range(TILE_COUNT):
+			if x >= row.length():
+				continue
+			var cat: int = int(row[x])
+			var tile_idx: int = CATEGORY_TO_GROUND_TILE.get(cat, 5)
+			grid[x + y * TILE_COUNT] = tile_idx
+	$GroundTiles.apply_tile_grid(grid)
+
+	# Adapt the building list into the lootables shape (_spawn_lootables
+	# expects entries with "pos" and "type"). Add type-based loot tagging.
+	var lootables: Array = []
+	for b in data.get("buildings", []):
+		lootables.append({
+			"pos": Vector2(b["pos"][0], b["pos"][1]),
+			"type": b.get("type", "residential"),
+		})
+	_town_data = {"lootables": lootables}
+	print("[CustomMap] Loaded %s: %d buildings, tile_grid %dx%d" % [json_path, lootables.size(), TILE_COUNT, TILE_COUNT])
+
+	# Render the source image as the visible map background. Polygon2D with
+	# diamond vertices in iso screen space and rectangle UVs into the
+	# 2048x2048 source - this maps the square image onto the iso-projected
+	# world view so it visually aligns with the gameplay grid.
+	var source_path: String = data.get("source_image", "")
+	if source_path != "":
+		_install_image_background(source_path)
+
+
+func _install_image_background(image_path: String) -> void:
+	# Load via Image API rather than the resource system - the latter requires
+	# Godot to have imported the .import sidecar, which the asset pipeline does
+	# on editor open. For PoC we load the raw bytes at runtime so this works
+	# fresh-from-clone without an editor pass.
+	var img := Image.new()
+	var abs_path: String = image_path.replace("res://", "")
+	var err: int = img.load(ProjectSettings.globalize_path("res://" + abs_path))
+	if err != OK:
+		push_warning("Background image load failed (%d): %s" % [err, image_path])
+		return
+	var tex: ImageTexture = ImageTexture.create_from_image(img)
+	if tex == null:
+		push_warning("Background image texture build failed: %s" % image_path)
+		return
+	var img_size: Vector2 = tex.get_size()
+	var poly := Polygon2D.new()
+	poly.name = "RidleyBackground"
+	poly.texture = tex
+	# Iso projection of world (0,0)-(6144,6144) gives a diamond:
+	#   world (0,0)        -> iso (0, 0)
+	#   world (W,0)        -> iso (W, W*0.75)
+	#   world (W,W)        -> iso (0, W*1.5)
+	#   world (0,W)        -> iso (-W, W*0.75)
+	# We tile the image rectangle onto this diamond via the UV mapping below.
+	var W: float = MAP_SIZE.x
+	poly.polygon = PackedVector2Array([
+		Vector2(0, 0),
+		Vector2(W, W * 0.75),
+		Vector2(0, W * 1.5),
+		Vector2(-W, W * 0.75),
+	])
+	poly.uv = PackedVector2Array([
+		Vector2(0, 0),                          # top of diamond -> top-left of image
+		Vector2(img_size.x, 0),                 # right of diamond -> top-right
+		Vector2(img_size.x, img_size.y),        # bottom of diamond -> bottom-right
+		Vector2(0, img_size.y),                 # left of diamond -> bottom-left
+	])
+	poly.z_index = -1000  # render below everything else
+	add_child(poly)
+	# Hide the procedural ground polygon and tile rendering so the image shows.
+	if has_node("Ground"):
+		$Ground.visible = false
+	if has_node("GroundTiles"):
+		$GroundTiles.modulate = Color(1, 1, 1, 0.0)  # invisible but still queryable for get_tile_type_at
 
 
 func _spawn_ai_opponent() -> void:

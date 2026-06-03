@@ -18,6 +18,10 @@ var salvage: int = STARTING_SALVAGE:
 
 var player_faction: Faction = Faction.MILITARY
 var ai_enabled: bool = false
+# When set, Main.gd loads map data from this JSON path instead of running the
+# procedural TownPlanner. Empty string = procedural. Used by the image-to-map
+# PoC pipeline to feed extracted-from-image map data into the gameplay layer.
+var custom_map_path: String = ""
 
 
 func reset_match() -> void:
