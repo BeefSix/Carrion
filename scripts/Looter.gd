@@ -40,6 +40,13 @@ const AVOID_RANGE := 160.0
 const AVOID_DETOUR_PX := 120.0
 const AVOID_RETARGET_INTERVAL := 0.5
 
+# Self-preservation kite. When the targeted zombie closes inside this range
+# during HUNT_FIRE, the Looter backs away to maintain shooting distance
+# instead of standing in place and getting bit. Per user feedback - Looters
+# had no self-preservation, just stood there and took hits.
+const KITE_BACKAWAY_RANGE := 56.0
+const KITE_BACKAWAY_SPEED_MULT := 1.0  # full move speed while kiting
+
 # Patrol behavior: when a Looter spawns with no kill memory and no zombie
 # in immediate vision, they pick small random offsets and walk to scan
 # new ground rather than standing still. Each leg is short so they cover
@@ -224,11 +231,23 @@ func _tick_hunt_fire() -> void:
 	if _target_zombie == null or not is_instance_valid(_target_zombie):
 		_sub = Sub.NONE
 		return
-	velocity = Vector2.ZERO
 	var dist := global_position.distance_to(_target_zombie.global_position)
 	if dist > MAGNUM_RANGE * 1.2:
 		_sub = Sub.HUNT_APPROACH
 		return
+	# Self-preservation: if the zombie is closing into bite range, back away
+	# while continuing to fire. Without this the Looter just stands still and
+	# gets bit because their fire rate (2.5s) is slower than the zombie's
+	# closing speed.
+	if dist < KITE_BACKAWAY_RANGE:
+		var away: Vector2 = global_position - _target_zombie.global_position
+		if away.length_squared() > 0.01:
+			velocity = away.normalized() * get_effective_move_speed() * KITE_BACKAWAY_SPEED_MULT
+			move_and_slide()
+		else:
+			velocity = Vector2.ZERO
+	else:
+		velocity = Vector2.ZERO
 	if _attack_cooldown <= 0.0:
 		_attack_cooldown = MAGNUM_PERIOD
 		_emit_magnum_noise()

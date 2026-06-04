@@ -252,6 +252,13 @@ var _pending_cascade_timer: float = 0.0
 var _vision_shape: CircleShape2D = null
 var _vision_query: PhysicsShapeQueryParameters2D = null
 
+# Per-zombie chase offset. Each zombie picks a stable offset around its target
+# based on instance_id so that multiple zombies converging on the same target
+# spread out into a loose ring instead of piling onto a single point. Read
+# once on _ready; never changes per zombie. Result: clusters "flow" toward
+# a target instead of shuffling-and-bumping into each other.
+var _chase_offset: Vector2 = Vector2.ZERO
+
 
 func _ready() -> void:
 	super._ready()
@@ -267,6 +274,13 @@ func _ready() -> void:
 	_vision_query.collision_mask = 1
 	_vision_query.collide_with_bodies = true
 	_vision_query.collide_with_areas = false
+	# Deterministic per-zombie chase offset. instance_id is unique, so each
+	# zombie picks a stable point on a small ring around any chase target.
+	# Radius 14-30 px keeps them within ATTACK_RANGE (36 px) but spread.
+	var id_hash: int = get_instance_id()
+	var angle: float = float(id_hash % 360) * deg_to_rad(1.0)
+	var radius: float = 14.0 + float(id_hash % 16)
+	_chase_offset = Vector2.from_angle(angle) * radius
 	_wander_timer = randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
 	_head_turn_timer = randf_range(HEAD_TURN_INTERVAL_MIN, HEAD_TURN_INTERVAL_MAX)
 	_ambient_noise_timer = randf_range(AMBIENT_NOISE_INTERVAL_MIN, AMBIENT_NOISE_INTERVAL_MAX)
@@ -621,7 +635,7 @@ func _physics_process(delta: float) -> void:
 		_perception_timer = PERCEPTION_INTERVAL
 		_update_perception(delta)
 		if _target != null and _zombie_state == ZombieState.CHASE:
-			_nav.target_position = _target.global_position
+			_nav.target_position = _target.global_position + _chase_offset
 
 	match _zombie_state:
 		ZombieState.IDLE:
@@ -651,11 +665,11 @@ func _physics_process(delta: float) -> void:
 				_target = _acquiring_target
 				_acquiring_target = null
 				_zombie_state = ZombieState.CHASE
-				_nav.target_position = _target.global_position
+				_nav.target_position = _target.global_position + _chase_offset
 		ZombieState.INVESTIGATE:
 			if _target != null:
 				_zombie_state = ZombieState.CHASE
-				_nav.target_position = _target.global_position
+				_nav.target_position = _target.global_position + _chase_offset
 			elif global_position.distance_to(_investigate_target) <= INVESTIGATE_ARRIVE_RANGE:
 				# Arrived at the noise but no target spotted - enter
 				# investigative wandering for 15-20 sec.
@@ -685,7 +699,7 @@ func _physics_process(delta: float) -> void:
 			# target is spotted mid-search.
 			if _target != null:
 				_zombie_state = ZombieState.CHASE
-				_nav.target_position = _target.global_position
+				_nav.target_position = _target.global_position + _chase_offset
 				return
 			_search_timer -= delta
 			if _search_timer <= 0.0:

@@ -19,6 +19,12 @@ const LEVEL3_XP := 1000.0
 const HP_MULT_BY_LEVEL := [1.0, 1.0, 1.10, 1.20]
 const DAMAGE_MULT_BY_LEVEL := [1.0, 1.0, 1.10, 1.20]
 const SPEED_MULT_BY_LEVEL := [1.0, 1.0, 1.0, 1.05]
+# Crit chance per veterancy level. A crit deals CRIT_DAMAGE_FLAT regardless
+# of base damage - enough to one-shot any standard zombie (40-60 HP). Per
+# user spec: fully upgraded (L3) soldiers should one-shot a zombie 25% of
+# the time.
+const CRIT_CHANCE_BY_LEVEL := [0.0, 0.0, 0.10, 0.25]
+const CRIT_DAMAGE_FLAT := 100
 
 const PALETTE_MILITARY := Color("5a6644")
 const PALETTE_SURVIVOR := Color("7a5c3c")
@@ -241,6 +247,12 @@ func get_effective_move_speed() -> float:
 
 
 func get_effective_damage(base_damage: int) -> int:
+	# Crit roll first - L2 soldiers 10%, L3 soldiers 25%. A crit deals enough
+	# flat damage to one-shot any standard zombie regardless of squad bonuses.
+	if veterancy_level < CRIT_CHANCE_BY_LEVEL.size():
+		var crit_chance: float = CRIT_CHANCE_BY_LEVEL[veterancy_level]
+		if crit_chance > 0.0 and randf() < crit_chance:
+			return CRIT_DAMAGE_FLAT
 	# damage_mult comes from veterancy; squad_damage_bonus is the additive
 	# percentage from in-range command-tree ancestors (computed at 5Hz by
 	# SquadManager). Both multiply onto the base damage.
