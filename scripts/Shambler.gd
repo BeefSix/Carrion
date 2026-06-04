@@ -6,14 +6,16 @@ enum ZombieState { IDLE, ACQUIRING, INVESTIGATE, SEARCHING, LOST_TARGET, CHASE, 
 # as per-type so Shambler / Runner / Brute can each carry their own values;
 # Shambler uses the baseline. When Runner / Brute land, they override.
 #
-# Vision:  4 tiles = 128 px, 90° forward cone
-# Hearing: 12 tiles = 384 px, primary perception is vision (eyes good, ears average)
-const VISION_RANGE_TILES := 4
+# Vision:  5 tiles = 160 px, 90° forward cone (bumped from 4 tiles per
+#          "a touch more aggressive" tuning request).
+# Hearing: 16 tiles = 512 px (bumped from 12 tiles - gunfire and other loud
+#          noises propagate further so zombies draw to combat from farther away).
+const VISION_RANGE_TILES := 5
 const VISION_RANGE_PX := VISION_RANGE_TILES * 32.0
 const VISION_CONE_DEG := 90.0
 const VISION_CONE_HALF_RAD := deg_to_rad(VISION_CONE_DEG * 0.5)
 const VISION_EDGE_FUZZ_RAD := deg_to_rad(10.0)
-const HEARING_RANGE_TILES := 12
+const HEARING_RANGE_TILES := 16
 const HEARING_RANGE_PX := HEARING_RANGE_TILES * 32.0
 # Hearing requires the attenuated magnitude to clear this threshold or the
 # zombie treats the noise as background. Suppresses single-tile footfalls
@@ -35,10 +37,10 @@ const PERSIST_RADIUS_PX := 256.0
 # vision cone. Close + cone-center = fastest commit (target is unmistakable);
 # at edge or near max range = slower (could be a glimpse). Makes peeks at
 # close range risky and at distance safer.
-const ACQUISITION_CENTER_MIN := 0.4
-const ACQUISITION_CENTER_MAX := 0.8
-const ACQUISITION_EDGE_MIN := 1.2
-const ACQUISITION_EDGE_MAX := 2.0
+const ACQUISITION_CENTER_MIN := 0.3
+const ACQUISITION_CENTER_MAX := 0.6
+const ACQUISITION_EDGE_MIN := 1.0
+const ACQUISITION_EDGE_MAX := 1.7
 # Phase 2 range fuzziness - detection probability per perception tick
 # scales toward 0 at the edge of vision range.
 const RANGE_FUZZ_NEAR := 0.75  # at <75% range -> 100% detect
@@ -50,8 +52,8 @@ const RANGE_FUZZ_PROB_FAR := 0.40
 # the band [HEARING_MIN_EFFECTIVE..HEARING_RELIABLE] probability scales
 # linearly between HEARING_PROB_MIN and HEARING_PROB_MAX.
 const HEARING_RELIABLE := 15.0
-const HEARING_PROB_MIN := 0.30
-const HEARING_PROB_MAX := 0.70
+const HEARING_PROB_MIN := 0.40
+const HEARING_PROB_MAX := 0.85
 
 # Idle head turns - zombie pivots its facing every 10-15 sec while standing
 # still, simulating slow visual scanning. This is what makes peek-around-
