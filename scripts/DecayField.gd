@@ -22,6 +22,11 @@ const DECAY_COLOR := Color(0.55, 0.18, 0.14)
 var _grid: PackedFloat32Array
 var _emit_timer: float = 0.0
 var _draw_timer: float = 0.0
+# Cached list of tile indices above DRAW_THRESHOLD. Rebuilt by _accumulate
+# (2 Hz, when decay actually changes); _draw iterates this cache instead of
+# the full 36864-tile grid. Decay only ever accumulates (never decreases) so
+# the active set grows monotonically.
+var _active_indices: PackedInt32Array = PackedInt32Array()
 # Perf instrumentation - PerfProbe surfaces these in its 30s probes.
 var _last_draw_us: int = 0
 var _last_active_tiles: int = 0
@@ -50,6 +55,9 @@ func _process(delta: float) -> void:
 
 
 func _accumulate(amount_per_tile: float) -> void:
+	# Track newly-active tile indices so _draw doesn't need to scan all
+	# 36864 tiles. _was_active flags by index: only append to
+	# _active_indices when a tile first crosses DRAW_THRESHOLD.
 	for e in get_tree().get_nodes_in_group("decay_emitter"):
 		if not is_instance_valid(e):
 			continue
@@ -71,10 +79,16 @@ func _accumulate(amount_per_tile: float) -> void:
 				if dx * dx + dy * dy > r_sq:
 					continue
 				var i: int = tx + ty * MAP_TILES
-				var v: float = _grid[i] + amount_per_tile
+				var prev: float = _grid[i]
+				var v: float = prev + amount_per_tile
 				if v > MAX_DECAY:
 					v = MAX_DECAY
 				_grid[i] = v
+				# First-time crossing of the draw threshold -> add to the
+				# active set. Once added, the tile stays (decay is
+				# monotonic - no decrease path).
+				if prev < DRAW_THRESHOLD and v >= DRAW_THRESHOLD:
+					_active_indices.append(i)
 
 
 func get_value_at(world_pos: Vector2) -> float:
@@ -86,34 +100,31 @@ func get_value_at(world_pos: Vector2) -> float:
 
 
 func _draw() -> void:
-	# Each decayed tile renders as an iso diamond centered on the iso
-	# projection of its world-coord tile center. Same diamond shape and size
-	# as the iso ground tiles below so decay reads as a stain ON the ground,
-	# not floating squares over it.
+	# Iterate the cached active-tile list instead of all 36864 tiles.
+	# Active tile count is bounded by the CP radius (max ~452 tiles per CP
+	# at radius 12). Late game with multiple CPs: ~500-900 active tiles.
+	# Previously this iterated 36864 entries per draw regardless of how
+	# few were actually above threshold.
 	var t0_us: int = Time.get_ticks_usec()
-	var active: int = 0
 	var alpha_scale: float = 0.55 / MAX_DECAY
 	var half_w: float = IsoView.ISO_TILE_W * 0.5
 	var half_h: float = IsoView.ISO_TILE_H * 0.5
 	var tile_w: float = float(TILE_PX)
-	for ty in range(MAP_TILES):
-		var row_offset: int = ty * MAP_TILES
-		for tx in range(MAP_TILES):
-			var v: float = _grid[tx + row_offset]
-			if v < DRAW_THRESHOLD:
-				continue
-			active += 1
-			var world_center := Vector2(
-				float(tx) * tile_w + tile_w * 0.5,
-				float(ty) * tile_w + tile_w * 0.5,
-			)
-			var iso_center: Vector2 = IsoView.world_to_screen(world_center)
-			var c := Color(DECAY_COLOR.r, DECAY_COLOR.g, DECAY_COLOR.b, v * alpha_scale)
-			draw_colored_polygon(PackedVector2Array([
-				iso_center + Vector2(0.0, -half_h),
-				iso_center + Vector2(half_w, 0.0),
-				iso_center + Vector2(0.0, half_h),
-				iso_center + Vector2(-half_w, 0.0),
-			]), c)
+	for idx in _active_indices:
+		var v: float = _grid[idx]
+		var ty: int = idx / MAP_TILES
+		var tx: int = idx - ty * MAP_TILES
+		var world_center := Vector2(
+			float(tx) * tile_w + tile_w * 0.5,
+			float(ty) * tile_w + tile_w * 0.5,
+		)
+		var iso_center: Vector2 = IsoView.world_to_screen(world_center)
+		var c := Color(DECAY_COLOR.r, DECAY_COLOR.g, DECAY_COLOR.b, v * alpha_scale)
+		draw_colored_polygon(PackedVector2Array([
+			iso_center + Vector2(0.0, -half_h),
+			iso_center + Vector2(half_w, 0.0),
+			iso_center + Vector2(0.0, half_h),
+			iso_center + Vector2(-half_w, 0.0),
+		]), c)
 	_last_draw_us = Time.get_ticks_usec() - t0_us
-	_last_active_tiles = active
+	_last_active_tiles = _active_indices.size()
