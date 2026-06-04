@@ -13,6 +13,12 @@ const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
 # Integrates with the Survivor "engineered position" identity: firing from
 # within claimed buildings produces less zombie attention than firing outside.
 const BUILDING_NOISE_DAMP := 0.5
+# Per-emitter occluder cache radius. Hearers (zombies) max at ~512 px from
+# the emitter (their HEARING_RANGE_PX); buildings beyond emitter_pos + cache
+# radius can't intersect any emitter-to-hearer segment. Some margin for
+# building diagonals. Used to pre-filter buildings on emitter creation so
+# _attenuated_intensity iterates a 2-5 entry list instead of all ~95.
+const OCCLUDER_CACHE_RADIUS_PX := 612.0
 
 const SMALL_THRESHOLD := 150.0
 const MEDIUM_THRESHOLD := 400.0
@@ -38,6 +44,11 @@ class Emitter:
 	var position: Vector2
 	var intensity: float = 0.0
 	var tiers_fired: Array = [false, false, false, false]
+	# Precomputed list of buildings near enough to this emitter that they
+	# could occlude noise from it. Set once on emitter creation by
+	# NoiseField._populate_occluder_cache. Iterated by _attenuated_intensity
+	# instead of the full buildings group.
+	var occluder_candidates: Array = []
 
 	func _init(p: Vector2, m: float) -> void:
 		position = p
@@ -88,8 +99,24 @@ func add_noise(world_pos: Vector2, magnitude: float) -> void:
 			if total > 0.0:
 				e.position = (e.position * e.intensity + world_pos * magnitude) / total
 			e.intensity = total
+			# Merge can shift position by up to MERGE_RADIUS (96 px). With
+			# the cache radius at 612 px the shift is negligible; cache stays.
 			return
-	_emitters.append(Emitter.new(world_pos, magnitude))
+	var new_emitter := Emitter.new(world_pos, magnitude)
+	_populate_occluder_cache(new_emitter)
+	_emitters.append(new_emitter)
+
+
+func _populate_occluder_cache(emitter) -> void:
+	# Filter buildings to those within OCCLUDER_CACHE_RADIUS_PX of the emitter
+	# position. Run once per emitter creation. Cost: O(buildings) once instead
+	# of O(buildings) per (zombie, emitter) pair at 2.5 Hz.
+	var cache_rad_sq: float = OCCLUDER_CACHE_RADIUS_PX * OCCLUDER_CACHE_RADIUS_PX
+	for b in get_tree().get_nodes_in_group("buildings"):
+		if not is_instance_valid(b) or not ("size_pixels" in b):
+			continue
+		if emitter.position.distance_squared_to(b.position) <= cache_rad_sq:
+			emitter.occluder_candidates.append(b)
 
 
 func _input(event: InputEvent) -> void:
@@ -182,13 +209,13 @@ func _attract_zombies() -> void:
 		if u.has_method("hear_noise"):
 			for e in _emitters:
 				var d: float = u.global_position.distance_to(e.position)
-				var eff: float = _attenuated_intensity(e.position, u.global_position, e.intensity)
+				var eff: float = _attenuated_intensity(e, u.global_position, e.intensity)
 				u.hear_noise(e.position, eff, d)
 		elif u.has_method("investigate"):
 			var best_emitter = null
 			var best_intensity: float = 0.0
 			for e in _emitters:
-				var eff: float = _attenuated_intensity(e.position, u.global_position, e.intensity)
+				var eff: float = _attenuated_intensity(e, u.global_position, e.intensity)
 				var reach: float = min(eff * REACH_PER_NOISE, MAX_REACH)
 				var d: float = u.global_position.distance_to(e.position)
 				if d <= reach and eff > best_intensity:
@@ -199,30 +226,36 @@ func _attract_zombies() -> void:
 	_last_attract_us = Time.get_ticks_usec() - t0_us
 
 
-func _attenuated_intensity(emitter_pos: Vector2, hearer_pos: Vector2, base: float) -> float:
+func _attenuated_intensity(emitter, hearer_pos: Vector2, base: float) -> float:
 	if not _occlusion_enabled:
 		return base
 	var t0_us: int = Time.get_ticks_usec()
-	var result: float = _attenuated_intensity_inner(emitter_pos, hearer_pos, base)
+	var result: float = _attenuated_intensity_inner(emitter, hearer_pos, base)
 	_last_occlusion_us += Time.get_ticks_usec() - t0_us
 	_occlusion_calls_last_tick += 1
 	return result
 
 
-func _attenuated_intensity_inner(emitter_pos: Vector2, hearer_pos: Vector2, base: float) -> float:
-	# Building occluder count. Bounding-rect early-out rejects ~90% of buildings
-	# before the expensive 4-side segment test runs.
+func _attenuated_intensity_inner(emitter, hearer_pos: Vector2, base: float) -> float:
+	# Iterate the per-emitter occluder candidate list (precomputed on emitter
+	# creation - buildings within OCCLUDER_CACHE_RADIUS_PX of the emitter).
+	# Typical candidate count: 2-5. Previously this iterated the full ~95
+	# building group per (emitter, hearer) pair at 2.5 Hz - the dominant
+	# 5-minute degradation cost. Bounding-rect early-out + 4-segment test
+	# unchanged otherwise.
+	var emitter_pos: Vector2 = emitter.position
 	var seg_rect := Rect2(
 		Vector2(min(emitter_pos.x, hearer_pos.x), min(emitter_pos.y, hearer_pos.y)),
 		Vector2(abs(emitter_pos.x - hearer_pos.x) + 1.0, abs(emitter_pos.y - hearer_pos.y) + 1.0),
 	)
 	var occluders: int = 0
-	for b in get_tree().get_nodes_in_group("buildings"):
+	for b in emitter.occluder_candidates:
+		# is_instance_valid filters buildings that were destroyed after the
+		# cache was built. Cheap; cache stays accurate without invalidation.
 		if not is_instance_valid(b) or not ("size_pixels" in b):
 			continue
 		var half: Vector2 = b.size_pixels * 0.5
 		var rect := Rect2(b.position - half, b.size_pixels)
-		# Cheap rect-rect early reject - far buildings skip the segment test.
 		if not seg_rect.intersects(rect):
 			continue
 		if _segment_intersects_rect(emitter_pos, hearer_pos, rect):
