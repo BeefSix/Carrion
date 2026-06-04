@@ -51,10 +51,26 @@ var _debug_font: Font
 var _last_horde_time: float = -1000.0
 var _wave_count: int = 0
 
+# Perf instrumentation. _last_attract_us is the duration of the most recent
+# _attract_zombies call in microseconds. _last_occlusion_us is the cumulative
+# time spent inside _attenuated_intensity during that same call. PerfProbe
+# reads both to surface the cost in its 30s probes.
+var _last_attract_us: int = 0
+var _last_occlusion_us: int = 0
+var _occlusion_calls_last_tick: int = 0
+# Runtime flag toggled by --no-occlusion CLI arg. When false, _attenuated_intensity
+# is a no-op (returns base unchanged) so the user can A/B test the impact of
+# the occlusion check during a single playtest.
+var _occlusion_enabled: bool = true
+
 
 func _ready() -> void:
 	add_to_group("noise_field")
 	_debug_font = ThemeDB.fallback_font
+	# --no-occlusion CLI flag disables building occlusion for A/B testing.
+	if "--no-occlusion" in OS.get_cmdline_user_args():
+		_occlusion_enabled = false
+		print("[NoiseField] Building occlusion DISABLED via --no-occlusion flag")
 
 
 func add_noise(world_pos: Vector2, magnitude: float) -> void:
@@ -155,6 +171,9 @@ func _attract_zombies() -> void:
 	#     every emitter so the zombie can decide what it hears.
 	#   investigate(pos)                     - legacy path for zombie types
 	#     not yet migrated to the perception system; uses emitter reach.
+	var t0_us: int = Time.get_ticks_usec()
+	_last_occlusion_us = 0
+	_occlusion_calls_last_tick = 0
 	for u in get_tree().get_nodes_in_group("units"):
 		if not is_instance_valid(u):
 			continue
@@ -177,9 +196,20 @@ func _attract_zombies() -> void:
 					best_emitter = e
 			if best_emitter != null:
 				u.investigate(best_emitter.position)
+	_last_attract_us = Time.get_ticks_usec() - t0_us
 
 
 func _attenuated_intensity(emitter_pos: Vector2, hearer_pos: Vector2, base: float) -> float:
+	if not _occlusion_enabled:
+		return base
+	var t0_us: int = Time.get_ticks_usec()
+	var result: float = _attenuated_intensity_inner(emitter_pos, hearer_pos, base)
+	_last_occlusion_us += Time.get_ticks_usec() - t0_us
+	_occlusion_calls_last_tick += 1
+	return result
+
+
+func _attenuated_intensity_inner(emitter_pos: Vector2, hearer_pos: Vector2, base: float) -> float:
 	# Building occluder count. Bounding-rect early-out rejects ~90% of buildings
 	# before the expensive 4-side segment test runs.
 	var seg_rect := Rect2(

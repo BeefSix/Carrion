@@ -22,6 +22,9 @@ const DECAY_COLOR := Color(0.55, 0.18, 0.14)
 var _grid: PackedFloat32Array
 var _emit_timer: float = 0.0
 var _draw_timer: float = 0.0
+# Perf instrumentation - PerfProbe surfaces these in its 30s probes.
+var _last_draw_us: int = 0
+var _last_active_tiles: int = 0
 
 
 func _ready() -> void:
@@ -87,6 +90,8 @@ func _draw() -> void:
 	# projection of its world-coord tile center. Same diamond shape and size
 	# as the iso ground tiles below so decay reads as a stain ON the ground,
 	# not floating squares over it.
+	var t0_us: int = Time.get_ticks_usec()
+	var active: int = 0
 	var alpha_scale: float = 0.55 / MAX_DECAY
 	var half_w: float = IsoView.ISO_TILE_W * 0.5
 	var half_h: float = IsoView.ISO_TILE_H * 0.5
@@ -97,6 +102,7 @@ func _draw() -> void:
 			var v: float = _grid[tx + row_offset]
 			if v < DRAW_THRESHOLD:
 				continue
+			active += 1
 			var world_center := Vector2(
 				float(tx) * tile_w + tile_w * 0.5,
 				float(ty) * tile_w + tile_w * 0.5,
@@ -109,3 +115,5 @@ func _draw() -> void:
 				iso_center + Vector2(0.0, half_h),
 				iso_center + Vector2(-half_w, 0.0),
 			]), c)
+	_last_draw_us = Time.get_ticks_usec() - t0_us
+	_last_active_tiles = active
