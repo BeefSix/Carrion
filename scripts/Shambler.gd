@@ -6,16 +6,17 @@ enum ZombieState { IDLE, ACQUIRING, INVESTIGATE, SEARCHING, LOST_TARGET, CHASE, 
 # as per-type so Shambler / Runner / Brute can each carry their own values;
 # Shambler uses the baseline. When Runner / Brute land, they override.
 #
-# Vision:  5 tiles = 160 px, 90° forward cone (bumped from 4 tiles per
-#          "a touch more aggressive" tuning request).
-# Hearing: 16 tiles = 512 px (bumped from 12 tiles - gunfire and other loud
-#          noises propagate further so zombies draw to combat from farther away).
-const VISION_RANGE_TILES := 5
+# Vision:  6 tiles = 192 px, 90° forward cone (bumped through 4 -> 5 -> 6
+#          over two aggression tuning passes).
+# Hearing: 22 tiles = 704 px (bumped through 12 -> 16 -> 22). Gunfire and
+#          other loud noises now carry across most of the map - combat
+#          anywhere draws ambient zombies from a long way off.
+const VISION_RANGE_TILES := 6
 const VISION_RANGE_PX := VISION_RANGE_TILES * 32.0
 const VISION_CONE_DEG := 90.0
 const VISION_CONE_HALF_RAD := deg_to_rad(VISION_CONE_DEG * 0.5)
 const VISION_EDGE_FUZZ_RAD := deg_to_rad(10.0)
-const HEARING_RANGE_TILES := 16
+const HEARING_RANGE_TILES := 22
 const HEARING_RANGE_PX := HEARING_RANGE_TILES * 32.0
 # Hearing requires the attenuated magnitude to clear this threshold or the
 # zombie treats the noise as background. Suppresses single-tile footfalls
@@ -65,7 +66,9 @@ const FACING_PIVOT_RAD_PER_SEC := 4.0  # ~70 deg/sec, ~1.3 sec for full turn
 
 const ATTACK_RANGE := 36.0
 const LOST_TARGET_RANGE := 576.0
-const ATTACK_DAMAGE := 8
+# Damage bumped from 8 -> 14 - second aggression tuning pass. Zombies need
+# to feel actually threatening when they reach you, not just annoying.
+const ATTACK_DAMAGE := 14
 const ATTACK_PERIOD := 1.0
 const PERCEPTION_INTERVAL := 0.2  # 5 Hz perception update (was 0.3 retarget)
 const INVESTIGATE_ARRIVE_RANGE := 60.0

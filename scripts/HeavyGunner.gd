@@ -19,6 +19,10 @@ const BASE_ACCURACY_DEG := 8.0
 var _target = null
 var _attack_cooldown := 0.0
 var _retarget_timer := 0.0
+# Threat-scan cache - 5Hz polling instead of per-frame.
+const THREAT_CHECK_INTERVAL := 0.2
+var _threat_check_timer: float = 0.0
+var _threat_cached = null
 
 
 func _physics_process(delta: float) -> void:
@@ -38,7 +42,11 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 
-	var threat = _find_nearest_threat_in_range(KITE_RANGE)
+	_threat_check_timer -= delta
+	if _threat_check_timer <= 0.0:
+		_threat_check_timer = THREAT_CHECK_INTERVAL
+		_threat_cached = _find_nearest_threat_in_range(KITE_RANGE)
+	var threat = _threat_cached if (_threat_cached != null and is_instance_valid(_threat_cached)) else null
 	if threat != null:
 		_kite_from(threat)
 	else:
