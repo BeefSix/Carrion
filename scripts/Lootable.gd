@@ -44,16 +44,31 @@ const SALVAGE_BY_TYPE := {
 	"civic": 125,
 }
 
+# Population threshold for the Lootable shambler spawn. Slightly under
+# NoiseField.MAX_ZOMBIE_POPULATION (300) so horde spawns retain headroom and
+# the population isn't entirely saturated by Lootables.
+const LOOTABLE_SPAWN_POPULATION_CAP := 250
+
 @export var starting_salvage: int = 200
 @export var is_infested: bool = false
 @export var neighborhood_type: String = "residential"
 
 var remaining_salvage: int = 0
 var _spawn_timer := 0.0
+# Cached at _ready - DecayField is created once at scene start and never moves.
+# Previously _decay_multiplier did a get_first_node_in_group lookup every frame
+# from every infested Lootable. With ~30-50 infested at any time, that's
+# 30-50 redundant group lookups per frame.
+var _decay_field_cached: Node = null
+var _zombie_field_cached: Node = null
 
 
 func _ready() -> void:
 	super._ready()
+	# Cache field references once. Both autoload-managed singletons that exist
+	# for the duration of the match.
+	_decay_field_cached = get_tree().get_first_node_in_group("decay_field")
+	_zombie_field_cached = get_tree().get_first_node_in_group("zombie_field")
 	# Per-type salvage overrides the @export default. Map-placed Lootables
 	# inherit from their neighborhood_type; only Lootables created with an
 	# explicit @export override (e.g., in tests) keep the 200 default.
@@ -93,10 +108,9 @@ func _process(delta: float) -> void:
 
 
 func _decay_multiplier() -> float:
-	var df := get_tree().get_first_node_in_group("decay_field")
-	if df == null or not df.has_method("get_value_at"):
+	if _decay_field_cached == null or not _decay_field_cached.has_method("get_value_at"):
 		return 1.0
-	var v: float = df.get_value_at(global_position)
+	var v: float = _decay_field_cached.get_value_at(global_position)
 	if v >= 100.0:
 		return 3.0
 	if v >= 50.0:
@@ -105,6 +119,18 @@ func _decay_multiplier() -> float:
 
 
 func _spawn_shambler() -> void:
+	# Population cap - previously Lootable spawns bypassed
+	# NoiseField.MAX_ZOMBIE_POPULATION because they don't route through the
+	# horde-trigger path. With ~30-50 infested Lootables spawning every
+	# 30-90s, this produced unbounded population growth that compounded the
+	# noise-occlusion cost (cubic in zombie count).
+	if _zombie_field_cached != null and _zombie_field_cached.has_method("get_zombie_count"):
+		var current_pop: int = _zombie_field_cached.get_zombie_count()
+		if current_pop >= LOOTABLE_SPAWN_POPULATION_CAP:
+			# Reset the timer so we don't spam this check next frame; try
+			# again after the standard interval. Pop should be back below
+			# cap by then if it drops.
+			return
 	var s = SHAMBLER_SCENE.instantiate()
 	var jitter := Vector2(randf_range(-30, 30), randf_range(-30, 30))
 	s.position = global_position + jitter
