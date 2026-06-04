@@ -19,12 +19,12 @@ const LEVEL3_XP := 1000.0
 const HP_MULT_BY_LEVEL := [1.0, 1.0, 1.10, 1.20]
 const DAMAGE_MULT_BY_LEVEL := [1.0, 1.0, 1.10, 1.20]
 const SPEED_MULT_BY_LEVEL := [1.0, 1.0, 1.0, 1.05]
-# Crit chance per veterancy level. A crit deals CRIT_DAMAGE_FLAT regardless
-# of base damage - enough to one-shot any standard zombie (40-60 HP). Per
-# user spec: fully upgraded (L3) soldiers should one-shot a zombie 25% of
-# the time.
-const CRIT_CHANCE_BY_LEVEL := [0.0, 0.0, 0.10, 0.25]
-const CRIT_DAMAGE_FLAT := 100
+# Clean-kill chance per veterancy level. On a clean kill the target dies as
+# normal but doesn't leave a corpse - i.e. the body is destroyed too
+# thoroughly to reanimate. L1 = no clean kills (always corpse), L2 = 10%,
+# L3 (fully upgraded) = 18%. Stacks with the existing per-attacker
+# clean_kills boolean (Looter magnum); either path suppresses the corpse.
+const CLEAN_KILL_CHANCE_BY_LEVEL := [0.0, 0.0, 0.10, 0.18]
 
 const PALETTE_MILITARY := Color("5a6644")
 const PALETTE_SURVIVOR := Color("7a5c3c")
@@ -247,12 +247,6 @@ func get_effective_move_speed() -> float:
 
 
 func get_effective_damage(base_damage: int) -> int:
-	# Crit roll first - L2 soldiers 10%, L3 soldiers 25%. A crit deals enough
-	# flat damage to one-shot any standard zombie regardless of squad bonuses.
-	if veterancy_level < CRIT_CHANCE_BY_LEVEL.size():
-		var crit_chance: float = CRIT_CHANCE_BY_LEVEL[veterancy_level]
-		if crit_chance > 0.0 and randf() < crit_chance:
-			return CRIT_DAMAGE_FLAT
 	# damage_mult comes from veterancy; squad_damage_bonus is the additive
 	# percentage from in-range command-tree ancestors (computed at 5Hz by
 	# SquadManager). Both multiply onto the base damage.
@@ -271,8 +265,16 @@ func _die(attacker = null) -> void:
 
 
 func _should_leave_corpse(attacker) -> bool:
-	if attacker != null and "clean_kills" in attacker and attacker.clean_kills:
-		return false
+	if attacker != null and is_instance_valid(attacker):
+		# Hard clean_kills (e.g. Looter magnum) - always suppresses corpse.
+		if "clean_kills" in attacker and attacker.clean_kills:
+			return false
+		# Veterancy-based clean kill - L2 10%, L3 18%. Per-kill roll.
+		if "veterancy_level" in attacker:
+			var lvl: int = attacker.veterancy_level
+			if lvl >= 0 and lvl < CLEAN_KILL_CHANCE_BY_LEVEL.size():
+				if randf() < CLEAN_KILL_CHANCE_BY_LEVEL[lvl]:
+					return false
 	if faction != GameState.Faction.MILITARY and faction != GameState.Faction.ZOMBIE:
 		return false
 	return randf() < corpse_base_chance
