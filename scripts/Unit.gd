@@ -74,6 +74,18 @@ var preferred_combat_distance: float = 1.0
 # position; outside the lower bound they back away while firing.
 const COMBAT_DISTANCE_DEADBAND := 20.0
 
+# Reactionary flinch on taking damage. When a unit gets hit, they briefly
+# step backward (and skip firing) before resuming normal behavior. Faction
+# parameters set in _ready - Military controlled, Survivor panicked, Tribal
+# stoic (zero duration = no flinch). Below 30% HP both values amplify 50%.
+var _flinch_timer: float = 0.0
+var _flinch_velocity: Vector2 = Vector2.ZERO
+var _flinch_duration: float = 0.0  # 0 = no flinch (Tribal default)
+var _flinch_distance: float = 0.0
+var _flinch_perp_random: bool = false
+const FLINCH_LOW_HP_THRESHOLD := 0.30
+const FLINCH_LOW_HP_MULT := 1.5
+
 var kills_count: int = 0
 var damage_dealt: float = 0.0
 var combat_time: float = 0.0
@@ -106,6 +118,63 @@ func _ready() -> void:
 	if _nav != null and _nav.avoidance_enabled:
 		if not _nav.velocity_computed.is_connected(_on_safe_velocity):
 			_nav.velocity_computed.connect(_on_safe_velocity)
+	# Faction-specific flinch parameters. Military = controlled professional
+	# flinch; Survivor = panicked civilian; Tribal = stoic (no flinch).
+	# Zombies and neutrals don't flinch either.
+	match faction:
+		GameState.Faction.MILITARY:
+			_flinch_duration = 0.3
+			_flinch_distance = 10.0
+			_flinch_perp_random = false
+		GameState.Faction.SURVIVOR:
+			_flinch_duration = 0.5
+			_flinch_distance = 16.0
+			_flinch_perp_random = true
+		_:
+			_flinch_duration = 0.0
+
+
+# Returns true if the unit is currently flinching - subclasses should
+# call this at the top of _physics_process and bail out if true, so the
+# flinch motion plays out without competing logic. Drives velocity to
+# the cached flinch direction at a speed sized to cover _flinch_distance
+# over _flinch_duration.
+func tick_flinch(delta: float) -> bool:
+	if _flinch_timer <= 0.0:
+		return false
+	_flinch_timer -= delta
+	velocity = _flinch_velocity
+	move_and_slide()
+	return true
+
+
+func is_flinching() -> bool:
+	return _flinch_timer > 0.0
+
+
+func _start_flinch(attacker) -> void:
+	# Compute amplified params if HP is low.
+	var duration_factor: float = 1.0
+	var distance_factor: float = 1.0
+	var max_eff: int = get_effective_max_hp()
+	if max_eff > 0:
+		var hp_pct: float = float(current_hp) / float(max_eff)
+		if hp_pct < FLINCH_LOW_HP_THRESHOLD:
+			duration_factor = FLINCH_LOW_HP_MULT
+			distance_factor = FLINCH_LOW_HP_MULT
+	_flinch_timer = _flinch_duration * duration_factor
+	# Direction away from attacker (with random fallback if overlapping).
+	var away: Vector2 = global_position - attacker.global_position
+	if away.length_squared() < 0.01:
+		away = Vector2(randf() - 0.5, randf() - 0.5)
+	var dir: Vector2 = away.normalized()
+	if _flinch_perp_random:
+		var perp: Vector2 = Vector2(-dir.y, dir.x) * randf_range(-0.6, 0.6)
+		dir = (dir + perp).normalized()
+	# Velocity sized so the unit covers _flinch_distance over _flinch_timer.
+	var amplified_dist: float = _flinch_distance * distance_factor
+	var speed: float = amplified_dist / max(_flinch_timer, 0.01)
+	_flinch_velocity = dir * speed
 
 
 func move_to(world_pos: Vector2) -> void:
@@ -169,6 +238,13 @@ func take_damage(amount: int, attacker = null) -> void:
 		if attacker != null and is_instance_valid(attacker) and "kills_count" in attacker:
 			attacker.kills_count += 1
 		_die(attacker)
+		return
+	# Survived the hit. Trigger a flinch if we have one configured and
+	# we're not already flinching - no stacking. Flinch is a recognition,
+	# not an accumulating state.
+	if amount > 0 and attacker != null and is_instance_valid(attacker):
+		if _flinch_duration > 0.0 and _flinch_timer <= 0.0:
+			_start_flinch(attacker)
 
 
 func set_selected(value: bool) -> void:

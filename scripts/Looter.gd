@@ -94,6 +94,8 @@ func move_to(world_pos: Vector2) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if tick_flinch(delta):
+		return
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
 	_retarget_timer = max(0.0, _retarget_timer - delta)
 
