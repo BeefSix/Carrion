@@ -125,31 +125,42 @@ func _physics_process(delta: float) -> void:
 	# Raycasting catches everything in the swept path.
 	var new_pos: Vector2 = position + velocity * delta
 	var space := get_world_2d().direct_space_state
-	var query := PhysicsRayQueryParameters2D.create(position, new_pos, MOTION_MASK)
-	# Exclude the firer's RID + all same-faction units when friendly fire is off.
-	# Without the friendly exclusion, the raycast returns the nearest friendly
-	# unit in formation - the projectile then snaps there and despawns,
-	# producing a "flash at random friendly position" effect from the player's
-	# perspective. Excluding friendlies makes bullets cleanly pass through
-	# allies and resolve at the intended enemy / wall / building.
-	var excludes: Array[RID] = []
+	# Raycast with firer-only exclude. If a friendly is in the path, hop past
+	# them and retry. Replaces the previous "exclude every same-faction unit
+	# upfront" pattern which iterated all units in the scene every frame for
+	# every projectile - the primary cause of the late-match perf degradation.
+	# Now O(friendlies-in-path) per frame instead of O(all-friendlies).
+	var excludes_arr: Array[RID] = []
 	if firer != null and is_instance_valid(firer):
-		excludes.append(firer.get_rid())
-	if not FRIENDLY_FIRE_ENABLED:
-		for u in get_tree().get_nodes_in_group("units"):
-			if not is_instance_valid(u) or u == firer:
-				continue
-			if u.faction == faction:
-				excludes.append(u.get_rid())
-	query.exclude = excludes
-	var hit: Dictionary = space.intersect_ray(query)
-	if not hit.is_empty():
+		excludes_arr.append(firer.get_rid())
+	var current_start: Vector2 = position
+	var hops: int = 0
+	while hops < 8:  # safety cap, friendly chain in the line of fire is rarely > 2
+		var query := PhysicsRayQueryParameters2D.create(current_start, new_pos, MOTION_MASK)
+		query.exclude = excludes_arr
+		var hit: Dictionary = space.intersect_ray(query)
+		if hit.is_empty():
+			break
+		var collider = hit.get("collider", null)
+		if (not FRIENDLY_FIRE_ENABLED) and collider != null \
+				and collider.is_in_group("units") \
+				and "faction" in collider \
+				and collider.faction == faction:
+			var hit_pos: Vector2 = hit.get("position", current_start)
+			current_start = hit_pos + velocity.normalized() * 2.0
+			excludes_arr.append(collider.get_rid())
+			hops += 1
+			continue
+		# Real hit - resolve and despawn.
 		position = hit.get("position", new_pos)
 		z_index = IsoView.z_for(position)
+		_trail_points.append(position)
+		if _trail_points.size() > TRAIL_MAX:
+			_trail_points.pop_front()
 		queue_redraw()
-		_resolve_collision(hit.get("collider", null))
+		_resolve_collision(collider)
 		return
-	# Record the position we're leaving so the smoke trail has a sample for it.
+	# No real hit this frame.
 	_trail_points.append(position)
 	if _trail_points.size() > TRAIL_MAX:
 		_trail_points.pop_front()

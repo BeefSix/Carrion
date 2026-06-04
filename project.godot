@@ -23,6 +23,7 @@ IsoView="*res://autoloads/IsoView.gd"
 SquadManager="*res://autoloads/SquadManager.gd"
 ProjectileManager="*res://autoloads/ProjectileManager.gd"
 NoiseBus="*res://autoloads/NoiseBus.gd"
+PerfProbe="*res://autoloads/PerfProbe.gd"
 
 [display]
 

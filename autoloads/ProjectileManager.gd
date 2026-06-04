@@ -44,8 +44,16 @@ func spawn_projectile(config: Dictionary):
 		return null
 	parent.add_child(proj)
 	_active_projectiles.append(proj)
+	# Auto-remove from registry on despawn. Without this the array grew
+	# monotonically across a match - every spawn appended, no erase - and
+	# any pass that scanned the registry got progressively slower.
+	proj.tree_exited.connect(_on_projectile_exited.bind(proj))
 	projectile_spawned.emit(proj)
 	return proj
+
+
+func _on_projectile_exited(proj) -> void:
+	_active_projectiles.erase(proj)
 
 
 func cleanup_all() -> void:

@@ -180,15 +180,21 @@ func _attract_zombies() -> void:
 
 
 func _attenuated_intensity(emitter_pos: Vector2, hearer_pos: Vector2, base: float) -> float:
-	# Brute-force occluder count: iterate all buildings, segment-test against
-	# their rect. Per-attract-tick cost: zombies x emitters x buildings, ~tens
-	# of thousands of segment tests per second at scale - cheap math.
+	# Building occluder count. Bounding-rect early-out rejects ~90% of buildings
+	# before the expensive 4-side segment test runs.
+	var seg_rect := Rect2(
+		Vector2(min(emitter_pos.x, hearer_pos.x), min(emitter_pos.y, hearer_pos.y)),
+		Vector2(abs(emitter_pos.x - hearer_pos.x) + 1.0, abs(emitter_pos.y - hearer_pos.y) + 1.0),
+	)
 	var occluders: int = 0
 	for b in get_tree().get_nodes_in_group("buildings"):
 		if not is_instance_valid(b) or not ("size_pixels" in b):
 			continue
 		var half: Vector2 = b.size_pixels * 0.5
 		var rect := Rect2(b.position - half, b.size_pixels)
+		# Cheap rect-rect early reject - far buildings skip the segment test.
+		if not seg_rect.intersects(rect):
+			continue
 		if _segment_intersects_rect(emitter_pos, hearer_pos, rect):
 			occluders += 1
 	if occluders == 0:
