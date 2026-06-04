@@ -63,6 +63,17 @@ var commander = null
 var squad_damage_bonus: float = 0.0
 var squad_accuracy_bonus: float = 0.0
 
+# Personal combat distance preference. 1.0 = hold at ATTACK_RANGE; lower
+# values mean the unit prefers closer engagement. Each combat unit picks a
+# random value in their faction-typed band at _ready, so a squad of 5
+# Riflemen spreads naturally across a range of engagement distances instead
+# of all clustering at the same ring. Set by combat-unit subclasses; default
+# 1.0 leaves non-combat units (workers) unaffected.
+var preferred_combat_distance: float = 1.0
+# Dead-band around preferred distance. Inside this margin the unit holds
+# position; outside the lower bound they back away while firing.
+const COMBAT_DISTANCE_DEADBAND := 20.0
+
 var kills_count: int = 0
 var damage_dealt: float = 0.0
 var combat_time: float = 0.0

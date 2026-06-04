@@ -17,6 +17,15 @@ const PROJECTILE_COLOR := Color(0.95, 0.78, 0.35)
 # effective_spread = BASE_ACCURACY_DEG * (1.0 - squad_accuracy_bonus).
 const BASE_ACCURACY_DEG := 4.0
 
+# Combat-distance variance band - Riflemen prefer 50-90% of ATTACK_RANGE.
+# Picked once per unit in _ready. Produces natural firing-line dispersion
+# across a squad without any formation logic.
+const PREFERRED_DIST_MIN := 0.50
+const PREFERRED_DIST_MAX := 0.90
+# Backaway speed multiplier - when target closes inside preferred distance,
+# unit walks backward at this fraction of move_speed while still firing.
+const BACKAWAY_SPEED_MULT := 0.6
+
 var _target = null
 var _attack_cooldown := 0.0
 var _retarget_timer := 0.0
@@ -28,6 +37,11 @@ var _retarget_timer := 0.0
 const THREAT_CHECK_INTERVAL := 0.2
 var _threat_check_timer: float = 0.0
 var _threat_cached = null
+
+
+func _ready() -> void:
+	super._ready()
+	preferred_combat_distance = randf_range(PREFERRED_DIST_MIN, PREFERRED_DIST_MAX)
 
 
 func _physics_process(delta: float) -> void:
@@ -53,6 +67,7 @@ func _physics_process(delta: float) -> void:
 		_threat_cached = _find_nearest_threat_in_range(KITE_RANGE)
 	var threat = _threat_cached if (_threat_cached != null and is_instance_valid(_threat_cached)) else null
 	if threat != null:
+		# Threat kite takes priority over preferred-distance backup.
 		_kite_from(threat)
 	else:
 		velocity = Vector2.ZERO
@@ -63,6 +78,16 @@ func _physics_process(delta: float) -> void:
 		_target = _find_nearest_zombie()
 	if _target != null and is_instance_valid(_target):
 		var dist := global_position.distance_to(_target.global_position)
+		# Preferred-distance maintenance: if no immediate threat to kite from,
+		# back away when target closes inside preferred distance band. Produces
+		# the "soldiers fall back while firing" texture.
+		if threat == null:
+			var preferred: float = ATTACK_RANGE * preferred_combat_distance
+			if dist < preferred - COMBAT_DISTANCE_DEADBAND:
+				var away: Vector2 = global_position - _target.global_position
+				if away.length_squared() > 0.01:
+					velocity = away.normalized() * get_effective_move_speed() * BACKAWAY_SPEED_MULT
+					move_and_slide()
 		if dist <= ATTACK_RANGE and _attack_cooldown <= 0:
 			_fire_at(_target)
 			_attack_cooldown = ATTACK_PERIOD
