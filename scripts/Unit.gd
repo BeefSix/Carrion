@@ -65,6 +65,16 @@ var hp_mult: float = 1.0
 var damage_mult: float = 1.0
 var speed_mult: float = 1.0
 
+# Engagement check rate. Previously _is_engaged() ran every _process frame
+# (60 Hz) for every non-zombie unit. Each call iterates the full units group,
+# making this an O(N^2) per-frame cost - one of the biggest scale-dependent
+# loops in the codebase. Polling at 2 Hz preserves XP-tracking accuracy
+# (combat_time still accumulates per frame when the cached state is true)
+# while dropping the iteration cost by 30x.
+const ENGAGEMENT_CHECK_INTERVAL := 0.5
+var _engagement_check_timer: float = 0.0
+var _engaged_cached: bool = false
+
 # Cremation state - set by cremate_target(), ticked in _process. While
 # current_command == CREMATE the subclass _physics_process bails out so the
 # unit holds position; the actual countdown lives here in the base class.
@@ -166,7 +176,13 @@ func _process(delta: float) -> void:
 	if faction == GameState.Faction.ZOMBIE:
 		return
 	_tick_cremation(delta)
-	if _is_engaged():
+	# Refresh engagement state at 2 Hz; accumulate combat_time per frame
+	# while the cached state is true. Same XP-tracking outcome, 30x less work.
+	_engagement_check_timer -= delta
+	if _engagement_check_timer <= 0.0:
+		_engagement_check_timer = ENGAGEMENT_CHECK_INTERVAL
+		_engaged_cached = _is_engaged()
+	if _engaged_cached:
 		combat_time += delta
 	_update_veterancy()
 
