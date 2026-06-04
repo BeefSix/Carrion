@@ -178,6 +178,15 @@ func _start_flinch(attacker) -> void:
 
 
 func move_to(world_pos: Vector2) -> void:
+	# Tribal units don't follow main routes - drag the nav target off-axis with
+	# a random perpendicular offset so their path bends into alleys/yards
+	# instead of running the road grid. Cheap approximation until per-faction
+	# nav layers land. Other factions go straight to the requested target.
+	if faction == GameState.Faction.TRIBAL:
+		var dir: Vector2 = world_pos - global_position
+		if dir.length_squared() > 400.0:  # only perturb on moves > 20 px
+			var perp: Vector2 = Vector2(-dir.y, dir.x).normalized()
+			world_pos += perp * randf_range(-64.0, 64.0)
 	_nav.target_position = world_pos
 	current_command = Command.MOVE
 
