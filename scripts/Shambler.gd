@@ -241,9 +241,27 @@ var _pending_cascade_level: int = -1
 var _pending_cascade_stimulus: Vector2 = Vector2.ZERO
 var _pending_cascade_timer: float = 0.0
 
+# Preallocated query objects for _find_visible_target. Reusing these avoids
+# the ~1100 allocations/sec a per-zombie per-tick `.new()` would cost at
+# 200+ population.
+var _vision_shape: CircleShape2D = null
+var _vision_query: PhysicsShapeQueryParameters2D = null
+
 
 func _ready() -> void:
 	super._ready()
+	# Vision query setup - one CircleShape2D + PhysicsShapeQueryParameters2D
+	# per zombie, reused on every perception tick. Mask 1 = the layer units
+	# live on (CharacterBody2D default). collide_with_areas false so
+	# Projectile Area2Ds (also on layer 1's mask via 3) don't appear in the
+	# query results.
+	_vision_shape = CircleShape2D.new()
+	_vision_shape.radius = VISION_RANGE_PX
+	_vision_query = PhysicsShapeQueryParameters2D.new()
+	_vision_query.shape = _vision_shape
+	_vision_query.collision_mask = 1
+	_vision_query.collide_with_bodies = true
+	_vision_query.collide_with_areas = false
 	_wander_timer = randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
 	_head_turn_timer = randf_range(HEAD_TURN_INTERVAL_MIN, HEAD_TURN_INTERVAL_MAX)
 	_ambient_noise_timer = randf_range(AMBIENT_NOISE_INTERVAL_MIN, AMBIENT_NOISE_INTERVAL_MAX)
@@ -371,6 +389,23 @@ func _broadcast_cascade(stimulus_pos: Vector2, level: int) -> void:
 		prob = CASCADE_PROB_SECONDARY
 	elif level >= 2:
 		prob = CASCADE_PROB_TERTIARY
+	# Use ZombieField spatial index instead of scanning the full units group.
+	# At 200+ zombie population this dropped per-call cost from O(all-units)
+	# to O(zombies-within-radius) - the latter is usually 5-30 entries.
+	var zf = get_tree().get_first_node_in_group("zombie_field")
+	if zf != null and zf.has_method("get_zombies_within_radius"):
+		for other in zf.get_zombies_within_radius(global_position, CASCADE_RADIUS_PX):
+			if other == self:
+				continue
+			if not other.has_method("on_cascade"):
+				continue
+			if not (other.has_method("is_currently_idle") and other.is_currently_idle()):
+				continue
+			if randf() > prob:
+				continue
+			other.on_cascade(stimulus_pos, level)
+		return
+	# Fallback if ZombieField is absent (e.g. test scenes without the field).
 	for other in get_tree().get_nodes_in_group("units"):
 		if other == self or not is_instance_valid(other):
 			continue
@@ -891,18 +926,28 @@ func _find_magnetic_target() -> Vector2:
 				if to_center.length_squared() > (64.0 * 64.0):
 					var travel_g: float = minf(to_center.length() * MAGNETIC_TRAVEL_FRACTION, MAGNETIC_TRAVEL_MAX_PX)
 					return global_position + to_center.normalized() * travel_g
-	# Fallback: nearest individual zombie.
+	# Fallback: nearest individual zombie. Use ZombieField spatial index.
 	var nearest = null
 	var nearest_dist: float = MAGNETIC_RADIUS_PX
-	for other in get_tree().get_nodes_in_group("units"):
-		if other == self or not is_instance_valid(other):
-			continue
-		if other.faction != GameState.Faction.ZOMBIE:
-			continue
-		var d: float = global_position.distance_to(other.global_position)
-		if d < nearest_dist:
-			nearest_dist = d
-			nearest = other
+	var zf2 = get_tree().get_first_node_in_group("zombie_field")
+	if zf2 != null and zf2.has_method("get_zombies_within_radius"):
+		for other in zf2.get_zombies_within_radius(global_position, MAGNETIC_RADIUS_PX):
+			if other == self:
+				continue
+			var d: float = global_position.distance_to(other.global_position)
+			if d < nearest_dist:
+				nearest_dist = d
+				nearest = other
+	else:
+		for other in get_tree().get_nodes_in_group("units"):
+			if other == self or not is_instance_valid(other):
+				continue
+			if other.faction != GameState.Faction.ZOMBIE:
+				continue
+			var d: float = global_position.distance_to(other.global_position)
+			if d < nearest_dist:
+				nearest_dist = d
+				nearest = other
 	if nearest == null:
 		return Vector2.ZERO
 	var to_them: Vector2 = nearest.global_position - global_position
@@ -981,30 +1026,43 @@ func get_active_wander_target() -> Vector2:
 
 func _find_cluster_leader_target() -> Vector2:
 	# Look for nearby zombies who already have an active wander destination.
-	# Require COHESION_NEIGHBOR_THRESHOLD+ total neighbors so we don't trigger
-	# cohesion when paired with just one other zombie - that's a wandering
-	# pair, not a cluster. Return the nearest leader's target with jitter
-	# so followers spread slightly instead of stacking.
+	# Use ZombieField spatial index instead of scanning the full units group.
 	var leader = null
 	var leader_dist: float = INF
 	var nearby_count: int = 0
-	for other in get_tree().get_nodes_in_group("units"):
-		if other == self or not is_instance_valid(other):
-			continue
-		if other.faction != GameState.Faction.ZOMBIE:
-			continue
-		var d: float = global_position.distance_to(other.global_position)
-		if d > COHESION_RADIUS_PX:
-			continue
-		nearby_count += 1
-		if not other.has_method("get_active_wander_target"):
-			continue
-		var t: Vector2 = other.get_active_wander_target()
-		if t == Vector2.ZERO:
-			continue
-		if d < leader_dist:
-			leader_dist = d
-			leader = other
+	var zf = get_tree().get_first_node_in_group("zombie_field")
+	if zf != null and zf.has_method("get_zombies_within_radius"):
+		for other in zf.get_zombies_within_radius(global_position, COHESION_RADIUS_PX):
+			if other == self:
+				continue
+			nearby_count += 1
+			if not other.has_method("get_active_wander_target"):
+				continue
+			var t: Vector2 = other.get_active_wander_target()
+			if t == Vector2.ZERO:
+				continue
+			var d: float = global_position.distance_to(other.global_position)
+			if d < leader_dist:
+				leader_dist = d
+				leader = other
+	else:
+		for other in get_tree().get_nodes_in_group("units"):
+			if other == self or not is_instance_valid(other):
+				continue
+			if other.faction != GameState.Faction.ZOMBIE:
+				continue
+			var d2: float = global_position.distance_to(other.global_position)
+			if d2 > COHESION_RADIUS_PX:
+				continue
+			nearby_count += 1
+			if not other.has_method("get_active_wander_target"):
+				continue
+			var t2: Vector2 = other.get_active_wander_target()
+			if t2 == Vector2.ZERO:
+				continue
+			if d2 < leader_dist:
+				leader_dist = d2
+				leader = other
 	if nearby_count < COHESION_NEIGHBOR_THRESHOLD or leader == null:
 		return Vector2.ZERO
 	var leader_target: Vector2 = leader.get_active_wander_target()
@@ -1032,23 +1090,29 @@ func _cluster_bias_target() -> Vector2:
 	# to 220 px, a 600 px scatter converges visibly in ~3-5 cycles.
 	var neighbor_positions: Array[Vector2] = []
 	var close_count: int = 0
-	for other in get_tree().get_nodes_in_group("units"):
-		if other == self or not is_instance_valid(other):
-			continue
-		if other.faction != GameState.Faction.ZOMBIE:
-			continue
-		var d: float = global_position.distance_to(other.global_position)
-		if d > CLUSTER_FAR_RADIUS_PX:
-			continue
-		# All nearby zombies count as cluster anchors - sparse populations
-		# rarely have multiple IDLE zombies within range simultaneously, so
-		# the idle-only filter was killing centroid pull in exactly the
-		# scenarios where it's most needed (fresh spawns, cold-start
-		# clustering). Investigating / chasing zombies still register as
-		# mass for centroid purposes; they just don't follow back.
-		neighbor_positions.append(other.global_position)
-		if d < CLUSTER_CLOSE_RADIUS_PX:
-			close_count += 1
+	# All nearby zombies count as cluster anchors regardless of state - sparse
+	# populations rarely have multiple IDLE zombies within range simultaneously.
+	var zf = get_tree().get_first_node_in_group("zombie_field")
+	if zf != null and zf.has_method("get_zombies_within_radius"):
+		for other in zf.get_zombies_within_radius(global_position, CLUSTER_FAR_RADIUS_PX):
+			if other == self:
+				continue
+			var d: float = global_position.distance_to(other.global_position)
+			neighbor_positions.append(other.global_position)
+			if d < CLUSTER_CLOSE_RADIUS_PX:
+				close_count += 1
+	else:
+		for other in get_tree().get_nodes_in_group("units"):
+			if other == self or not is_instance_valid(other):
+				continue
+			if other.faction != GameState.Faction.ZOMBIE:
+				continue
+			var d2: float = global_position.distance_to(other.global_position)
+			if d2 > CLUSTER_FAR_RADIUS_PX:
+				continue
+			neighbor_positions.append(other.global_position)
+			if d2 < CLUSTER_CLOSE_RADIUS_PX:
+				close_count += 1
 	if neighbor_positions.is_empty():
 		return Vector2.ZERO
 	var centroid: Vector2 = Vector2.ZERO
@@ -1197,10 +1261,21 @@ func _find_visible_target():
 	# Per spec: only Walkers are exempt from all zombie targeting. Tribal
 	# Hunters and Shamans are detected normally. Tribally-aligned zombies
 	# (force-spawned) exempt all Tribal during their 30-sec alignment.
+	#
+	# Uses Godot's physics broadphase via intersect_shape with a circle of
+	# VISION_RANGE_PX radius. Cost: O(units-within-vision), typically 0-5,
+	# instead of O(all-units) which at 200+ zombie population was the second-
+	# biggest perf hit after the projectile friendly-fire loop.
+	var space := get_world_2d().direct_space_state
+	_vision_query.transform = Transform2D(0.0, global_position)
+	var hits: Array = space.intersect_shape(_vision_query, 16)
 	var best = null
 	var best_dist: float = VISION_RANGE_PX
-	for u in get_tree().get_nodes_in_group("units"):
-		if u == self or not is_instance_valid(u):
+	for h in hits:
+		var u = h.get("collider", null)
+		if u == self or u == null or not is_instance_valid(u):
+			continue
+		if not ("faction" in u):
 			continue
 		if u.faction == GameState.Faction.ZOMBIE:
 			continue

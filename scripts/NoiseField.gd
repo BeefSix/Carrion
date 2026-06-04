@@ -31,7 +31,7 @@ const TIER_CAT := 3
 const HORDE_COOLDOWN := 30.0
 const WAVE_SIZE_MULTIPLIER := 0.5
 const MAX_WAVE := 4
-const MAX_ZOMBIE_POPULATION := 220  # refuse horde spawns when total zombies reach this
+const MAX_ZOMBIE_POPULATION := 300  # refuse horde spawns when total zombies reach this (bumped from 220 after Shambler perception perf fixes)
 
 
 class Emitter:
