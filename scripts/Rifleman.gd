@@ -29,9 +29,35 @@ const THREAT_CHECK_INTERVAL := 0.2
 var _threat_check_timer: float = 0.0
 var _threat_cached = null
 
+# Sprite animation state. Pixellab gives 8 cardinal+diagonal facings; we pick
+# one per frame by projecting facing_dir into iso screen space (the game's
+# 4:3 oblique projection rotates world axes 45deg in screen space).
+const SPRITE_DIRECTIONS := ["east", "south-east", "south", "south-west", "west", "north-west", "north", "north-east"]
+const SPRITE_ROOT := "res://assets/sprites/units/military/rifleman/"
+# Hold attack animation for a beat after firing so it visibly plays instead
+# of snapping back to idle/walk on the next physics tick.
+const ATTACK_ANIM_HOLD := 0.35
+var _attack_anim_timer: float = 0.0
+
+
+func _ready() -> void:
+	super._ready()
+	var sprite: AnimatedSprite2D = get_node_or_null("AnimatedSprite2D")
+	if sprite == null:
+		return
+	var frames := _build_sprite_frames()
+	if frames.get_animation_names().is_empty():
+		return
+	sprite.sprite_frames = frames
+	use_sprite = true
+	sprite.play(&"idle_south")
+
 
 func _physics_process(delta: float) -> void:
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
+	_attack_anim_timer = max(0.0, _attack_anim_timer - delta)
+	if use_sprite:
+		_update_sprite_animation()
 	if current_command == Command.CREMATE:
 		velocity = Vector2.ZERO
 		return
@@ -89,6 +115,7 @@ func _try_shoot_in_range(delta: float) -> void:
 func _fire_at(target) -> void:
 	# Spawns a direct-fire projectile. Damage resolves on impact, not here.
 	# Noise still fires at the call site (fire-time, per the projectile spec).
+	_attack_anim_timer = ATTACK_ANIM_HOLD
 	var spread: float = BASE_ACCURACY_DEG * (1.0 - squad_accuracy_bonus)
 	ProjectileManager.spawn_projectile({
 		"origin": global_position,
@@ -176,3 +203,65 @@ func _kite_from(threat) -> void:
 
 func _emit_shot_noise() -> void:
 	NoiseBus.emit(global_position, NOISE_PER_SHOT)
+
+
+func _update_sprite_animation() -> void:
+	var sprite: AnimatedSprite2D = get_node_or_null("AnimatedSprite2D")
+	if sprite == null or sprite.sprite_frames == null:
+		return
+	var action: String
+	if current_hp <= 0:
+		action = "death"
+	elif _attack_anim_timer > 0.0:
+		action = "attack"
+	elif velocity.length_squared() > 1.0 or current_command == Command.MOVE:
+		action = "walk"
+	else:
+		action = "idle"
+	var dir: String = _world_facing_to_sprite_dir(facing_dir)
+	var anim_name := "%s_%s" % [action, dir]
+	if String(sprite.animation) != anim_name:
+		sprite.play(anim_name)
+
+
+func _world_facing_to_sprite_dir(world_dir: Vector2) -> String:
+	if world_dir.length_squared() < 0.001:
+		return "south"
+	# Project world facing into iso screen space (matches the 4:3 oblique
+	# transform IsoView applies to positions). The chosen sprite then aligns
+	# with how the unit's movement looks on screen, not on the world grid.
+	var iso_dir := Vector2(world_dir.x - world_dir.y, (world_dir.x + world_dir.y) * 0.75)
+	var angle_deg := rad_to_deg(iso_dir.angle())
+	if angle_deg < 0.0:
+		angle_deg += 360.0
+	var idx := int(round(angle_deg / 45.0)) % 8
+	return SPRITE_DIRECTIONS[idx]
+
+
+func _build_sprite_frames() -> SpriteFrames:
+	# Walk the on-disk asset tree and assemble a SpriteFrames resource at
+	# runtime. Each (action, direction) pair becomes one named animation; we
+	# probe sequential frame indices until a missing file ends the cycle.
+	# Speeds/loop flags are per-action: attack and death play once, idle and
+	# walk loop. Speeds in fps; tuned for readable motion at 32px.
+	var sf := SpriteFrames.new()
+	sf.remove_animation(&"default")
+	var anim_speeds := {"idle": 4.0, "walk": 12.0, "attack": 18.0, "death": 8.0}
+	var anim_loops := {"idle": true, "walk": true, "attack": false, "death": false}
+	for action in ["idle", "walk", "attack", "death"]:
+		for dir in SPRITE_DIRECTIONS:
+			var anim_name := "%s_%s" % [action, dir]
+			var added_any := false
+			var i := 0
+			while true:
+				var frame_path := "%s%s/%s/%d.png" % [SPRITE_ROOT, action, dir, i]
+				if not ResourceLoader.exists(frame_path):
+					break
+				if not added_any:
+					sf.add_animation(anim_name)
+					sf.set_animation_speed(anim_name, anim_speeds[action])
+					sf.set_animation_loop(anim_name, anim_loops[action])
+					added_any = true
+				sf.add_frame(anim_name, load(frame_path))
+				i += 1
+	return sf

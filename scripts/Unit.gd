@@ -39,6 +39,12 @@ const PALETTE_STRUCTURE := Color("4a4339")
 @export var clean_kills: bool = false
 @export var corpse_base_chance: float = 1.0
 @export var size_px: int = 22
+# When true, the unit scene provides its own AnimatedSprite2D child and the
+# procedural body/head/wedge in _draw is skipped. Shadow, selection ring, HP
+# bar, and veterancy chevrons still draw (they're gameplay UI, not character
+# art). The sprite child gets its position offset to iso screen space per
+# frame so it lines up with the iso ground plane like Building visuals do.
+@export var use_sprite: bool = false
 
 var current_hp: int
 var current_command: Command = Command.IDLE
@@ -179,6 +185,13 @@ func _process(delta: float) -> void:
 	# because units move; cheap (one multiply + clamp). Zombies sort too, so
 	# we do this before the zombie-fast-path early return.
 	z_index = IsoView.z_for(global_position)
+	# When a sprite child is present, shift it into iso screen space so the
+	# pixel-art character lines up with the iso ground tile under the unit.
+	# Matches the iso_offset trick used in _draw for procedural visuals.
+	if use_sprite:
+		var sprite: Node2D = get_node_or_null("AnimatedSprite2D")
+		if sprite != null:
+			sprite.position = IsoView.world_to_screen(position) - position
 	if faction == GameState.Faction.ZOMBIE:
 		return
 	_tick_cremation(delta)
@@ -374,21 +387,23 @@ func _draw() -> void:
 
 	# Body silhouette - slight trapezoid, broader at shoulders than waist.
 	# All units share this base shape; subclass differentiation comes from
-	# body_color, size_px, and (later) overridable accents.
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(-bw * 0.42, body_top_y + 2.0),
-		Vector2(bw * 0.42, body_top_y + 2.0),
-		Vector2(bw * 0.5, -1.0),
-		Vector2(-bw * 0.5, -1.0),
-	]), body_color)
+	# body_color, size_px, and (later) overridable accents. Skipped when the
+	# subclass uses a sprite (AnimatedSprite2D child handles the character art).
+	if not use_sprite:
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(-bw * 0.42, body_top_y + 2.0),
+			Vector2(bw * 0.42, body_top_y + 2.0),
+			Vector2(bw * 0.5, -1.0),
+			Vector2(-bw * 0.5, -1.0),
+		]), body_color)
 
-	# Head - slightly lighter than the body so the silhouette reads.
-	draw_circle(Vector2(0.0, head_y), hr, body_color.lightened(0.08))
+		# Head - slightly lighter than the body so the silhouette reads.
+		draw_circle(Vector2(0.0, head_y), hr, body_color.lightened(0.08))
 
-	# Facing wedge - small lighter triangle on the chest pointing iso-forward.
-	# Direction comes from facing_dir (already tracked in _process), projected
-	# to iso space so visually it points where the unit "is looking".
-	_draw_facing_wedge(body_top_y, bh, bw)
+		# Facing wedge - small lighter triangle on the chest pointing iso-forward.
+		# Direction comes from facing_dir (already tracked in _process), projected
+		# to iso space so visually it points where the unit "is looking".
+		_draw_facing_wedge(body_top_y, bh, bw)
 
 	# HP bar floats above the head when damaged.
 	var max_eff: int = get_effective_max_hp()
