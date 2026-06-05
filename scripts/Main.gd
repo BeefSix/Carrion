@@ -139,9 +139,6 @@ var _win_overlay: CanvasLayer = null
 
 
 var _town_data: Dictionary = {}
-# Cached 192x192 ground tile grid for nav-mesh road preference. Stored after
-# the tile grid is applied so _rebake_navigation can build a road sub-region.
-var _tile_grid: PackedByteArray
 
 
 func _ready() -> void:
@@ -161,8 +158,7 @@ func _ready() -> void:
 		# pipeline and hands back tile_grid + lots + buildings + lootables.
 		var planner = TOWN_PLANNER_SCRIPT.new()
 		_town_data = planner.plan_town()
-		_tile_grid = _town_data["tile_grid"]
-		$GroundTiles.apply_tile_grid(_tile_grid)
+		$GroundTiles.apply_tile_grid(_town_data["tile_grid"])
 	_spawn_hq()
 	_spawn_lootables()
 	_rebake_navigation()
@@ -172,29 +168,6 @@ func _ready() -> void:
 	else:
 		_spawn_inert_opposing_hq()
 	_install_win_overlay()
-	# --stress-rifleman flag: spawn 2 Riflemen and command them to march to
-	# the opposite corner. Used to reproduce the user's "2 Riflemen at 90s
-	# absolute bog" report headlessly so we can capture PerfProbe data.
-	if "--stress-rifleman" in user_args:
-		call_deferred("_run_stress_rifleman")
-
-
-func _run_stress_rifleman() -> void:
-	print("[Stress] Spawning 2 Riflemen and marching to opposite corner")
-	var rifleman_scene: PackedScene = load("res://scenes/units/Rifleman.tscn")
-	if rifleman_scene == null:
-		print("[Stress] Failed to load Rifleman scene")
-		return
-	var spawn := _get_spawn_position()
-	var dest := _get_ai_spawn_position()
-	for i in range(2):
-		var r = rifleman_scene.instantiate()
-		r.position = spawn + Vector2(40 * i, 40 * i)
-		add_child(r)
-		r.add_to_group("player_units")
-		# Defer move_to so the unit's _ready has run and nav agent is wired.
-		r.call_deferred("move_to", dest)
-	print("[Stress] Spawn done at %s, dest %s" % [spawn, dest])
 
 
 # Image-to-map: load extracted map data + render the source image as
@@ -207,8 +180,7 @@ func _load_custom_map(json_path: String) -> void:
 		push_warning("Custom map JSON not found: %s. Falling back to procedural." % json_path)
 		var planner = TOWN_PLANNER_SCRIPT.new()
 		_town_data = planner.plan_town()
-		_tile_grid = _town_data["tile_grid"]
-		$GroundTiles.apply_tile_grid(_tile_grid)
+		$GroundTiles.apply_tile_grid(_town_data["tile_grid"])
 		return
 	var raw: String = f.get_as_text()
 	f.close()
@@ -246,7 +218,6 @@ func _load_custom_map(json_path: String) -> void:
 			var cat: int = int(row[x])
 			var tile_idx: int = CATEGORY_TO_GROUND_TILE.get(cat, 5)
 			grid[x + y * TILE_COUNT] = tile_idx
-	_tile_grid = grid
 	$GroundTiles.apply_tile_grid(grid)
 
 	# Adapt the building list into the lootables shape (_spawn_lootables
@@ -439,27 +410,9 @@ func rebake_navigation() -> void:
 
 
 func _rebake_navigation() -> void:
-	# Building obstruction outlines used by both the main nav region and the
-	# road sub-region. Computed once.
-	var building_outlines: Array = []
-	var pad := 4.0
-	for b in get_tree().get_nodes_in_group("buildings"):
-		if b.is_in_group("walls"):
-			continue
-		if not ("size_pixels" in b):
-			continue
-		var half: Vector2 = b.size_pixels * 0.5
-		var p: Vector2 = b.position
-		building_outlines.append(PackedVector2Array([
-			p + Vector2(-half.x - pad, -half.y - pad),
-			p + Vector2(half.x + pad, -half.y - pad),
-			p + Vector2(half.x + pad, half.y + pad),
-			p + Vector2(-half.x - pad, half.y + pad),
-		]))
-
-	# Main nav region: whole map walkable, default travel cost.
 	var nav_poly := NavigationPolygon.new()
 	nav_poly.agent_radius = 12.0
+
 	var outer := PackedVector2Array([
 		Vector2(0, 0),
 		Vector2(MAP_SIZE.x, 0),
@@ -468,77 +421,24 @@ func _rebake_navigation() -> void:
 	])
 	var source := NavigationMeshSourceGeometryData2D.new()
 	source.add_traversable_outline(outer)
-	for outline in building_outlines:
-		source.add_obstruction_outline(outline)
+
+	var pad := 4.0
+	for b in get_tree().get_nodes_in_group("buildings"):
+		if b.is_in_group("walls"):
+			continue
+		if not ("size_pixels" in b):
+			continue
+		var half: Vector2 = b.size_pixels * 0.5
+		var p: Vector2 = b.position
+		source.add_obstruction_outline(PackedVector2Array([
+			p + Vector2(-half.x - pad, -half.y - pad),
+			p + Vector2(half.x + pad, -half.y - pad),
+			p + Vector2(half.x + pad, half.y + pad),
+			p + Vector2(-half.x - pad, half.y + pad),
+		]))
+
 	NavigationServer2D.bake_from_source_geometry_data(nav_poly, source, Callable())
 	$NavRegion.navigation_polygon = nav_poly
-
-	# Road sub-region: a second NavigationRegion2D covering only road tiles,
-	# with lower travel_cost. The pathfinder treats it as a cheaper overlay,
-	# so optimal paths route through the road grid even when a direct line
-	# across yards would be shorter geometrically. Falls back gracefully if
-	# _tile_grid is empty (custom map without ground-tile data).
-	_setup_road_region(building_outlines)
-
-
-# Ground-tile indices that count as "road" for navigation preference. From
-# GroundTiles.TILE_COLORS: 0=main road, 1=sidewalk, 2=secondary road,
-# 3=side street, 4=parking lot, 7=dirt road. Yards (5), bare ground (6),
-# vegetation (8), rubble (9), fence (10) stay normal cost.
-const ROAD_TILE_INDICES := [0, 1, 2, 3, 4, 7]
-const TILE_GRID_W := 192
-const TILE_GRID_PX := 32
-
-
-func _setup_road_region(building_outlines: Array) -> void:
-	if _tile_grid.is_empty():
-		return
-	var road_node: NavigationRegion2D = get_node_or_null("RoadRegion") as NavigationRegion2D
-	if road_node == null:
-		road_node = NavigationRegion2D.new()
-		road_node.name = "RoadRegion"
-		# Lower travel cost than the main region's default 1.0 - pathfinder
-		# prefers this overlay where it overlaps with the main region.
-		road_node.travel_cost = 0.5
-		add_child(road_node)
-
-	var road_poly := NavigationPolygon.new()
-	road_poly.agent_radius = 12.0
-	var source := NavigationMeshSourceGeometryData2D.new()
-
-	# Row-span merge: emit one rect per contiguous run of road tiles in a row.
-	# 192*5 = ~1000 outlines vs ~10000 if we emitted per-tile. The bake stays
-	# tractable and the resulting mesh has bounded triangle count.
-	var spans: int = 0
-	for ty in range(TILE_GRID_W):
-		var x_start: int = -1
-		for tx in range(TILE_GRID_W):
-			var i: int = tx + ty * TILE_GRID_W
-			var t: int = _tile_grid[i] if i < _tile_grid.size() else -1
-			var is_road: bool = ROAD_TILE_INDICES.has(t)
-			if is_road and x_start < 0:
-				x_start = tx
-			# End of span: not-road tile or end of row while in a span.
-			if x_start >= 0 and (not is_road or tx == TILE_GRID_W - 1):
-				var x_end_tile: int = tx + (1 if is_road else 0)
-				var px_lo: float = float(x_start * TILE_GRID_PX)
-				var px_hi: float = float(x_end_tile * TILE_GRID_PX)
-				var py_lo: float = float(ty * TILE_GRID_PX)
-				var py_hi: float = float((ty + 1) * TILE_GRID_PX)
-				source.add_traversable_outline(PackedVector2Array([
-					Vector2(px_lo, py_lo),
-					Vector2(px_hi, py_lo),
-					Vector2(px_hi, py_hi),
-					Vector2(px_lo, py_hi),
-				]))
-				spans += 1
-				x_start = -1
-	for outline in building_outlines:
-		source.add_obstruction_outline(outline)
-
-	NavigationServer2D.bake_from_source_geometry_data(road_poly, source, Callable())
-	road_node.navigation_polygon = road_poly
-	print("[NavRoad] %d road spans baked into RoadRegion (travel_cost=%.2f)" % [spans, road_node.travel_cost])
 
 
 func _input(event: InputEvent) -> void:

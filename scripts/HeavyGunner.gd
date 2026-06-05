@@ -16,11 +16,6 @@ const PROJECTILE_COLOR := Color(1.0, 0.82, 0.35)
 # Wider cone than Rifleman: HG is sustained-fire, less aimed.
 const BASE_ACCURACY_DEG := 8.0
 
-# HG holds further back than Riflemen - bigger weapon, more comfortable at range.
-const PREFERRED_DIST_MIN := 0.60
-const PREFERRED_DIST_MAX := 0.95
-const BACKAWAY_SPEED_MULT := 0.5
-
 var _target = null
 var _attack_cooldown := 0.0
 var _retarget_timer := 0.0
@@ -30,14 +25,7 @@ var _threat_check_timer: float = 0.0
 var _threat_cached = null
 
 
-func _ready() -> void:
-	super._ready()
-	preferred_combat_distance = randf_range(PREFERRED_DIST_MIN, PREFERRED_DIST_MAX)
-
-
 func _physics_process(delta: float) -> void:
-	if tick_flinch(delta):
-		return
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
 	if current_command == Command.CREMATE:
 		velocity = Vector2.ZERO
@@ -70,13 +58,6 @@ func _physics_process(delta: float) -> void:
 		_target = _find_nearest_zombie()
 	if _target != null and is_instance_valid(_target):
 		var dist := global_position.distance_to(_target.global_position)
-		if threat == null:
-			var preferred: float = ATTACK_RANGE * preferred_combat_distance
-			if dist < preferred - COMBAT_DISTANCE_DEADBAND:
-				var away: Vector2 = global_position - _target.global_position
-				if away.length_squared() > 0.01:
-					velocity = away.normalized() * get_effective_move_speed() * BACKAWAY_SPEED_MULT
-					move_and_slide()
 		if dist <= ATTACK_RANGE and _attack_cooldown <= 0:
 			_fire_at(_target)
 			_attack_cooldown = ATTACK_PERIOD
