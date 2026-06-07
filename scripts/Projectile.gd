@@ -178,10 +178,18 @@ func _resolve_collision(collider) -> void:
 		return
 	# Buildings (walls included) take reduced damage from bullets. AOE/explosives
 	# remain the efficient siege option; bullets chip slowly.
+	# Friendly fire on own walls: a Rifleman should not be chipping his own
+	# wall when firing through it. Routed through GameState.is_hostile so the
+	# rule matches the unit-vs-unit friendly-fire policy (FRIENDLY_FIRE_ENABLED).
 	if collider.is_in_group("buildings"):
+		if not FRIENDLY_FIRE_ENABLED \
+				and firer != null and is_instance_valid(firer) \
+				and not GameState.is_hostile(firer, collider):
+			_despawn()
+			return
 		if collider.has_method("take_damage"):
 			var reduced: int = max(1, int(round(damage * BUILDING_DAMAGE_FRACTION)))
-			collider.take_damage(reduced)
+			collider.take_damage(reduced, firer)
 	_despawn()
 
 
@@ -202,12 +210,24 @@ func _apply_area_damage(center: Vector2) -> void:
 	# Used by area-on-impact direct shots (e.g. HG) and by arcing projectiles
 	# on landing (Phase 2+). Damages units in radius, and HQs of the opposing
 	# side for the win-condition splash that HG previously had.
+	# H4 follow-up: friendly-fire skip routed through GameState.is_hostile so
+	# the Military mirror's HG splash actually damages opposing-team Military
+	# (faction equality would have skipped them like the targeting bug).
 	var r_sq: float = area_radius * area_radius
 	for u in get_tree().get_nodes_in_group("units"):
 		if not is_instance_valid(u):
 			continue
-		if not FRIENDLY_FIRE_ENABLED and u.faction == faction:
-			continue
+		if not FRIENDLY_FIRE_ENABLED:
+			var is_friendly: bool
+			if firer != null and is_instance_valid(firer):
+				is_friendly = not GameState.is_hostile(firer, u)
+			else:
+				# Firer died mid-flight - degenerate case, fall back to
+				# faction equality so the splash still avoids own-faction
+				# units (the projectile retains its faction value).
+				is_friendly = u.faction == faction
+			if is_friendly:
+				continue
 		if u.global_position.distance_squared_to(center) <= r_sq:
 			if u.has_method("take_damage"):
 				u.take_damage(int(round(damage)), firer)

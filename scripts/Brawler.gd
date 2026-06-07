@@ -66,15 +66,17 @@ func _try_strike_in_range(delta: float) -> void:
 		_attack_cooldown = ATTACK_PERIOD
 
 
-# Survivor Brawler engages anything that isn't a Survivor or neutral - zombies,
-# military, tribal all trigger combat. Melee silent (NOISE_PER_HIT = 0).
+# Survivor Brawler engages anything hostile: zombies (cross-faction always
+# hostile), opposing-team Military/Tribal/Survivor. Melee silent (NOISE_PER_HIT
+# = 0). Routed through GameState.is_hostile (AUDIT H4) so a future Survivor
+# mirror works the same way the Military mirror does.
 func _find_nearest_hostile():
 	var best = null
 	var best_dist := ENGAGE_RANGE
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction == GameState.Faction.SURVIVOR or u.faction == GameState.Faction.NEUTRAL:
+		if not GameState.is_hostile(self, u):
 			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d <= best_dist:

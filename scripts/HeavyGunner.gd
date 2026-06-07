@@ -101,14 +101,15 @@ func _fire_at(target) -> void:
 
 
 func _find_nearest_zombie():
-	# Cross-faction: anything not own faction or Neutral. Falls back to opposing
-	# HQ when no hostile unit is in range. See Rifleman.gd for full notes.
+	# Routed through GameState.is_hostile (AUDIT H4) - the previous faction-
+	# equality skip broke the Military mirror by dropping same-faction enemies.
+	# Falls back to opposing HQ when no hostile unit is in range.
 	var best = null
 	var best_dist := ATTACK_RANGE
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction == faction or u.faction == GameState.Faction.NEUTRAL:
+		if not GameState.is_hostile(self, u):
 			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d <= best_dist:
@@ -141,7 +142,7 @@ func _find_nearest_threat_in_range(range_px: float):
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction == faction or u.faction == GameState.Faction.NEUTRAL:
+		if not GameState.is_hostile(self, u):
 			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d <= best_dist:

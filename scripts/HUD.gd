@@ -76,7 +76,11 @@ func _on_salvage_changed(value: int) -> void:
 
 
 func _on_selection_changed(units: Array, building) -> void:
-	if building != null and is_instance_valid(building):
+	# H10: only adopt buildings the player owns as the action actor.
+	# SelectionManager already gates click-select, but signal payloads can in
+	# principle carry enemy buildings (e.g. future hover-preview), so the gate
+	# lives here too for defense in depth.
+	if building != null and is_instance_valid(building) and GameState.is_owned_by_player(building):
 		_current_actor = building
 		_actor_title.text = building.name
 		_actor_panel.show()
@@ -129,6 +133,11 @@ func _has_actions(actor) -> bool:
 
 func _on_action_pressed(index: int) -> void:
 	if _current_actor != null and is_instance_valid(_current_actor):
+		# H10 defense-in-depth: even if a non-owned building somehow became the
+		# actor, never let its do_action fire. Buildings cleared by the
+		# ownership gate; non-buildings (selected units) pass through.
+		if _current_actor is Building and not GameState.is_owned_by_player(_current_actor):
+			return
 		if _current_actor.has_method("do_action"):
 			_current_actor.do_action(index)
 

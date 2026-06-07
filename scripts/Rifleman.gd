@@ -133,17 +133,18 @@ func _fire_at(target) -> void:
 
 
 func _find_nearest_zombie():
-	# Despite the legacy name, this targets ANY hostile - any unit not of our own
-	# faction or Neutral. Lets AI Military shoot player Tribal/Survivor (and the
-	# reverse if the player picks Military without AI on). If no hostile unit is
-	# in range, falls back to the nearest opposing HQ so units posted at the enemy
-	# base auto-attack the HQ for the win condition.
+	# Despite the legacy name, this targets ANY hostile unit. Routed through
+	# GameState.is_hostile so the Military mirror (player Military vs AI
+	# Military) works - the previous faction-equality skip dropped same-faction
+	# enemies and the two armies walked through each other (AUDIT H4). Falls
+	# back to the nearest opposing HQ when no hostile unit is in range so
+	# units posted at the enemy base auto-attack for the win condition.
 	var best = null
 	var best_dist := ATTACK_RANGE
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction == faction or u.faction == GameState.Faction.NEUTRAL:
+		if not GameState.is_hostile(self, u):
 			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d <= best_dist:
@@ -177,7 +178,7 @@ func _find_nearest_threat_in_range(range_px: float):
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction == faction or u.faction == GameState.Faction.NEUTRAL:
+		if not GameState.is_hostile(self, u):
 			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d <= best_dist:

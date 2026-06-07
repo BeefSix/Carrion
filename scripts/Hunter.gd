@@ -101,13 +101,17 @@ func _fire_at(target) -> void:
 # Zombies ignore tribal units per the faction filter in Shambler._update_target,
 # so there's no reason for Hunters to engage them either. The Tribal strategic
 # identity is "let the zombies be; hunt the humans."
+# Team-based hostility via GameState.is_hostile (AUDIT H4) so the Tribal mirror
+# works; zombie exemption stays on top as a Tribal design quirk.
 func _find_nearest_enemy():
 	var best = null
 	var best_dist := ATTACK_RANGE
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction == GameState.Faction.TRIBAL or u.faction == GameState.Faction.ZOMBIE:
+		if not GameState.is_hostile(self, u):
+			continue
+		if u.faction == GameState.Faction.ZOMBIE:
 			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d <= best_dist:
@@ -137,12 +141,16 @@ func _find_nearest_hostile_hq(range_px: float):
 
 
 func _find_nearest_threat_in_range(range_px: float):
+	# Same hostility rule as _find_nearest_enemy: team-based via is_hostile,
+	# with the Tribal zombie-exemption layered on top.
 	var best = null
 	var best_dist := range_px
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction == GameState.Faction.TRIBAL or u.faction == GameState.Faction.ZOMBIE:
+		if not GameState.is_hostile(self, u):
+			continue
+		if u.faction == GameState.Faction.ZOMBIE:
 			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d <= best_dist:

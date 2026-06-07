@@ -126,12 +126,16 @@ func _spawn_item(item: String) -> void:
 				var hl = hunting_lodge_scene.instantiate()
 				hl.position = global_position + HUNTING_LODGE_SPAWN_OFFSET
 				get_parent().add_child(hl)
+				# H10: needed so is_owned_by_player picks this up. Player TribalCamp
+				# is the only spawner today (AIController doesn't run Tribal).
+				hl.add_to_group("player_buildings")
 				_request_nav_rebake()
 		"ritual_site":
 			if ritual_site_scene != null:
 				var rs = ritual_site_scene.instantiate()
 				rs.position = global_position + RITUAL_SITE_SPAWN_OFFSET
 				get_parent().add_child(rs)
+				rs.add_to_group("player_buildings")
 				_request_nav_rebake()
 
 

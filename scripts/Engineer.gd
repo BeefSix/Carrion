@@ -135,6 +135,9 @@ func _spawn_construction() -> void:
 			var w = wall_scene.instantiate()
 			w.position = _wall_target
 			get_parent().add_child(w)
+			# H10 ownership tagging - Engineer is a player-only unit (no AI
+			# Survivor), so spawned walls and buildings are player-owned.
+			w.add_to_group("player_buildings")
 		_building_wall = false
 	else:
 		var path: String = BUILDABLE_PATHS.get(_construction_what, "")
@@ -144,6 +147,7 @@ func _spawn_construction() -> void:
 				var b = scene.instantiate()
 				b.position = global_position + CONSTRUCTION_SPAWN_OFFSET
 				get_parent().add_child(b)
+				b.add_to_group("player_buildings")
 				_request_nav_rebake()
 	_construction_what = ""
 	_sub = Sub.NONE
@@ -260,12 +264,14 @@ func _flee_from(threat) -> void:
 
 
 func _find_nearest_hostile_in_range(range_px: float):
+	# Hostility routed through GameState.is_hostile (AUDIT H4) - team-based,
+	# so an opposite-team Survivor mirror would correctly identify threats.
 	var best = null
 	var best_dist := range_px
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction == GameState.Faction.SURVIVOR or u.faction == GameState.Faction.NEUTRAL:
+		if not GameState.is_hostile(self, u):
 			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d <= best_dist:

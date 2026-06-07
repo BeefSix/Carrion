@@ -97,3 +97,60 @@ func spend(amount: int) -> bool:
 
 func add_salvage(amount: int) -> void:
 	salvage += amount
+
+
+# ---- Ownership / hostility helpers ----
+#
+# Ownership lives in groups (player_units / ai_units / player_buildings /
+# ai_buildings), faction is allegiance flavor. Per CLAUDE.md "new code must
+# not copy the broken pattern": hostility checks must consult ownership, not
+# faction, so the Military mirror (player Military vs AI Military) actually
+# fights. Unit-specific design quirks (Hunter ignoring zombies, Looter only
+# hunting zombies) layer ON TOP of this helper; they're not in scope here.
+
+
+func is_owned_by_player(node) -> bool:
+	if node == null or not is_instance_valid(node):
+		return false
+	return node.is_in_group("player_units") or node.is_in_group("player_buildings")
+
+
+func is_owned_by_ai(node) -> bool:
+	if node == null or not is_instance_valid(node):
+		return false
+	return node.is_in_group("ai_units") or node.is_in_group("ai_buildings")
+
+
+# Team-based hostility test. Symmetric.
+#
+# Walkers are NOT exempt here - that exemption is zombie-side only and lives
+# in Shambler's perception filter, where zombies ignore the walkers group. A
+# human Rifleman should still acquire an enemy-team Walker (the previous
+# universal walker exemption in this helper regressed that).
+#
+# Rules in order:
+#   - Same node, or either invalid -> not hostile (degenerate)
+#   - NEUTRAL faction on either side -> not hostile
+#   - Zombie vs non-zombie -> hostile (zombies fight everything that survived
+#     the above filters)
+#   - Zombie vs zombie -> not hostile
+#   - Non-zombie vs non-zombie -> hostile iff opposite teams (player ↔ ai).
+#     Same team or untagged on both sides -> not hostile.
+func is_hostile(a, b) -> bool:
+	if a == null or b == null or a == b:
+		return false
+	if not is_instance_valid(a) or not is_instance_valid(b):
+		return false
+	var a_faction: int = a.faction if "faction" in a else -1
+	var b_faction: int = b.faction if "faction" in b else -1
+	if a_faction == Faction.NEUTRAL or b_faction == Faction.NEUTRAL:
+		return false
+	var a_zombie: bool = a_faction == Faction.ZOMBIE
+	var b_zombie: bool = b_faction == Faction.ZOMBIE
+	if a_zombie or b_zombie:
+		return a_zombie != b_zombie
+	var a_player: bool = is_owned_by_player(a)
+	var b_player: bool = is_owned_by_player(b)
+	var a_ai: bool = is_owned_by_ai(a)
+	var b_ai: bool = is_owned_by_ai(b)
+	return (a_player and b_ai) or (a_ai and b_player)

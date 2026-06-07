@@ -215,12 +215,14 @@ func _process(delta: float) -> void:
 
 
 func _is_engaged() -> bool:
+	# Routed through GameState.is_hostile (AUDIT H4) so the Military mirror
+	# accrues combat_time for XP - the previous u.faction == faction skip
+	# treated same-faction-but-opposite-team units as friends and the mirror's
+	# winners never veteran'd up.
 	for u in get_tree().get_nodes_in_group("units"):
 		if u == self or not is_instance_valid(u):
 			continue
-		if u.faction == faction:
-			continue
-		if u.faction == GameState.Faction.NEUTRAL:
+		if not GameState.is_hostile(self, u):
 			continue
 		if global_position.distance_to(u.global_position) <= ENGAGEMENT_RANGE:
 			return true

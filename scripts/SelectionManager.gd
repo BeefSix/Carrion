@@ -137,6 +137,11 @@ func _handle_right_click(world_pos: Vector2) -> void:
 	var is_infested: bool = (target_lootable != null) and ("is_infested" in target_lootable) and target_lootable.is_infested
 	var is_damaged: bool = (target_building != null) and ("current_hp" in target_building) and ("max_hp" in target_building) and target_building.current_hp < target_building.max_hp
 
+	# H10: repair only targets player-owned buildings. Pre-fix a right-click on
+	# a damaged enemy HQ routed Engineers to repair the enemy, which is absurd.
+	# Computed once here so the count-pass and execute-pass use the same gate.
+	var building_is_player_owned: bool = target_building != null and GameState.is_owned_by_player(target_building)
+
 	# First pass: count how many units will receive a plain move command. They
 	# get distributed formation targets so they don't converge on a single
 	# point (which produces the "straying / teleporting back" pile-up).
@@ -145,7 +150,7 @@ func _handle_right_click(world_pos: Vector2) -> void:
 		if not is_instance_valid(u):
 			continue
 		var has_corpse_action: bool = target_corpse != null and u.is_in_group("combat_units")
-		var has_repair_action: bool = target_building != null and is_damaged and u.has_method("repair_at")
+		var has_repair_action: bool = target_building != null and is_damaged and building_is_player_owned and u.has_method("repair_at")
 		var has_force_spawn_action: bool = target_lootable != null and is_infested and u.has_method("force_spawn_at")
 		var has_gather_action: bool = target_lootable != null and u.has_method("gather_from")
 		if has_corpse_action or has_repair_action or has_force_spawn_action or has_gather_action:
@@ -162,7 +167,7 @@ func _handle_right_click(world_pos: Vector2) -> void:
 		# subclasses (including workers), so we must filter by group.
 		if target_corpse != null and u.is_in_group("combat_units"):
 			u.cremate_target(target_corpse)
-		elif target_building != null and is_damaged and u.has_method("repair_at"):
+		elif target_building != null and is_damaged and building_is_player_owned and u.has_method("repair_at"):
 			u.repair_at(target_building)
 		elif target_lootable != null and is_infested and u.has_method("force_spawn_at"):
 			u.force_spawn_at(target_lootable)
@@ -249,7 +254,12 @@ func _click_select(world_pos: Vector2) -> void:
 		var collider = hit.collider
 		if collider == null:
 			continue
-		if collider.is_in_group("buildings"):
+		# H10: only select buildings the player owns. Pre-fix the player could
+		# select any building (including AI Barracks / Lootables) and HUD would
+		# run their do_action with no ownership gate. Lootables count as player-
+		# owned for gather/force-spawn flows (they're tagged into player_buildings
+		# on spawn-claim and are neutral pickups otherwise).
+		if collider.is_in_group("buildings") and GameState.is_owned_by_player(collider):
 			_select_building(collider)
 			_emit_change()
 			return

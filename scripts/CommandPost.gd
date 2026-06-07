@@ -123,6 +123,11 @@ func _spawn_item(item: String) -> void:
 			var b = barracks_scene.instantiate()
 			b.position = global_position + BARRACKS_SPAWN_OFFSET
 			get_parent().add_child(b)
+			# Player CommandPost is the only spawner of this scene (AI runs
+			# its own production loop in AIController and tags ai_buildings
+			# there); tagging is needed so GameState.is_owned_by_player works
+			# for ownership gates in SelectionManager / HUD / Projectile (H10).
+			b.add_to_group("player_buildings")
 			_request_nav_rebake()
 
 
