@@ -109,7 +109,12 @@ func _unhandled_input(event: InputEvent) -> void:
 				_drag_start_screen = event.position
 				_drag_start_iso = get_global_mouse_position()
 				_dragging = true
-			else:
+			elif _dragging:
+				# Pre-H8 this branch had no _dragging guard, so the LMB-release
+				# that followed a consumed wall-placement press (or any other
+				# UI press where _dragging was never set) finalized a phantom
+				# selection with stale _drag_start_iso, typically clearing the
+				# Engineer the user had selected.
 				_finalize_selection(event.position, _drag_start_iso, get_global_mouse_position())
 				_dragging = false
 				queue_redraw()
@@ -292,6 +297,19 @@ func _add_to_selection(u) -> void:
 		_selected_units.append(u)
 		if u.has_method("set_selected"):
 			u.set_selected(true)
+		# Pre-H7, dead units were never pruned - a freed-instance reference in
+		# _selected_units crashed downstream consumers (e.g. SquadManager
+		# create_squad reading units[0].faction). Listen for tree_exiting and
+		# drop the unit before the reference goes stale. ONE_SHOT so the
+		# connection cleans itself up; the handler is idempotent if the unit
+		# is reselected before dying (a new ONE_SHOT replaces the previous).
+		u.tree_exiting.connect(_on_selected_exiting.bind(u), CONNECT_ONE_SHOT)
+
+
+func _on_selected_exiting(u) -> void:
+	if u in _selected_units:
+		_selected_units.erase(u)
+		_emit_change()
 
 
 func _emit_change() -> void:

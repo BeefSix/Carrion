@@ -263,15 +263,16 @@ var _chase_offset: Vector2 = Vector2.ZERO
 func _ready() -> void:
 	super._ready()
 	# Vision query setup - one CircleShape2D + PhysicsShapeQueryParameters2D
-	# per zombie, reused on every perception tick. Mask 1 = the layer units
-	# live on (CharacterBody2D default). collide_with_areas false so
-	# Projectile Area2Ds (also on layer 1's mask via 3) don't appear in the
-	# query results.
+	# per zombie, reused on every perception tick. H6 layer split: non-zombie
+	# units join layer 3 in Unit._ready, so mask = 4 (layer 3 only) means the
+	# 16-slot intersect_shape cap is consumed exclusively by real targets,
+	# not by neighboring zombies in a cluster. collide_with_areas false so
+	# Projectile Area2Ds don't appear in the query results.
 	_vision_shape = CircleShape2D.new()
 	_vision_shape.radius = VISION_RANGE_PX
 	_vision_query = PhysicsShapeQueryParameters2D.new()
 	_vision_query.shape = _vision_shape
-	_vision_query.collision_mask = 1
+	_vision_query.collision_mask = 4
 	_vision_query.collide_with_bodies = true
 	_vision_query.collide_with_areas = false
 	# Deterministic per-zombie chase offset. instance_id is unique, so each

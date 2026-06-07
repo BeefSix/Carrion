@@ -98,11 +98,14 @@ func disband_squad(squad: Squad) -> void:
 func validate_composition(units: Array) -> String:
 	if units == null or units.size() < 2:
 		return "Squad requires at least 2 units."
-	# All same faction
-	var first_faction = units[0].faction
+	# Validity filter first - pre-H7 the next line read units[0].faction without
+	# checking is_instance_valid, so a freed unit lingering in SelectionManager's
+	# selection (no tree_exiting cleanup) crashed squad creation.
 	for u in units:
 		if not is_instance_valid(u):
 			return "Selection contains invalid units."
+	var first_faction = units[0].faction
+	for u in units:
 		if u.faction != first_faction:
 			return "Squad members must be the same faction."
 		if u.squad != null:

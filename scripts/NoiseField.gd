@@ -8,17 +8,23 @@ const MIN_INTENSITY := 1.0
 const ATTRACT_INTERVAL := 0.4
 const MAP_SIZE := Vector2(6144, 6144)
 const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
+# H14: derive occluder cache radius from Shambler's hearing range so the two
+# can't drift apart again (they did once - hearing was bumped 512 -> 704 px
+# but the cache stayed at 512 + 100, so distant zombies heard through walls).
+const ShamblerScript := preload("res://scripts/Shambler.gd")
 # Building occlusion. Each building between an emitter and a hearer multiplies
 # the effective intensity by this factor. Two buildings between -> 0.25x.
 # Integrates with the Survivor "engineered position" identity: firing from
 # within claimed buildings produces less zombie attention than firing outside.
 const BUILDING_NOISE_DAMP := 0.5
-# Per-emitter occluder cache radius. Hearers (zombies) max at ~512 px from
-# the emitter (their HEARING_RANGE_PX); buildings beyond emitter_pos + cache
-# radius can't intersect any emitter-to-hearer segment. Some margin for
-# building diagonals. Used to pre-filter buildings on emitter creation so
-# _attenuated_intensity iterates a 2-5 entry list instead of all ~95.
-const OCCLUDER_CACHE_RADIUS_PX := 612.0
+# Per-emitter occluder cache radius. Hearers (zombies) cap at HEARING_RANGE_PX
+# from the emitter; buildings beyond emitter_pos + cache radius can't intersect
+# any emitter-to-hearer segment. Margin accounts for buildings whose center is
+# just beyond range but whose corner reaches into a segment. Used to pre-filter
+# buildings on emitter creation so _attenuated_intensity iterates a 2-5 entry
+# list instead of all ~95.
+const OCCLUDER_CACHE_MARGIN_PX := 100.0
+const OCCLUDER_CACHE_RADIUS_PX := ShamblerScript.HEARING_RANGE_PX + OCCLUDER_CACHE_MARGIN_PX
 
 const SMALL_THRESHOLD := 150.0
 const MEDIUM_THRESHOLD := 400.0
@@ -99,8 +105,9 @@ func add_noise(world_pos: Vector2, magnitude: float) -> void:
 			if total > 0.0:
 				e.position = (e.position * e.intensity + world_pos * magnitude) / total
 			e.intensity = total
-			# Merge can shift position by up to MERGE_RADIUS (96 px). With
-			# the cache radius at 612 px the shift is negligible; cache stays.
+			# Merge can shift position by up to MERGE_RADIUS (96 px). Against
+			# a cache radius derived from hearing range (~800 px) the shift is
+			# negligible; cache stays.
 			return
 	var new_emitter := Emitter.new(world_pos, magnitude)
 	_populate_occluder_cache(new_emitter)
@@ -135,18 +142,22 @@ func _process(delta: float) -> void:
 		if e.intensity < SMALL_THRESHOLD:
 			e.tiers_fired = [false, false, false, false]
 
+		# H5: only consume the tier flag when the horde *actually* fires. Pre-fix
+		# the flag was set before _maybe_trigger_horde checked cooldown / pop
+		# cap, so sustained heavy fire during cooldown left tiers_fired armed
+		# with no horde ever spawning - undermining the HG-anxiety thesis.
 		if e.intensity >= CATASTROPHIC_THRESHOLD and not e.tiers_fired[TIER_CAT]:
-			e.tiers_fired[TIER_CAT] = true
-			_maybe_trigger_horde(e.position, CATASTROPHIC_SIZE, "catastrophic")
+			if _maybe_trigger_horde(e.position, CATASTROPHIC_SIZE, "catastrophic"):
+				e.tiers_fired[TIER_CAT] = true
 		elif e.intensity >= LARGE_THRESHOLD and not e.tiers_fired[TIER_LARGE]:
-			e.tiers_fired[TIER_LARGE] = true
-			_maybe_trigger_horde(e.position, LARGE_SIZE, "large")
+			if _maybe_trigger_horde(e.position, LARGE_SIZE, "large"):
+				e.tiers_fired[TIER_LARGE] = true
 		elif e.intensity >= MEDIUM_THRESHOLD and not e.tiers_fired[TIER_MEDIUM]:
-			e.tiers_fired[TIER_MEDIUM] = true
-			_maybe_trigger_horde(e.position, MEDIUM_SIZE, "medium")
+			if _maybe_trigger_horde(e.position, MEDIUM_SIZE, "medium"):
+				e.tiers_fired[TIER_MEDIUM] = true
 		elif e.intensity >= SMALL_THRESHOLD and not e.tiers_fired[TIER_SMALL]:
-			e.tiers_fired[TIER_SMALL] = true
-			_maybe_trigger_horde(e.position, SMALL_SIZE, "small")
+			if _maybe_trigger_horde(e.position, SMALL_SIZE, "small"):
+				e.tiers_fired[TIER_SMALL] = true
 
 		if e.intensity < MIN_INTENSITY:
 			to_remove.append(i)
@@ -168,12 +179,15 @@ func _process(delta: float) -> void:
 		queue_redraw()
 
 
-func _maybe_trigger_horde(pos: Vector2, base_size: int, tier_label: String) -> void:
+func _maybe_trigger_horde(pos: Vector2, base_size: int, tier_label: String) -> bool:
+	# Returns true iff a horde actually spawned. The caller (per-tier check in
+	# _process) only marks tiers_fired on a true return so a suppressed horde
+	# can re-trigger once cooldown/pop-cap allow it. See H5.
 	var now: float = Time.get_ticks_msec() / 1000.0
 	var time_since_last: float = now - _last_horde_time
 	if time_since_last < HORDE_COOLDOWN:
 		print("[NoiseField] %s horde suppressed (cooldown %.1fs remaining)" % [tier_label, HORDE_COOLDOWN - time_since_last])
-		return
+		return false
 	# Population cap - stops the horde-spawn loop from snowballing once
 	# enough zombies are alive to make further spawns redundant for
 	# difficulty AND expensive for the frame budget.
@@ -182,13 +196,14 @@ func _maybe_trigger_horde(pos: Vector2, base_size: int, tier_label: String) -> v
 		var current_pop: int = zf.get_zombie_count()
 		if current_pop >= MAX_ZOMBIE_POPULATION:
 			print("[NoiseField] %s horde suppressed (population cap %d/%d)" % [tier_label, current_pop, MAX_ZOMBIE_POPULATION])
-			return
+			return false
 	_last_horde_time = now
 	var size_mult: float = 1.0 + float(min(_wave_count, MAX_WAVE)) * WAVE_SIZE_MULTIPLIER
 	var actual_size: int = int(round(base_size * size_mult))
 	print("[NoiseField] %s horde fires: wave %d, %d Shamblers (base %d x %.1f)" % [tier_label, _wave_count + 1, actual_size, base_size, size_mult])
 	_wave_count += 1
 	_trigger_horde(pos, actual_size)
+	return true
 
 
 func _attract_zombies() -> void:
@@ -209,6 +224,12 @@ func _attract_zombies() -> void:
 		if u.has_method("hear_noise"):
 			for e in _emitters:
 				var d: float = u.global_position.distance_to(e.position)
+				# H12: skip the occluder-loop math for pairs the hearer is going
+				# to discard anyway. hear_noise's first line is the same range
+				# check; running it here avoids _attenuated_intensity entirely
+				# for the (population - in_range_count) majority of pairs.
+				if d > ShamblerScript.HEARING_RANGE_PX:
+					continue
 				var eff: float = _attenuated_intensity(e, u.global_position, e.intensity)
 				u.hear_noise(e.position, eff, d)
 		elif u.has_method("investigate"):

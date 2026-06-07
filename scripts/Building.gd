@@ -47,10 +47,20 @@ func set_selected(value: bool) -> void:
 	queue_redraw()
 
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, attacker = null) -> void:
+	# Mirrors Unit.take_damage: credit attacker for damage and (on destruction)
+	# the kill, so XP/veterancy works for unit-vs-building too. Pre-C1 this
+	# took only `amount` and Brawler's `self`-passing call crashed the game.
+	if current_hp <= 0:
+		return
+	var actual: int = min(amount, current_hp)
+	if attacker != null and is_instance_valid(attacker) and "damage_dealt" in attacker:
+		attacker.damage_dealt += float(actual)
 	current_hp = max(0, current_hp - amount)
 	queue_redraw()
 	if current_hp == 0:
+		if attacker != null and is_instance_valid(attacker) and "kills_count" in attacker:
+			attacker.kills_count += 1
 		_die()
 
 

@@ -101,6 +101,14 @@ func _ready() -> void:
 	if _nav != null and _nav.avoidance_enabled:
 		if not _nav.velocity_computed.is_connected(_on_safe_velocity):
 			_nav.velocity_computed.connect(_on_safe_velocity)
+	# H6 collision-layer scheme. All units stay on layer 1 (physics collisions
+	# unchanged). Non-zombie units additionally join layer 3 so the Shambler
+	# vision query can mask layer 3 only - the 16-slot intersect_shape cap
+	# previously filled with neighboring zombies in clusters, blinding the
+	# perception system to real targets. Faction is set by the scene's @export
+	# before _ready, so this branch correctly excludes Shamblers.
+	if faction != GameState.Faction.ZOMBIE:
+		collision_layer = collision_layer | 4
 
 
 func move_to(world_pos: Vector2) -> void:

@@ -34,6 +34,11 @@ const FACTION_COLORS := {
 var _selected_squad: Squad = null
 var _pop_refresh_timer: float = 0.0
 
+# H9 guard. Set while a rename is being submitted so the focus_exited that
+# fires when refresh frees the LineEdit doesn't re-enter and append a ghost
+# row. Cleared after the row rebuild completes.
+var _suppress_rename_cancel: bool = false
+
 # Split checkbox state for the currently-displayed squad. Reset on detail re-render.
 var _split_checks: Dictionary = {}  # Unit -> bool
 
@@ -304,11 +309,18 @@ func _on_rename_submitted(new_text: String, squad_id: int) -> void:
 	var squad := SquadManager.get_squad_by_id(squad_id)
 	if squad == null:
 		return
+	# rename_squad emits squad_updated -> _refresh_squad_row frees the LineEdit
+	# -> focus_exited fires synchronously -> _on_rename_cancelled would re-enter
+	# _refresh_squad_row and append a duplicate row. Suppress the cancel branch
+	# for the duration of this submit.
+	_suppress_rename_cancel = true
 	SquadManager.rename_squad(squad, new_text)
-	# squad_updated signal rebuilds the row.
+	_suppress_rename_cancel = false
 
 
 func _on_rename_cancelled(squad_id: int) -> void:
+	if _suppress_rename_cancel:
+		return
 	var squad := SquadManager.get_squad_by_id(squad_id)
 	if squad == null:
 		return
