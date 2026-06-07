@@ -31,3 +31,6 @@ Thumbs.db
 
 # Claude Code local permission grants (per-machine, not shared)
 .claude/settings.local.json
+
+# Local toolchain (Godot exe extracted for headless parse checks)
+.tools/

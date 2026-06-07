@@ -1,0 +1,35 @@
+# Force LF line endings on all text files regardless of OS so Windows checkouts
+# don't churn diffs into CRLF every time a file is touched. Working tree stays
+# LF; Git stores LF. No more "every line changed" noise from line-ending drift.
+
+# Godot sources
+*.gd       text eol=lf
+*.tscn     text eol=lf
+*.tres     text eol=lf
+*.cfg      text eol=lf
+*.godot    text eol=lf
+*.import   text eol=lf
+
+# Docs / config / scripts
+*.md       text eol=lf
+*.json     text eol=lf
+*.jsonl    text eol=lf
+*.py       text eol=lf
+*.svg      text eol=lf
+*.txt      text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+.gitignore text eol=lf
+
+# Binary - skip line-ending and EOL conversion entirely
+*.png      binary
+*.jpg      binary
+*.jpeg     binary
+*.webp     binary
+*.gif      binary
+*.wav      binary
+*.ogg      binary
+*.mp3      binary
+*.ttf      binary
+*.otf      binary
+*.zip      binary
