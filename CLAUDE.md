@@ -4,7 +4,7 @@ Read this first every session. It is the contract for all code written in this r
 
 ## What this project is
 
-Carrion: asymmetric three-faction zombie-ecosystem RTS, Godot 4.x, GDScript. Competitive multiplayer (up to 6-player FFA) is the end goal, which constrains *how* all code is written (see Determinism Rules).
+THE LONG WAKE (internal codename: Carrion — repo/class/code identifiers keep the codename; all player-facing strings use "The Long Wake"): asymmetric three-faction zombie-ecosystem RTS, Godot 4.x, GDScript. Competitive multiplayer (up to 6-player FFA) is the end goal, which constrains *how* all code is written (see Determinism Rules).
 
 ## Canonical documents — in priority order
 

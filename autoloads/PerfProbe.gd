@@ -5,7 +5,7 @@ extends Node
 #
 # Output is grep-friendly: [PerfProbe t=N.Ns] key=value ...
 
-const PROBE_INTERVAL := 30.0
+const PROBE_INTERVAL := 10.0
 
 var _timer: float = 0.0
 var _start_time_ms: int = 0

@@ -1,5 +1,6 @@
-# CARRION — Master Design Document
+# THE LONG WAKE — Master Design Document
 
+**Title:** THE LONG WAKE (decided 2026-06-07; supersedes the working title *Carrion*, dropped due to collision with the 2020 Devolver game. "Carrion" remains the internal codename — repo name, class names, and code identifiers do not need renaming. Player-facing strings, store assets, and docs use The Long Wake.)
 **Status:** Canonical. Supersedes `DESIGN_DOC.md` and `PROTOTYPE_PLAN.md` (retained as historical artifacts).
 **Last consolidated:** 2026-06-07, from design sessions between Matt (BeefSix Studios) and Claude.
 **Tagging:** Untagged statements are CANON (ruled by Matt). **[PROPOSED]** = suggested and well-received but not explicitly ruled. **[OPEN]** = tracked, undecided. See §12 for the full open-questions register.
