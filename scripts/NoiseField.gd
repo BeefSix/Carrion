@@ -187,6 +187,11 @@ func _maybe_trigger_horde(pos: Vector2, base_size: int, tier_label: String) -> b
 	var time_since_last: float = now - _last_horde_time
 	if time_since_last < HORDE_COOLDOWN:
 		print("[NoiseField] %s horde suppressed (cooldown %.1fs remaining)" % [tier_label, HORDE_COOLDOWN - time_since_last])
+		MatchStats.log_event(&"horde_suppressed", {
+			"tier": tier_label,
+			"reason": "cooldown",
+			"cooldown_remaining": HORDE_COOLDOWN - time_since_last,
+		})
 		return false
 	# Population cap - stops the horde-spawn loop from snowballing once
 	# enough zombies are alive to make further spawns redundant for
@@ -196,12 +201,23 @@ func _maybe_trigger_horde(pos: Vector2, base_size: int, tier_label: String) -> b
 		var current_pop: int = zf.get_zombie_count()
 		if current_pop >= MAX_ZOMBIE_POPULATION:
 			print("[NoiseField] %s horde suppressed (population cap %d/%d)" % [tier_label, current_pop, MAX_ZOMBIE_POPULATION])
+			MatchStats.log_event(&"horde_suppressed", {
+				"tier": tier_label,
+				"reason": "pop_cap",
+				"pop": current_pop,
+			})
 			return false
 	_last_horde_time = now
 	var size_mult: float = 1.0 + float(min(_wave_count, MAX_WAVE)) * WAVE_SIZE_MULTIPLIER
 	var actual_size: int = int(round(base_size * size_mult))
 	print("[NoiseField] %s horde fires: wave %d, %d Shamblers (base %d x %.1f)" % [tier_label, _wave_count + 1, actual_size, base_size, size_mult])
 	_wave_count += 1
+	MatchStats.log_event(&"horde_fired", {
+		"tier": tier_label,
+		"size": actual_size,
+		"target": [pos.x, pos.y],
+		"wave_num": _wave_count,
+	})
 	_trigger_horde(pos, actual_size)
 	return true
 
@@ -304,7 +320,9 @@ func _segment_intersects_rect(a: Vector2, b: Vector2, rect: Rect2) -> bool:
 func _trigger_horde(target: Vector2, size: int) -> void:
 	var spawn_pos := _pick_edge_spawn(target)
 	for i in range(size):
-		var jitter := Vector2(randf_range(-60, 60), randf_range(-60, 60))
+		# Routed through SimRng (per CLAUDE.md Determinism Rule #1) so future
+		# replay/lockstep matches stage the same hordes deterministically.
+		var jitter := Vector2(SimRng.randf_range(-60, 60), SimRng.randf_range(-60, 60))
 		var s = SHAMBLER_SCENE.instantiate()
 		s.position = spawn_pos + jitter
 		get_parent().add_child(s)

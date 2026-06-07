@@ -19,11 +19,13 @@ config/icon="res://icon.svg"
 [autoload]
 
 GameState="*res://autoloads/GameState.gd"
+SimRng="*res://autoloads/SimRng.gd"
 IsoView="*res://autoloads/IsoView.gd"
 SquadManager="*res://autoloads/SquadManager.gd"
 ProjectileManager="*res://autoloads/ProjectileManager.gd"
 NoiseBus="*res://autoloads/NoiseBus.gd"
 PerfProbe="*res://autoloads/PerfProbe.gd"
+MatchStats="*res://autoloads/MatchStats.gd"
 
 [display]
 

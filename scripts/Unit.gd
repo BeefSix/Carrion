@@ -280,9 +280,42 @@ func _die(attacker = null) -> void:
 	# succession.
 	if squad != null:
 		SquadManager.on_member_died(self)
-	if _should_leave_corpse(attacker):
+	# Roll the corpse decision ONCE so the telemetry event records the actual
+	# outcome (a re-roll for the event would diverge from what actually
+	# happened in the world).
+	var left_corpse: bool = _should_leave_corpse(attacker)
+	if left_corpse:
 		_spawn_corpse()
+	MatchStats.log_event(&"unit_died", {
+		"faction": faction,
+		"type": _telemetry_unit_type(),
+		"pos": [global_position.x, global_position.y],
+		"killer_faction": attacker.faction if attacker != null and is_instance_valid(attacker) and "faction" in attacker else -1,
+		"killer_type": _telemetry_attacker_type(attacker),
+		"left_corpse": left_corpse,
+		"veterancy": veterancy_level,
+	})
 	queue_free()
+
+
+func _telemetry_unit_type() -> String:
+	# Derive a stable string identifier from the script path so analysis can
+	# group events by unit class without depending on instance names (which
+	# include disambiguation suffixes like "Rifleman2"). get_script() returns
+	# Variant - use untyped assignment to keep the strict-mode parser happy.
+	var s = get_script()
+	if s != null:
+		return s.resource_path.get_file().get_basename()
+	return name
+
+
+func _telemetry_attacker_type(attacker) -> String:
+	if attacker == null or not is_instance_valid(attacker):
+		return ""
+	var s = attacker.get_script()
+	if s != null:
+		return s.resource_path.get_file().get_basename()
+	return attacker.name
 
 
 func _should_leave_corpse(attacker) -> bool:

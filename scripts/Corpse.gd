@@ -60,6 +60,12 @@ func _rise() -> void:
 	if "damage_mult" in z:
 		z.damage_mult = VETERAN_DAMAGE_SCALE.get(veterancy_at_death, 1.0)
 	get_parent().add_child(z)
+	MatchStats.log_event(&"corpse_rose", {
+		"pos": [position.x, position.y],
+		"prev_was_military": was_military,
+		"veterancy": veterancy_at_death,
+		"new_max_hp": z.max_hp,
+	})
 	queue_free()
 
 

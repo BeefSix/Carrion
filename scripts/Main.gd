@@ -168,6 +168,9 @@ func _ready() -> void:
 	else:
 		_spawn_inert_opposing_hq()
 	_install_win_overlay()
+	# Telemetry header: built once all match-shape state (matchup, ai_enabled,
+	# map source) is locked in. MatchStats owns the schema; we just trigger it.
+	MatchStats.match_start()
 
 
 # Image-to-map: load extracted map data + render the source image as
@@ -335,11 +338,23 @@ func _check_win_conditions() -> void:
 		return
 	if _player_hq != null and not is_instance_valid(_player_hq):
 		_match_ended = true
+		MatchStats.match_end({
+			"result": "defeat",
+			"winner_faction": "AI" if GameState.ai_enabled else "NONE",
+			"duration_sim_sec": GameState.sim_seconds(),
+		})
+		GameState.end_match()
 		if _win_overlay != null:
 			_win_overlay.show_defeat()
 		return
 	if _opposing_hq != null and not is_instance_valid(_opposing_hq):
 		_match_ended = true
+		MatchStats.match_end({
+			"result": "victory",
+			"winner_faction": "PLAYER",
+			"duration_sim_sec": GameState.sim_seconds(),
+		})
+		GameState.end_match()
 		if _win_overlay != null:
 			_win_overlay.show_victory()
 
