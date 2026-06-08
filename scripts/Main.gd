@@ -497,9 +497,22 @@ func _rebake_navigation() -> void:
 	source.add_traversable_outline(outer)
 
 	var pad := 4.0
+	# Dedup-union the obstruction set from "buildings" and "lootable". Lootables
+	# extend Building and inherit the "buildings" tag, but the feel-test caught
+	# units walking through houses regardless - explicit inclusion via the
+	# "lootable" group is the belt-and-suspenders fix (and protects against
+	# any future Lootable that skips Building._ready). Dictionary by instance
+	# id gives deterministic insertion-order iteration without double-baking.
+	var obstacles: Dictionary = {}
 	for b in get_tree().get_nodes_in_group("buildings"):
-		if b.is_in_group("walls"):
+		if b == null or not is_instance_valid(b) or b.is_in_group("walls"):
 			continue
+		obstacles[b.get_instance_id()] = b
+	for l in get_tree().get_nodes_in_group("lootable"):
+		if l == null or not is_instance_valid(l):
+			continue
+		obstacles[l.get_instance_id()] = l
+	for b in obstacles.values():
 		if not ("size_pixels" in b):
 			continue
 		var half: Vector2 = b.size_pixels * 0.5

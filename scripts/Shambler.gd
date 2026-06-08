@@ -11,7 +11,11 @@ enum ZombieState { IDLE, ACQUIRING, INVESTIGATE, SEARCHING, LOST_TARGET, CHASE, 
 # Hearing: 22 tiles = 704 px (bumped through 12 -> 16 -> 22). Gunfire and
 #          other loud noises now carry across most of the map - combat
 #          anywhere draws ambient zombies from a long way off.
-const VISION_RANGE_TILES := 6
+# Vision bumped 6 -> 9 tiles (2026-06-08 feel pass): zombies notice players
+# from a more threatening range so the horde commits earlier instead of being
+# nearsighted background scenery until you're 6 tiles away. Placeholder; the
+# lab will sweep this with the new commitment hysteresis below.
+const VISION_RANGE_TILES := 9
 const VISION_RANGE_PX := VISION_RANGE_TILES * 32.0
 const VISION_CONE_DEG := 90.0
 const VISION_CONE_HALF_RAD := deg_to_rad(VISION_CONE_DEG * 0.5)
@@ -95,9 +99,18 @@ const WANDER_DECAY_QUERY_TILES := 8
 # centroids. Tuning prioritizes visible tight clods - higher bias rate,
 # longer travel toward centroid, higher crowding threshold so clusters
 # pack visibly before the soft cap kicks in.
-const CLUSTER_FAR_RADIUS_PX := 12.0 * 32.0    # 12 tiles - cluster membership query
-const CLUSTER_CLOSE_RADIUS_PX := 4.0 * 32.0   # 4 tiles - crowding query (was 6)
-const CLUSTER_BIAS_PROBABILITY := 0.45        # Bumped back up from 0.10 - density gradient can't seed clusters out of sparse populations; centroid bias is the cold-start mechanism
+# Boids-style separation (2026-06-08 feel pass, AUDIT M2). Replaces the dead
+# _cluster_bias_target() repel - this is per-frame, short-range, applied
+# continuously inside _follow_navigation rather than once per wander cycle.
+# Cohesion (existing wander-to-centroid) provides the long-range pull; this
+# is the short-range push that prevents the pile-up and lets the horde flow
+# as a spaced mass. All placeholders for the lab.
+const SEPARATION_RADIUS := 28.0  # ~2 body widths (Shambler size_px = 22)
+# Per-neighbor push magnitude at touching distance. Linearly weighted to 0
+# at SEPARATION_RADIUS so distant neighbors don't tug. Sized to be smaller
+# than Shambler move_speed (64) so cohesion still wins on the long range,
+# but enough to break a pile of touching bodies apart visibly.
+const SEPARATION_FORCE := 40.0
 
 # Cluster cohesion: once a zombie is in a tight cluster (2+ neighbors
 # within ~5 tiles), copy the nearest neighbor's active wander target
@@ -189,10 +202,10 @@ const CASCADE_PROB_TERTIARY := 0.10    # level 2+ (joined secondary or beyond)
 const CASCADE_MAX_LEVEL := 3           # stop propagating past tertiary ring
 const CASCADE_DELAY_MIN := 1.0
 const CASCADE_DELAY_MAX := 3.0
-const CLUSTER_CROWD_THRESHOLD := 14           # 14+ within close radius -> repel (was 8)
-const CLUSTER_TRAVEL_FRACTION := 0.6          # how much of centroid distance to travel each wander
-const CLUSTER_TRAVEL_MAX_PX := 220.0          # cap so a single wander step doesn't teleport across the map
-const CLUSTER_REPEL_DISTANCE_PX := 120.0      # how far to push when crowded
+# (CLUSTER_CROWD_THRESHOLD / TRAVEL / REPEL constants removed 2026-06-08.
+# They supported the dead _cluster_bias_target() repel path — AUDIT M2.
+# Per-frame separation above replaces them with a continuously-applied
+# short-range push; the cluster cohesion still lives in the wander system.)
 const TRIBAL_ALIGNED_COLOR := Color("5a5530")
 # Force-spawned (Shaman ritual) zombies stay tribally-aligned for this many
 # seconds, then revert to standard wild behavior. During the window they
@@ -591,6 +604,59 @@ func _tick_facing(delta: float) -> void:
 		_facing_angle += sign(diff) * step
 	facing_dir = Vector2.from_angle(_facing_angle)
 	queue_redraw()
+
+
+# Override of Unit._follow_navigation that injects a short-range boids
+# separation force between desired-velocity and move_and_slide. The feel
+# fix (2026-06-08): pre-fix zombies all A*-pathed to the same point and
+# collided into a slow-stagger pile because nothing pushed them apart at
+# touching distance. This is the standard third boids component
+# (alignment + cohesion + separation); the existing wander-to-centroid
+# is the cohesion, this is the missing separation.
+#
+# Deterministic: reads the ZombieField spatial cell index (CLAUDE.md
+# Rule #3), no transcendentals, sum of normalized push vectors is
+# associative so iteration order doesn't matter (Rule #4 satisfied).
+# Stays compatible with the avoidance_enabled=false path (no Godot RVO -
+# that would be nondeterministic AND gridlocks).
+func _follow_navigation() -> bool:
+	if _nav.is_navigation_finished():
+		velocity = Vector2.ZERO
+		return false
+	var next_pos := _nav.get_next_path_position()
+	var to_next := next_pos - global_position
+	var desired: Vector2 = to_next.normalized() * get_effective_move_speed()
+	desired += _compute_separation()
+	if _nav.avoidance_enabled:
+		_nav.set_velocity(desired)
+	else:
+		velocity = desired
+		move_and_slide()
+	return true
+
+
+func _compute_separation() -> Vector2:
+	var zf = get_tree().get_first_node_in_group("zombie_field")
+	if zf == null or not zf.has_method("get_zombies_within_radius"):
+		return Vector2.ZERO
+	var push: Vector2 = Vector2.ZERO
+	for other in zf.get_zombies_within_radius(global_position, SEPARATION_RADIUS):
+		if other == self or not is_instance_valid(other):
+			continue
+		var away: Vector2 = global_position - other.global_position
+		var d_sq: float = away.length_squared()
+		# Skip exact-overlap (degenerate; from spawn-stack frames) and any
+		# neighbor at or beyond the cutoff radius (the cell sweep can return
+		# them due to cell-padding).
+		if d_sq < 0.01 or d_sq > SEPARATION_RADIUS * SEPARATION_RADIUS:
+			continue
+		var d: float = sqrt(d_sq)
+		# Linear taper: weight = 1.0 at touching, 0.0 at SEPARATION_RADIUS.
+		# Keeps the force short-range so it does NOT fight the longer-range
+		# wander-cohesion that pulls the horde together.
+		var weight: float = 1.0 - (d / SEPARATION_RADIUS)
+		push += (away / d) * weight
+	return push * SEPARATION_FORCE
 
 
 func _tick_idle_head_turn(delta: float) -> void:
@@ -1099,58 +1165,12 @@ func is_currently_idle() -> bool:
 	return _zombie_state == ZombieState.IDLE
 
 
-func _cluster_bias_target() -> Vector2:
-	# Returns a world-space target that biases this wander toward (or away
-	# from) the idle-zombie cluster centroid. Vector2.ZERO if no neighbors
-	# qualify (caller falls through to env-scored pick).
-	#
-	# Travel distance: CLUSTER_TRAVEL_FRACTION * distance-to-centroid,
-	# capped at CLUSTER_TRAVEL_MAX_PX so big sparse clusters still produce
-	# meaningful per-cycle convergence. With cycle 15-30 sec and travel up
-	# to 220 px, a 600 px scatter converges visibly in ~3-5 cycles.
-	var neighbor_positions: Array[Vector2] = []
-	var close_count: int = 0
-	# All nearby zombies count as cluster anchors regardless of state - sparse
-	# populations rarely have multiple IDLE zombies within range simultaneously.
-	var zf = get_tree().get_first_node_in_group("zombie_field")
-	if zf != null and zf.has_method("get_zombies_within_radius"):
-		for other in zf.get_zombies_within_radius(global_position, CLUSTER_FAR_RADIUS_PX):
-			if other == self:
-				continue
-			var d: float = global_position.distance_to(other.global_position)
-			neighbor_positions.append(other.global_position)
-			if d < CLUSTER_CLOSE_RADIUS_PX:
-				close_count += 1
-	else:
-		for other in get_tree().get_nodes_in_group("units"):
-			if other == self or not is_instance_valid(other):
-				continue
-			if other.faction != GameState.Faction.ZOMBIE:
-				continue
-			var d2: float = global_position.distance_to(other.global_position)
-			if d2 > CLUSTER_FAR_RADIUS_PX:
-				continue
-			neighbor_positions.append(other.global_position)
-			if d2 < CLUSTER_CLOSE_RADIUS_PX:
-				close_count += 1
-	if neighbor_positions.is_empty():
-		return Vector2.ZERO
-	var centroid: Vector2 = Vector2.ZERO
-	for p in neighbor_positions:
-		centroid += p
-	centroid /= float(neighbor_positions.size())
-	var to_centroid: Vector2 = centroid - global_position
-	var dist: float = to_centroid.length()
-	if dist < 1.0:
-		return Vector2.ZERO
-	var dir: Vector2 = to_centroid / dist
-	# Soft cap: too many close neighbors -> push out instead of in. Tight
-	# clods are fine; collapse-to-blob is not, so the cap protects against
-	# 30-zombie pile-ups.
-	if close_count >= CLUSTER_CROWD_THRESHOLD:
-		return global_position - dir * CLUSTER_REPEL_DISTANCE_PX
-	var travel: float = minf(dist * CLUSTER_TRAVEL_FRACTION, CLUSTER_TRAVEL_MAX_PX)
-	return global_position + dir * travel
+# (Removed 2026-06-08, AUDIT M2: _cluster_bias_target was dead code - zero
+# callers. It was once-per-wander-cycle centroid bias with a hard repel at
+# 14 neighbors; the role is now fulfilled by per-frame _compute_separation
+# above, which is continuous + short-range and integrates cleanly with
+# _follow_navigation rather than requiring a separate wander target. The
+# wander-cohesion is intact - that lives in _pick_wander_direction below.)
 
 
 func _pick_wander_direction() -> Vector2:
@@ -1230,10 +1250,17 @@ func _score_wander_direction(dir: Vector2) -> float:
 # Perception update at 5 Hz. Drives state transitions when targets enter
 # or leave vision; LOST_TARGET fires on chase-time vision break.
 func _update_perception(_delta: float) -> void:
-	# CHASE: verify target still visible. Vision break -> LOST_TARGET.
+	# CHASE: hysteresis-based retention (AUDIT M3, fix 2026-06-08). Pre-fix
+	# this re-ran _can_see every perception tick, which includes the same
+	# stochastic detection fuzz as acquisition - zombies thrashed out of
+	# CHASE on ~60% of ticks. Once committed, only physical distance from
+	# the target should break the chase, not perception noise. Drop only
+	# when the target is beyond LOST_TARGET_RANGE - the dead constant the
+	# audit flagged as the intended hysteresis lever.
 	if _zombie_state == ZombieState.CHASE:
 		if _target != null and is_instance_valid(_target):
-			if not _can_see(_target.global_position):
+			var d_chase: float = global_position.distance_to(_target.global_position)
+			if d_chase > LOST_TARGET_RANGE:
 				_last_known_pos = _target.global_position
 				_target = null
 				_zombie_state = ZombieState.LOST_TARGET

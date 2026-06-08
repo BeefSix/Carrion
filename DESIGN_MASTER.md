@@ -95,6 +95,20 @@ Four ranks. This is behavioral, not just stat multipliers — squad quality must
 
 Leadership is an aura/command-tree effect (code skeleton exists: squads, auras, succession). The rookie death spiral (fear → broken formation → more corpses) is arrested by leadership presence — visibly.
 
+### 5.1 Behavioral autonomy + personality (designed 2026-06-08; from first feel-test)
+
+The first feel-test revealed units feel like "all me" — puppets with no autonomous life. The fix is the same behavioral system across three complementary axes, all active on every unit: **reaction** (flinch, return fire, take cover without orders), **morale** (hesitate, hold, break, rally), **formation** (spacing, hold the line, advance steadily). These are not separate features — every unit has all three.
+
+**Personality (rolled at spawn via SimRng, fixed for the unit's life):** a disposition archetype that tunes *which axis dominates* — not an on/off feature switch. Coherent characters, readable at a glance, turning variation into information the player accounts for:
+- **Steady** — tight formation, calm under fire, breaks late; slightly slower to react.
+- **Skittish** — reacts/flinches early, breaks formation and panics sooner.
+- **Hothead** — aggressive, instant return fire, overcommits, hard to hold in position.
+- **Green** — average baseline.
+
+**Personality × veterancy is the richness.** Personality is the spawn baseline; veterancy is earned and **dampens the extremes, converging every survivor toward a grizzled-veteran baseline** — experience smooths disposition. A Skittish rookie is a liability (first to break, feeds the apocalypse with panicked misses → corpses); a Skittish veteran has learned to manage it; a Steady rookie punches above its rank. This is what makes the player care about a *specific* unit. Maxes the "leading individuals, not driving avatars" feeling, and feeds the corpse economy (panic → missed headshots → more corpses).
+
+**v1 scope:** 3–4 archetypes tuning thresholds on the shared behavior system; bounded, *readable* effects (texture + information, never "my unit randomly disobeyed and it felt unfair"); SimRng-rolled. Veterancy-dampening interaction is the v2 layer. **Dependency order (critical):** these behaviors are parasitic on the threat being real — units panic/flinch/break *in response to danger*. The zombie steering field (threatening horde, §3.2) must land FIRST, or the behaviors are reacting to a harmless shuffling pile. Threat first, then the behaviors that answer it.
+
 Readability feeds the information game: get eyes on a fight and tracer convergence tells you whether that garrison is green or salted.
 
 **Snowball caution:** veterancy is winner-gets-stronger, and rank 4 amplifies it. Counterweight is built in (a dead Prized unit is four ranks of power walking home as a corpse) but tune deliberately; build match telemetry from day one. **[PROPOSED]**
