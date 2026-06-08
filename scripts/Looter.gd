@@ -17,7 +17,13 @@ enum Sub {
 	PATROL,
 }
 
-const MAGNUM_DAMAGE := 22
+# Magnum tuning (2026-06-08 feel pass, PLACEHOLDERS for the balance lab).
+# Damage = 42 one-shots a base 40-HP Shambler (clean_kill = no corpse,
+# preserving the headshot-trained identity). HP in the scene file sits at
+# 45 so a Looter survives 3 Shambler bites (14 dmg each = 42) and dies on
+# the 4th - a fragile farmer with a definite "leave by hit #3" window.
+# Period stays slow (anti-rush), range stays mid (anti-rush), no AOE.
+const MAGNUM_DAMAGE := 42
 const MAGNUM_PERIOD := 2.5
 const MAGNUM_RANGE := 128.0
 const MAGNUM_NOISE := 20.0
