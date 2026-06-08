@@ -389,12 +389,13 @@ func _tick_search(delta: float) -> void:
 
 func _deposit_at_home() -> void:
 	if _carrying > 0:
-		if is_in_group("ai_units"):
-			var ai = get_tree().get_first_node_in_group("ai_controller")
-			if ai != null and ai.has_method("add_salvage"):
-				ai.add_salvage(_carrying)
-		else:
-			GameState.add_salvage(_carrying)
+		# Routed through Unit.deposit_salvage so owner_controller (set by
+		# AIController at spawn) decides the pool. Pre-fix, the AI-vs-AI
+		# player-slot AI's Looters dumped to GameState (wrong) and the
+		# opposing slot's Looters dumped to get_first_node_in_group(
+		# "ai_controller") - always the player slot, never the opposing slot.
+		# Net result: the opposing AI starved at 50 salvage forever.
+		deposit_salvage(_carrying)
 	_carrying = 0
 
 

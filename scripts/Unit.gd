@@ -62,6 +62,14 @@ var stance: Stance = Stance.AGGRESSIVE
 var squad: Squad = null
 var commander = null
 
+# Stable pointer to the AIController that spawned this unit. Set by
+# AIController._spawn_unit; null for human-player-spawned units. Used by
+# salvage-routing helpers below so each unit's deposits / costs hit the
+# correct pool regardless of group-tag tricks (the player-slot AI in AI-
+# vs-AI mode tags into player_units, so group membership is no longer
+# a reliable signal for whose salvage pool to use).
+var owner_controller = null
+
 # Aura bonuses from squad command-tree ancestors. Computed by
 # SquadManager._tick_auras at 5Hz, zeroed when out of range / no chain.
 # squad_damage_bonus is multiplicative (0.05 = +5%). squad_accuracy_bonus
@@ -114,6 +122,36 @@ func _ready() -> void:
 func move_to(world_pos: Vector2) -> void:
 	_nav.target_position = world_pos
 	current_command = Command.MOVE
+
+
+# ---- Salvage routing (owner-aware) ----
+#
+# A unit's salvage flows through owner_controller when set, otherwise through
+# GameState. This makes both human-player and AI ownership work the same way
+# at every call site (deposit, can-afford, spend), and unblocks AI-vs-AI mode
+# where the player-slot AI's units are tagged player_units yet still need
+# their salvage routed to their controller, not to the global pool.
+
+func deposit_salvage(amount: int) -> void:
+	if owner_controller != null and is_instance_valid(owner_controller) \
+			and owner_controller.has_method("add_salvage"):
+		owner_controller.add_salvage(amount)
+	else:
+		GameState.add_salvage(amount)
+
+
+func can_spend_salvage(amount: int) -> bool:
+	if owner_controller != null and is_instance_valid(owner_controller) \
+			and owner_controller.has_method("can_afford"):
+		return owner_controller.can_afford(amount)
+	return GameState.can_spend(amount)
+
+
+func spend_salvage(amount: int) -> bool:
+	if owner_controller != null and is_instance_valid(owner_controller) \
+			and owner_controller.has_method("spend_for_production"):
+		return owner_controller.spend_for_production(amount)
+	return GameState.spend(amount)
 
 
 func toggle_stance() -> void:

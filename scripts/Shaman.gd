@@ -66,7 +66,12 @@ func _physics_process(delta: float) -> void:
 
 
 func _execute_force_spawn() -> void:
-	if not GameState.can_spend(FORCE_SPAWN_COST):
+	# Owner-aware affordability + spend. An AI-spawned Shaman debits its
+	# AIController's pool; a human-player Shaman debits GameState. Pre-fix
+	# this hardcoded GameState, which would have drained the human player's
+	# pool if the AI ever ran Tribal (currently AI is Military-only, but
+	# the hardcoded path was a latent bug per AUDIT M).
+	if not can_spend_salvage(FORCE_SPAWN_COST):
 		_cancel()
 		current_command = Command.IDLE
 		return
@@ -74,7 +79,7 @@ func _execute_force_spawn() -> void:
 		_cancel()
 		current_command = Command.IDLE
 		return
-	GameState.spend(FORCE_SPAWN_COST)
+	spend_salvage(FORCE_SPAWN_COST)
 	var center: Vector2 = _target_building.position
 	for i in range(FORCE_SPAWN_COUNT):
 		var jitter := Vector2(randf_range(-32, 32), randf_range(-32, 32))

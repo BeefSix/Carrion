@@ -227,7 +227,9 @@ func _tick_gather_return() -> void:
 		_nav.target_position = _home_base.position
 	if global_position.distance_to(_home_base.position) <= INTERACTION_RANGE:
 		if _carrying > 0:
-			GameState.add_salvage(_carrying)
+			# Owner-aware routing via Unit.deposit_salvage so AI-spawned
+			# Scouts credit their controller, not GameState.
+			deposit_salvage(_carrying)
 		_carrying = 0
 		_sub = Sub.NONE
 		velocity = Vector2.ZERO

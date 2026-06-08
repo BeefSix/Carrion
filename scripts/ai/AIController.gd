@@ -284,3 +284,9 @@ func _spawn_unit(scene: PackedScene, pos: Vector2) -> void:
 	if not as_player_slot:
 		u.remove_from_group("player_units")
 		u.add_to_group("ai_units")
+	# Bind the unit to this controller for salvage routing. Without this,
+	# Looter._deposit_at_home falls back to GameState (or to the wrong
+	# AIController under AI-vs-AI's get_first_node_in_group lookup) and the
+	# controller's pool starves.
+	if "owner_controller" in u:
+		u.owner_controller = self
