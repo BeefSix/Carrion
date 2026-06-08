@@ -37,13 +37,14 @@ var tactician: AITactician
 const PHASE_SNAPSHOT_INTERVAL := 10.0  # sim seconds between ai_phase snapshots
 const LOOTER_SCRIPT := preload("res://scripts/Looter.gd")
 
-var _strategic_timer: float = 0.0
-var _tactical_timer: float = 0.0
-# Sim-time anchor for phase snapshots (NOT a delta-accumulating timer).
-# Pre-fix, accumulating _process delta at Engine.time_scale = 8x produced
-# snapshots ~8x more often than 10 sim sec because the scaled delta drove
-# the timer while sim_seconds() advances independently. Using sim_seconds()
-# directly gives a stable 10-sim-second cadence regardless of time_scale.
+# Sim-time anchors for the three periodic loops (NOT delta-accumulating
+# timers). Pre-fix, accumulating _process delta at Engine.time_scale = 8x
+# made strategist evaluate ~8x more often per sim-second than STRATEGIC_INTERVAL
+# implied (delta is scaled by time_scale; sim_seconds advances independently
+# at 60 ticks/sec wall regardless of time_scale). Anchoring on sim_seconds()
+# gives a stable cadence regardless of time_scale.
+var _next_strategic_sim: float = 0.0
+var _next_tactical_sim: float = 0.0
 var _next_phase_snapshot_sim: float = 0.0
 var _hq: Node2D = null
 var _barracks: Node2D = null
@@ -71,6 +72,9 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	# Production countdown still uses raw delta because it represents
+	# real wall-time progress of the build action; the strategist /
+	# tactician / phase loops below switched to sim_seconds() anchors.
 	_tick_production(delta)
 
 	# H11: once the AI HQ is destroyed, stop the strategist/tactician loops
@@ -80,17 +84,13 @@ func _process(delta: float) -> void:
 	if not is_alive():
 		return
 
-	_strategic_timer += delta
-	if _strategic_timer >= STRATEGIC_INTERVAL:
-		_strategic_timer = 0.0
-		strategist.evaluate()
-
-	_tactical_timer += delta
-	if _tactical_timer >= TACTICAL_INTERVAL:
-		_tactical_timer = 0.0
-		tactician.evaluate()
-
 	var now_sim: float = GameState.sim_seconds()
+	if now_sim >= _next_strategic_sim:
+		_next_strategic_sim = now_sim + STRATEGIC_INTERVAL
+		strategist.evaluate()
+	if now_sim >= _next_tactical_sim:
+		_next_tactical_sim = now_sim + TACTICAL_INTERVAL
+		tactician.evaluate()
 	if now_sim >= _next_phase_snapshot_sim:
 		_next_phase_snapshot_sim = now_sim + PHASE_SNAPSHOT_INTERVAL
 		_emit_phase_snapshot()
