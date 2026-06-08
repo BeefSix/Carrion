@@ -195,13 +195,35 @@ const PASS_BY_CAPTURE_MIN_TRAVEL := 48.0
 # or IDLE -> ACQUIRING, nearby idle zombies have a chance to follow with
 # delayed propagation. Damped through three rings - primary 35%, secondary
 # 20%, tertiary 10% - so the wave dies out naturally.
-const CASCADE_RADIUS_PX := 8.0 * 32.0
-const CASCADE_PROB_PRIMARY := 0.35     # level 0 originator -> recipients
-const CASCADE_PROB_SECONDARY := 0.20   # level 1 (joined primary) -> recipients
-const CASCADE_PROB_TERTIARY := 0.10    # level 2+ (joined secondary or beyond)
-const CASCADE_MAX_LEVEL := 3           # stop propagating past tertiary ring
-const CASCADE_DELAY_MIN := 1.0
-const CASCADE_DELAY_MAX := 3.0
+# (CASCADE_* removed 2026-06-08. The speculative IDLE -> ACQUIRING broadcast
+# was buggy - audit M-flagged "stale pending cascades fire minutes later"
+# because the pending state wasn't cleared when a zombie left IDLE. It
+# also fought the new damage-driven propagation. Replaced by: the groan
+# system below (damage-driven, fires only on real hits) + the proximity
+# acquire (close-range 360 detection). Aggro now propagates via combat
+# damage rather than via speculative "I saw a thing maybe" sight relays.)
+
+# Damage-driven groan (2026-06-08 feel pass). When a zombie takes attack
+# damage, it groans to neighbors via the ZombieField spatial index. The
+# call goes DIRECT to other.hear_noise (NOT through NoiseField) so it
+# doesn't feed the horde-spawn intensity ledger - that's the same shape
+# the ambient moans use. Magnitude clears HEARING_RELIABLE so a groan
+# reliably triggers investigate; one shot in a packed horde lights up
+# the local pack. No feedback chain: hear_noise does NOT call
+# take_damage (it calls investigate), so a heard groan can't re-emit a
+# groan.
+const GROAN_RADIUS_PX := 6.0 * 32.0   # 6 tiles; "local pack" reach
+const GROAN_MAGNITUDE := 30.0         # > HEARING_RELIABLE (15) -> reliable
+
+# Proximity acquire (2026-06-08 feel pass). 360 short-range detection
+# that bypasses the vision cone and edge/range fuzz. Runs every tick in
+# every active non-CHASE/non-ATTACK state so a zombie wandered or
+# pulled near a unit locks on. Same target filter as _find_visible_target
+# (faction/Walker/tribal_aligned exempt) - we are NOT lowering who counts
+# as a target, only how close detection works. Fixed acquisition delay
+# (no randf) so it's snappy AND deterministic per CLAUDE.md Rule #1.
+const PROXIMITY_DETECT_PX := 96.0       # 3 tiles
+const PROXIMITY_ACQUISITION_DELAY := 0.05
 # (CLUSTER_CROWD_THRESHOLD / TRAVEL / REPEL constants removed 2026-06-08.
 # They supported the dead _cluster_bias_target() repel path — AUDIT M2.
 # Per-frame separation above replaces them with a continuously-applied
@@ -255,9 +277,7 @@ var _home_pin_timer: float = 0.0
 var _ambient_noise_timer: float = 0.0
 # Cascade pending state - level we joined at (-1 = no pending), the
 # stimulus we'll investigate when the delay timer fires, and the timer.
-var _pending_cascade_level: int = -1
-var _pending_cascade_stimulus: Vector2 = Vector2.ZERO
-var _pending_cascade_timer: float = 0.0
+# (_pending_cascade_* removed 2026-06-08 - see comment on CASCADE_* above.)
 
 # Preallocated query objects for _find_visible_target. Reusing these avoids
 # the ~1100 allocations/sec a per-zombie per-tick `.new()` would cost at
@@ -371,89 +391,45 @@ func _draw() -> void:
 		draw_rect(Rect2(bar_x, bar_y, bar_w * fill_ratio, 2.5), Color(0.35, 0.65, 0.3))
 
 
-func investigate(world_pos: Vector2, cascade_join_level: int = -1) -> void:
-	# cascade_join_level: -1 means this is an originating investigation
-	# (gunshot heard, noise emitter triggered, etc.) and outbound broadcast
-	# is primary (level 0). Otherwise the zombie joined a cascade at that
-	# level, and outbound broadcast is at level + 1 with damped probability.
+func investigate(world_pos: Vector2) -> void:
+	# (cascade_join_level param removed 2026-06-08 with the cascade system.)
 	if _zombie_state == ZombieState.CHASE or _zombie_state == ZombieState.ATTACK:
 		return
 	if _zombie_state == ZombieState.LOST_TARGET:
 		return
+	# ACQUIRING guard (AUDIT M4, 2026-06-08): a mid-acquisition zombie has
+	# already locked on to a visible target and is counting down the
+	# acquisition delay; an ambient neighbor moan fires every 3-10s and
+	# would otherwise yank this zombie off the real target before it
+	# could commit to CHASE.
+	if _zombie_state == ZombieState.ACQUIRING:
+		return
 	if (_zombie_state == ZombieState.INVESTIGATE or _zombie_state == ZombieState.SEARCHING) and \
 		_investigate_target.distance_to(world_pos) < PERSIST_RADIUS_PX:
+		# Fresh noise inside PERSIST_RADIUS - the user is moving and
+		# shooting; re-point at the new spot instead of milling at the
+		# stale one (2026-06-08 fix). Pre-fix the early-return here
+		# locked the investigation onto the first noise location and a
+		# moving shooter could pull the horde without it ever following.
+		_investigate_target = world_pos
 		if _zombie_state == ZombieState.SEARCHING:
-			_search_timer = max(_search_timer, randf_range(SEARCH_DURATION_MIN, SEARCH_DURATION_MAX))
+			# Shooter moved while we were wandering near the stale spot -
+			# go back to walking toward the new noise position. The next
+			# arrival re-enters SEARCHING at the new location.
+			_zombie_state = ZombieState.INVESTIGATE
+			_wandering = false
+		_nav.target_position = world_pos
+		_set_desired_facing(world_pos)
 		return
-	var was_idle: bool = (_zombie_state == ZombieState.IDLE)
 	_investigate_target = world_pos
 	_zombie_state = ZombieState.INVESTIGATE
 	_wandering = false
 	_set_desired_facing(world_pos)
 	_nav.target_position = world_pos
-	# Cascade broadcast on IDLE -> INVESTIGATE transition only. Originators
-	# broadcast primary; cascade-followers broadcast next-level-up.
-	if was_idle:
-		var out_level: int = 0 if cascade_join_level < 0 else cascade_join_level + 1
-		_broadcast_cascade(world_pos, out_level)
 
 
-# Called by another zombie's _broadcast_cascade when this zombie is within
-# the cascade radius and the probability roll passed. We queue a delayed
-# investigate; the delay (1-3 sec randomized) is what produces visible
-# wave propagation through the cluster.
-func on_cascade(stimulus_pos: Vector2, level: int) -> void:
-	if level > CASCADE_MAX_LEVEL:
-		return
-	if _zombie_state != ZombieState.IDLE:
-		return
-	if _pending_cascade_level >= 0:
-		return  # already have a pending cascade; ignore subsequent triggers
-	_pending_cascade_stimulus = stimulus_pos
-	_pending_cascade_level = level
-	_pending_cascade_timer = randf_range(CASCADE_DELAY_MIN, CASCADE_DELAY_MAX)
-
-
-func _broadcast_cascade(stimulus_pos: Vector2, level: int) -> void:
-	if level > CASCADE_MAX_LEVEL:
-		return
-	var prob: float = CASCADE_PROB_PRIMARY
-	if level == 1:
-		prob = CASCADE_PROB_SECONDARY
-	elif level >= 2:
-		prob = CASCADE_PROB_TERTIARY
-	# Use ZombieField spatial index instead of scanning the full units group.
-	# At 200+ zombie population this dropped per-call cost from O(all-units)
-	# to O(zombies-within-radius) - the latter is usually 5-30 entries.
-	var zf = get_tree().get_first_node_in_group("zombie_field")
-	if zf != null and zf.has_method("get_zombies_within_radius"):
-		for other in zf.get_zombies_within_radius(global_position, CASCADE_RADIUS_PX):
-			if other == self:
-				continue
-			if not other.has_method("on_cascade"):
-				continue
-			if not (other.has_method("is_currently_idle") and other.is_currently_idle()):
-				continue
-			if randf() > prob:
-				continue
-			other.on_cascade(stimulus_pos, level)
-		return
-	# Fallback if ZombieField is absent (e.g. test scenes without the field).
-	for other in get_tree().get_nodes_in_group("units"):
-		if other == self or not is_instance_valid(other):
-			continue
-		if other.faction != GameState.Faction.ZOMBIE:
-			continue
-		if not other.has_method("on_cascade"):
-			continue
-		if not (other.has_method("is_currently_idle") and other.is_currently_idle()):
-			continue
-		var d: float = global_position.distance_to(other.global_position)
-		if d > CASCADE_RADIUS_PX:
-			continue
-		if randf() > prob:
-			continue
-		other.on_cascade(stimulus_pos, level)
+# (on_cascade / _broadcast_cascade removed 2026-06-08. Replaced by damage-
+# driven groan + proximity acquire above; see CASCADE_* comment.)
 
 
 # Called by NoiseField for every active emitter. Zombie filters by its own
@@ -704,18 +680,22 @@ func _physics_process(delta: float) -> void:
 		if _target != null and _zombie_state == ZombieState.CHASE:
 			_nav.target_position = _target.global_position + _chase_offset
 
+	# Proximity acquire (2026-06-08). Runs every physics tick in every
+	# active state EXCEPT CHASE (already committed to a target) and
+	# ATTACK (already biting). This covers the feel-test case where a
+	# unit walked into a packed horde and zombies ignored it because the
+	# cone-based vision missed any zombie not happening to face the unit.
+	# Same target filter as _find_visible_target; fixed-delay acquisition
+	# (no RNG per Determinism Rule #1).
+	if _zombie_state != ZombieState.CHASE and _zombie_state != ZombieState.ATTACK:
+		var prox = _find_proximity_target()
+		if prox != null and prox != _acquiring_target:
+			_acquiring_target = prox
+			_acquisition_timer = PROXIMITY_ACQUISITION_DELAY
+			_zombie_state = ZombieState.ACQUIRING
+
 	match _zombie_state:
 		ZombieState.IDLE:
-			# Pending cascade timer: when it fires, transition to INVESTIGATE
-			# with the level we joined at so re-broadcast damps correctly.
-			if _pending_cascade_level >= 0:
-				_pending_cascade_timer -= delta
-				if _pending_cascade_timer <= 0.0:
-					var join_lvl: int = _pending_cascade_level
-					var stim: Vector2 = _pending_cascade_stimulus
-					_pending_cascade_level = -1
-					investigate(stim, join_lvl)
-					return
 			_tick_idle_head_turn(delta)
 			_tick_wander(delta)
 		ZombieState.ACQUIRING:
@@ -919,6 +899,38 @@ func _zombie_field_density_here() -> int:
 	if zf == null or not zf.has_method("get_density_at"):
 		return 0
 	return zf.get_density_at(global_position)
+
+
+func take_damage(amount: int, attacker = null) -> void:
+	# Override of Unit.take_damage to emit the damage-driven groan
+	# (2026-06-08 feel pass). Behavior of the damage application is
+	# unchanged; we just react to it here.
+	var hp_before: int = current_hp
+	super.take_damage(amount, attacker)
+	# Groan only fires on actual attack damage AND only while still alive.
+	# The guard against an infinite chain is that hear_noise on the
+	# receiving side calls investigate(), not take_damage - a heard groan
+	# never causes another groan.
+	if amount > 0 and current_hp > 0 and current_hp != hp_before:
+		_emit_groan()
+
+
+func _emit_groan() -> void:
+	# Direct hear_noise to nearby zombies via the spatial index. Same
+	# direct-call path the ambient moans use so this does NOT feed
+	# NoiseField - if it did, combat groans would start triggering
+	# horde-spawns and the system would snowball. Magnitude clears
+	# HEARING_RELIABLE so a groan reliably converts to investigate.
+	var zf = get_tree().get_first_node_in_group("zombie_field")
+	if zf == null or not zf.has_method("get_zombies_within_radius"):
+		return
+	for other in zf.get_zombies_within_radius(global_position, GROAN_RADIUS_PX):
+		if other == self or other == null or not is_instance_valid(other):
+			continue
+		if not other.has_method("hear_noise"):
+			continue
+		var d: float = global_position.distance_to(other.global_position)
+		other.hear_noise(global_position, GROAN_MAGNITUDE, d)
 
 
 func _emit_ambient_noise() -> void:
@@ -1294,14 +1306,44 @@ func _update_perception(_delta: float) -> void:
 		return
 	if _zombie_state == ZombieState.ACQUIRING and _acquiring_target == best:
 		return
-	var was_idle: bool = (_zombie_state == ZombieState.IDLE)
 	_acquiring_target = best
 	_acquisition_timer = _compute_acquisition_delay(best.global_position)
 	_zombie_state = ZombieState.ACQUIRING
-	# Cascade broadcast on IDLE -> ACQUIRING - other idle zombies don't
-	# have vision on the target but will investigate the target's position.
-	if was_idle:
-		_broadcast_cascade(best.global_position, 0)
+	# (Cascade broadcast removed 2026-06-08 - replaced by damage-driven
+	# groan + proximity acquire. The speculative sight-relay was buggy
+	# and double-counted with the new propagation paths.)
+
+
+# Proximity acquire (2026-06-08). 360 deg short-range detection that bypasses
+# the vision cone + edge/range fuzz so a unit standing right next to the
+# zombie is reliably noticed - the "walking into a packed horde and they
+# don't react" case the feel-test caught. Uses the SAME target filter as
+# _find_visible_target (faction != ZOMBIE, not Walker, not tribal-allied
+# Tribal); does NOT lower who counts as a target. Returns nearest valid
+# target within PROXIMITY_DETECT_PX, or null. LOS check kept so walls
+# still block (a zombie in the next room shouldn't smell through a wall).
+func _find_proximity_target():
+	var best = null
+	var best_dist: float = PROXIMITY_DETECT_PX
+	for u in get_tree().get_nodes_in_group("units"):
+		if u == self or u == null or not is_instance_valid(u):
+			continue
+		if not ("faction" in u):
+			continue
+		if u.faction == GameState.Faction.ZOMBIE:
+			continue
+		if u.is_in_group("walkers"):
+			continue
+		if is_tribal_aligned and u.faction == GameState.Faction.TRIBAL:
+			continue
+		var d: float = global_position.distance_to(u.global_position)
+		if d > best_dist:
+			continue
+		if not _has_los(u.global_position):
+			continue
+		best_dist = d
+		best = u
+	return best
 
 
 func _find_visible_target():

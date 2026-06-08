@@ -46,7 +46,7 @@ The codebase is in better shape than most prototypes — well-commented, with vi
 - Corpse rises bypass the population cap, and dead zombies leave corpses that re-rise — an unbounded recycle loop damped only by `corpse_base_chance` (`Corpse.gd:49-63`, `Unit.gd:291`).
 - Tribal-alignment only works if the flag is set before `add_child` (`Shambler.gd:295-298`); any future caller that sets it after insertion silently gets a wild zombie that aggros Tribal. Convert to an explicit `align_to_tribal()` method.
 - Chase retention reuses stochastic detection fuzz, so zombies thrash out of CHASE at range ~60% of ticks; the intended `LOST_TARGET_RANGE` hysteresis constant is dead code (`Shambler.gd:68, 1233-1239`). FIXED 2026-06-08
-- Faint noises (neighbor moans) cancel target acquisition mid-commit (`Shambler.gd:365-368` — add ACQUIRING to the guard); stale pending cascades fire minutes later (`Shambler.gd:644-651`).
+- Faint noises (neighbor moans) cancel target acquisition mid-commit (`Shambler.gd:365-368` — add ACQUIRING to the guard); stale pending cascades fire minutes later (`Shambler.gd:644-651`). FIXED 2026-06-08 (ACQUIRING added to `investigate()` guard; cascade system removed entirely, replaced by damage-driven groan + proximity acquire).
 
 ### Units & buildings
 - Brawler melee range (36 px to building *center*) can't reach larger HQ footprints — endless shoving (`Brawler.gd:3, 41-49`). Compare against footprint edge.
