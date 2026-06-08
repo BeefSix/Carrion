@@ -79,6 +79,21 @@ func _combat_range_mult() -> float:
 	return 1.0
 
 
+# Suppression-aware spread multiplier (DESIGN_MASTER §7.1, v1 read site #2).
+# Read at the SHOOTER's position so being IN the zone widens YOUR cone -
+# it's about your hands shaking, not your target's evasion. Subclasses
+# fold this into the spread arg they pass to ProjectileManager. Returns
+# 1.0 if the SuppressionField node isn't in the scene (single-unit test
+# scenes, etc.). v2 hook: veterancy / doctrine resistance multiplies onto
+# the value_at(...) reading inside SuppressionField before the spread
+# math, not here.
+func _suppression_spread_multiplier() -> float:
+	var sf = get_tree().get_first_node_in_group("suppression_field")
+	if sf != null and sf.has_method("spread_multiplier_at"):
+		return sf.spread_multiplier_at(global_position)
+	return 1.0
+
+
 # Post-damage hook for faction mechanics that fire on DEAL not RESOLVE
 # (e.g. Looter salvage-on-kill, plague spread, suppression buildup). Empty
 # default; subclasses override.

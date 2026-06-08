@@ -281,7 +281,8 @@ func _tick_hunt_fire() -> void:
 
 func _fire_at(target) -> void:
 	_attack_anim_timer = ATTACK_ANIM_HOLD
-	var spread: float = BASE_ACCURACY_DEG * (1.0 - squad_accuracy_bonus)
+	# Suppression widens the cone at the shooter's position (DESIGN_MASTER §7.1).
+	var spread: float = BASE_ACCURACY_DEG * (1.0 - squad_accuracy_bonus) * _suppression_spread_multiplier()
 	ProjectileManager.spawn_projectile({
 		"origin": global_position,
 		"target_pos": target.global_position,

@@ -311,7 +311,18 @@ func get_effective_max_hp() -> int:
 
 
 func get_effective_move_speed() -> float:
-	return move_speed * speed_mult
+	# Suppression slow (DESIGN_MASTER §7.1, v1 read site #1). Any unit -
+	# human OR zombie - is slowed while inside a suppressed zone. Shambler
+	# movement also flows through this helper via _follow_navigation, so the
+	# zombie-side requirement falls out for free without a Shambler-specific
+	# touch. v2 hook: faction-aware resistance (veterancy, doctrine) goes
+	# here on top of value_at. Field lookup is by group so the same code
+	# path works in any scene that doesn't include a SuppressionField.
+	var base: float = move_speed * speed_mult
+	var sf = get_tree().get_first_node_in_group("suppression_field")
+	if sf != null and sf.has_method("speed_multiplier_at"):
+		base *= sf.speed_multiplier_at(global_position)
+	return base
 
 
 func get_effective_damage(base_damage: int) -> int:

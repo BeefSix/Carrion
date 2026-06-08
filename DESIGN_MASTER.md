@@ -30,7 +30,7 @@ Two sensory channels with different physics:
 
 Plus two slower ledgers:
 
-- **Decay** — Military structures rot the ground they hold; decayed zones spawn faster. Occupation itself has a price.
+- **Decay** — DEMOTED to visual-only (decided 2026-06-08). Was: Military structures rot the ground, decayed zones spawn faster. Its gameplay jobs dissolved — the anti-(Military+Survivor)-alliance exploit it patched is now handled by Survivors clearing infested buildings into their own safe zone, and the "occupation has a price" pressure is carried by the zombie ecosystem itself. Kept as **environmental land-state imagery / intel**: Military-squatted ground looks worn/decayed, Survivor-cleared ground looks healed — in fog of war, the state of the land tells you who has been where. Implementation: sever the Lootable spawn-rate hook; keep the DecayField rendering. NOT a cost ledger anymore.
 - **Corpses** — every body is a pending zombie (§4).
 
 **Medical infrastructure:** stopping bleeding is a fast, cheap emergency verb; healing HP is slow and expensive. Medical buildings provide ambient healing in radius — a base with a medic tent doesn't smell like blood ("clean zones"). Units have a slow self-bandage floor (stops movement) so a medic-less army is desperate, not unplayable. **[PROPOSED]** Design guardrail: the fight → noise+blood → zombies → more fighting spiral needs exit ramps (medics, disengagement, Shepherds) so not every skirmish snowballs.
@@ -40,6 +40,10 @@ Sometimes it is better to let a wounded man die alone than to bring him — and 
 ---
 
 ## 3. Zombie Ecosystem
+
+### 3.0 Marrow — Tribal creep (designed 2026-06-08; name front-runner "Marrow", may change)
+
+The only faction whose presence *transforms the ground into a gameplay surface*. Tribal's SC-Zerg-creep analogue: a spreading territory ("Marrow") emanating from Tribal structures and/or dense zombie clusters. Tribal units gain bonuses on it (TBD — likely the ambush/regen/movement edge); it visibly marks claimed ground with its own bone/viscera visuals (distinct from the decay land-state). Marrow is the *only* faction-ground mechanic with real gameplay teeth — Military wears the land down (visual-only, §2), Survivor heals/repurposes via buildings (not ground), Tribal *claims* it. Ties the previously-vague density/clustering zones into ownable territory. Numbers and exact bonuses [OPEN] → Tribal phase + balance lab. (Naming candidates considered: Marrow [front-runner], Stain, the Mire, Blight, the Reek.)
 
 ### 3.1 Clustering dynamics
 Zombies roam. Zombies make noise, which attracts zombies — so they cluster, and the map develops dense zones with their own geography: living walls, no-go areas, weapons. This positive feedback loop is the keystone system and requires damping (below) or the map converges to one mega-blob.
@@ -124,6 +128,8 @@ See NETCODE.md for the determinism decisions (float-with-discipline, no transcen
 ### 7.1 Military
 **Identity:** post-institutional warband. Predatory toward civilians. Loud. Commits. Suppression mechanic; vulnerable to flanking. Postures: Engage / Hold / Withdraw.
 **Relationship to ecosystem:** fights through it and *metabolizes* it — their noise attracts zombies, their Looters farm the arrivals. They convert nothing: deplete and sweep. Pure extraction, living on a clock — the faction that should want to attack. Their decay zones are creep that works against them.
+
+**Suppression (combat identity, designed 2026-06-08):** a short-lived *field* fed by fire and read by position — same architecture as NoiseField (a decaying source-list, but fast-decay and small-radius). Every ranged shot that lands deposits suppression at the impact point. **Source is universal, but threshold requires volume** — one shooter's deposits decay before crossing the line, so a lone unit suppresses nothing; concentrated/sustained fire on one area builds a zone. Military's loud, massed, high-rate weapons dominate it by playstyle; Tribal's silent single-shot Hunters and Survivor's quiet crossbows barely register. Military *owns* suppression by volume, not by rule. Any unit in a suppressed zone — **human or zombie** — is slowed and fires less accurately (speed + accuracy). The zone dissipates in ~1–2s after fire stops. **Thesis interaction is free:** the suppressing fire already emits noise via NoiseBus, so pinning a horde simultaneously summons the next wave — Military buys control with noise, made mechanical. v1 is a flat debuff; **v2 hook**: veterancy resistance (rookies break under suppression, veterans hold — ties into behavioral veterancy §5). All numbers placeholder → balance lab.
 
 **Units:**
 - **Looter** (economy) — on spawn, patrols Military zones: clears zombies, builds salvage. Trained in headshots (always clean kills). Shoot-to-loot on corpses of any faction (§4).

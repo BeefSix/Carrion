@@ -179,6 +179,13 @@ func _resolve_collision(collider) -> void:
 	if collider == null:
 		_despawn()
 		return
+	# Suppression seed (DESIGN_MASTER §7.1). Universal: every ranged impact
+	# deposits the per-hit constant at the impact point regardless of firer
+	# faction. Tribal/Survivor "barely register" emergently via low rate of
+	# fire, not by special-casing. Melee does not deposit (v1).
+	var sf = get_tree().get_first_node_in_group("suppression_field")
+	if sf != null and sf.has_method("deposit_hit"):
+		sf.deposit_hit(position)
 	if collider.is_in_group("units"):
 		_resolve_impact_on_unit(collider)
 		return

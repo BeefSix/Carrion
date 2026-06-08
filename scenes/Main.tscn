@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/Main.gd" id="0_main"]
 [ext_resource type="Script" path="res://scripts/RTSCamera.gd" id="1_camera"]
@@ -8,6 +8,7 @@
 [ext_resource type="Script" path="res://scripts/GroundTiles.gd" id="8_ground"]
 [ext_resource type="Script" path="res://scripts/DecayField.gd" id="9_decay"]
 [ext_resource type="Script" path="res://scripts/ZombieField.gd" id="10_zfield"]
+[ext_resource type="Script" path="res://scripts/SuppressionField.gd" id="11_suppress"]
 
 [sub_resource type="NavigationPolygon" id="NavigationPolygon_main"]
 vertices = PackedVector2Array(0, 0, 6144, 0, 6144, 6144, 0, 6144)
@@ -48,6 +49,9 @@ script = ExtResource("7_noise")
 
 [node name="ZombieField" type="Node2D" parent="."]
 script = ExtResource("10_zfield")
+
+[node name="SuppressionField" type="Node2D" parent="."]
+script = ExtResource("11_suppress")
 
 [node name="SelectionManager" type="Node2D" parent="."]
 script = ExtResource("3_sel")
