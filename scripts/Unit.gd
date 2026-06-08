@@ -406,7 +406,17 @@ func _should_leave_corpse(attacker) -> bool:
 			if lvl >= 0 and lvl < CLEAN_KILL_CHANCE_BY_LEVEL.size():
 				if randf() < CLEAN_KILL_CHANCE_BY_LEVEL[lvl]:
 					return false
-	if faction != GameState.Faction.MILITARY and faction != GameState.Faction.ZOMBIE:
+	# Dead zombies do NOT leave rising corpses (2026-06-08 fix). The
+	# "rising" drama is for the formerly-living - a zombie is already
+	# dead. Pre-fix this branch allowed ZOMBIE through, producing a
+	# zombie-corpse-rezombie recycle loop that drowned the human drama
+	# and propped population independent of horde/spawn rules.
+	if faction == GameState.Faction.ZOMBIE:
+		return false
+	# Survivor/Tribal aren't active factions yet (their corpse design
+	# is per-faction; tuned when those land). For now only Military
+	# combat deaths feed the corpse cycle, at the design's 80% baseline.
+	if faction != GameState.Faction.MILITARY:
 		return false
 	return randf() < corpse_base_chance
 

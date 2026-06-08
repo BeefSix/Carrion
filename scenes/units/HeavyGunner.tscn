@@ -10,7 +10,7 @@ script = ExtResource("1_hg")
 max_hp = 100
 move_speed = 64.0
 body_color = Color(0.353, 0.4, 0.267, 1)
-corpse_base_chance = 0.3
+corpse_base_chance = 0.8
 size_px = 26
 
 [node name="CollisionShape" type="CollisionShape2D" parent="."]

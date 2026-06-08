@@ -10,7 +10,7 @@ script = ExtResource("1_rifle")
 max_hp = 70
 move_speed = 80.0
 body_color = Color(0.353, 0.4, 0.267, 1)
-corpse_base_chance = 0.3
+corpse_base_chance = 0.8
 size_px = 22
 
 [node name="CollisionShape" type="CollisionShape2D" parent="."]

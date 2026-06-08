@@ -8,6 +8,19 @@ const L3_ENHANCED_COLOR := Color("452626")
 const VETERAN_HP_SCALE := { 1: 1.0, 2: 1.25, 3: 1.5 }
 const VETERAN_DAMAGE_SCALE := { 1: 1.0, 2: 1.15, 3: 1.25 }
 
+# Preload NoiseField for its MAX_ZOMBIE_POPULATION constant. We use
+# the script as the single source of truth for the spawn cap (same
+# pattern NoiseField uses for ShamblerScript.HEARING_RANGE_PX). The
+# old behavior bypassed the cap and contributed to population overshoot.
+const NoiseFieldScript := preload("res://scripts/NoiseField.gd")
+
+# If we hit the rise timer while at the spawn cap, defer and re-check
+# every POP_CAP_RETRY_INTERVAL seconds rather than skipping the rise
+# outright. The corpse stays on the ground until the population drops
+# (cremation / kills / depletion), then rises - the human drama still
+# happens, just delayed instead of dropped.
+const POP_CAP_RETRY_INTERVAL := 1.0
+
 @export var original_max_hp: int = 60
 @export var return_delay: float = 42.0
 @export var was_military: bool = false
@@ -47,9 +60,23 @@ func _process(delta: float) -> void:
 		return
 	_timer -= delta
 	if _timer <= 0.0:
-		_rise()
+		_try_rise()
 	else:
 		queue_redraw()
+
+
+func _try_rise() -> void:
+	# Bounded by the spawn cap (2026-06-08). Pre-fix, corpse rises ran
+	# unconditionally and could push the population well past
+	# MAX_ZOMBIE_POPULATION (horde spawns were capped but corpses
+	# weren't, so corpse-heavy late-game scenes overshot). Defer if
+	# at cap so the rise still lands once the population dips.
+	var zf = get_tree().get_first_node_in_group("zombie_field")
+	if zf != null and zf.has_method("get_zombie_count"):
+		if zf.get_zombie_count() >= NoiseFieldScript.MAX_ZOMBIE_POPULATION:
+			_timer = POP_CAP_RETRY_INTERVAL
+			return
+	_rise()
 
 
 func _rise() -> void:
