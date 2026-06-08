@@ -20,7 +20,7 @@ The sim must eventually run lockstep across clients. Every violation written tod
 2. **Fixed-tick gameplay.** Game logic advances on the physics tick or explicit accumulators — never `_process(delta)` for anything that changes sim state. Rendering/UI may use `_process`.
 3. **No physics-engine queries for gameplay decisions** in new code (`intersect_shape`, `intersect_point`, raycasts for targeting/perception). Read the coarse grids instead (ZombieField, NoiseField, DecayField, the planned steering field). Existing physics-query code is grandfathered until its system is touched.
 4. **No iteration over `get_nodes_in_group()` where order affects outcomes** unless sorted by a stable key (instance id is not stable across clients — use spawn-ordinal ids).
-5. **Float discipline:** avoid accumulating tiny per-frame floats into long-lived gameplay state; prefer integer/fixed-step accumulators where feasible.
+5. **Float discipline (decided 2026-06-08: float-with-discipline, NOT fixed-point — see NETCODE.md):** avoid accumulating tiny per-frame floats into long-lived gameplay state; prefer integer/fixed-step accumulators where feasible. **No transcendentals (`sin`/`cos`/`atan`/`atan2`/inverse-sqrt) in gameplay math** — they diverge across CPUs and are a latent desync source; use them freely in render/visual code only. Keep the sim layer structured so positions/combat could swap to fixed-point later if cross-machine testing ever demands it.
 6. **Sim/render separation:** gameplay state must never read from render state (positions are sim state; sprite offsets, iso projection, z-index are render).
 
 ## Architecture conventions

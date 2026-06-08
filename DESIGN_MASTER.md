@@ -105,6 +105,18 @@ Readability feeds the information game: get eyes on a fight and tracer convergen
 - **[OPEN]** Scoutability ruling. Recommendation: doctrine shows on the unit (gear silhouette — the art pipeline carries this), so reading enemy commitments requires getting eyes on their army, which under fog+noise is itself a risk.
 - Doctrine grammars by faction: **Military trades on noise** (one path louder, one quieter), **Tribal trades on the cluster**, **Survivor trades on what gets repurposed**.
 
+### 6.1 Counter System (from the SC/BW reference, adopted 2026-06-08)
+
+The engine of "no best unit, only best composition" is a small counter matrix, not unit count. SC achieved enormous depth with just **damage-type × unit-size (3×3) + flat armor**. The Long Wake adopts the same shape; values are [OPEN] and will be tuned in the balance lab, but the *seams* go into the `CombatUnit` substrate now (`damage_type`, `unit_size`, `armor`, one central damage-resolution function) so the matrix can be tuned later without per-unit surgery.
+
+Design targets and pitfalls carried over:
+- Resolve damage in a **pinned order**: armor subtracted first (flat −N, per sub-hit for multi-hit attacks, floored at a small minimum), then the size×type multiplier. Order must be explicit or multi-hit/armor interactions desync or feel random.
+- Three pitfalls are the balance killers: a unit with **no counter** (becomes mandatory), a damage type that is **strictly better**, and armor math that **accidentally hard-counters cheap swarms**.
+- **Zombie-horde-specific warning:** armored units could trivialize hordes. Tune horde damage-type vs armored unit-size *deliberately* — this is the central tension of the whole ecosystem (the cheap swarm must stay threatening to armor, or the noise/corpse economy loses its teeth).
+- Balance is **per-matchup, not per-unit** (~50% per matchup over time), measured against the universal constraint of **time/supply** (what each faction fields in the same elapsed time), with **maps as a primary balance lever**. The balance lab is the spreadsheet SC tuned by hand.
+
+See NETCODE.md for the determinism decisions (float-with-discipline, no transcendentals) that shape how all combat math is written.
+
 ---
 
 ## 7. The Factions
