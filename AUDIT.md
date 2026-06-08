@@ -19,9 +19,9 @@ The codebase is in better shape than most prototypes — well-commented, with vi
 ## 2. High
 
 ### Gameplay-loop breakers
-- **H1 — Engineer wall-build soft-lock.** `Engineer.gd:63-67, 241-251`: a move order during `Sub.CONSTRUCTING` overwrites `_nav.target_position`; after arriving, `_tick_constructing` calls `_follow_navigation()` toward an already-reached target forever. 25 salvage lost, Engineer permanently unable to build. Fix: re-set `_nav.target_position = _wall_target` when out of range.
-- **H2 — AI hard-stalls permanently.** `AIStrategist.gd:16-24, 43-56`: strictly sequential build order with no recovery. If both starting Looters die before 200 salvage banks, the AI does nothing for the rest of the match. Same stall if its Barracks is destroyed.
-- **H3 — AI tactician stomps unit micro.** `AITactician.gd:31-42` re-issues `move_to()` to every combat unit at 1 Hz, snapping them back to MOVE mid-fight (no kiting in MOVE state), re-pathing every unit every second, and trickle-feeding fresh spawns solo across the map.
+- **H1 — Engineer wall-build soft-lock.** `Engineer.gd:63-67, 241-251`: a move order during `Sub.CONSTRUCTING` overwrites `_nav.target_position`; after arriving, `_tick_constructing` calls `_follow_navigation()` toward an already-reached target forever. 25 salvage lost, Engineer permanently unable to build. Fix: re-set `_nav.target_position = _wall_target` when out of range. FIXED 2026-06-07
+- **H2 — AI hard-stalls permanently.** `AIStrategist.gd:16-24, 43-56`: strictly sequential build order with no recovery. If both starting Looters die before 200 salvage banks, the AI does nothing for the rest of the match. Same stall if its Barracks is destroyed. FIXED 2026-06-07
+- **H3 — AI tactician stomps unit micro.** `AITactician.gd:31-42` re-issues `move_to()` to every combat unit at 1 Hz, snapping them back to MOVE mid-fight (no kiting in MOVE state), re-pathing every unit every second, and trickle-feeding fresh spawns solo across the map. FIXED 2026-06-07
 - **H4 — Military vs AI-Military: units can't fight each other.** `Main.gd:295` sets AI faction to MILITARY; targeting (`Rifleman.gd:146` et al.) skips same-faction units. Two armies walk through each other and only snipe HQs. Fix: ownership-based hostility (groups or team id), not faction. FIXED 2026-06-07
 - **H5 — Horde tiers eaten by cooldown.** `NoiseField.gd:138-149, 171-185`: `tiers_fired` is set *before* `_maybe_trigger_horde` checks the 30 s cooldown/pop cap, so sustained heavy fire during cooldown produces no horde for that entire noise excursion. This directly undermines the Heavy-Gunner-anxiety thesis. Fix: only consume the flag when the horde actually fires. FIXED 2026-06-07
 - **H6 — Clustered zombies go blind.** `Shambler.gd:1290`: vision `intersect_shape(_vision_query, 16)` on the shared unit layer — in a 16+ zombie cluster all result slots fill with zombies and real targets are never seen. Fix: separate collision layer for non-zombies or raise the cap. FIXED 2026-06-07
@@ -31,11 +31,11 @@ The codebase is in better shape than most prototypes — well-commented, with vi
 - **H8 — Phantom selection after wall placement.** `SelectionManager.gd:106-115`: LMB-release branch has no `if _dragging` guard; the release after a consumed wall-placement press finalizes a selection with stale drag coords, typically clearing your Engineer selection. FIXED 2026-06-07
 - **H9 — Squad rename re-entrancy creates ghost rows.** `SquadSidebar.gd:185-199, 293-294`: Enter → refresh frees the LineEdit → `focus_exited` fires → re-entrant refresh appends a duplicate row. Disconnect `focus_exited` before refreshing or guard with a flag. FIXED 2026-06-07
 - **H10 — Player can operate enemy buildings.** `SelectionManager.gd:247-249` selects any `"buildings"` member; `HUD.gd:130-133` runs `do_action` with no ownership gate. Also right-click repair targets enemy buildings (`SelectionManager.gd:160-161`). Fix: one shared "is this mine / is this hostile" helper used by SelectionManager, HUD, and Projectile. FIXED 2026-06-07
-- **H11 — AI production dereferences freed HQ.** `AIController.gd:148-160`: `_hq.position` with no `is_instance_valid` guard; production keeps ticking after the player destroys the AI HQ.
+- **H11 — AI production dereferences freed HQ.** `AIController.gd:148-160`: `_hq.position` with no `is_instance_valid` guard; production keeps ticking after the player destroys the AI HQ. FIXED 2026-06-07
 
 ### Performance (scale-dependent, hits late-game)
 - **H12 — NoiseField occlusion for every zombie–emitter pair.** `NoiseField.gd:209-213`: full attenuation math (occluder loop + segment intersects) runs for all ~300 zombies per emitter every 0.4 s; the range cutoff happens *afterwards* in `Shambler.hear_noise`. Fix: skip pairs beyond hearing range (704 px) first. FIXED 2026-06-07
-- **H13 — Scout scans the full units group at 60 Hz.** `Scout.gd:72, 129-137`: unthrottled zombie-detection scan (every other combat unit polls at 2-5 Hz). 4 scouts ≈ 72k distance checks/sec. Same pattern: Walker/Scout idle gatherers re-scan the whole `lootable` group every physics frame when nothing is found (`Walker.gd:38-42`, `Scout.gd:79-83`) — add a retry cooldown.
+- **H13 — Scout scans the full units group at 60 Hz.** `Scout.gd:72, 129-137`: unthrottled zombie-detection scan (every other combat unit polls at 2-5 Hz). 4 scouts ≈ 72k distance checks/sec. Same pattern: Walker/Scout idle gatherers re-scan the whole `lootable` group every physics frame when nothing is found (`Walker.gd:38-42`, `Scout.gd:79-83`) — add a retry cooldown. FIXED 2026-06-07
 - **H14 — Occluder cache no longer covers hearing range.** `NoiseField.gd:21` caches occluders to 612 px but hearing was bumped to 704 px (`Shambler.gd:20`) — distant zombies hear through walls. Derive the cache radius from the hearing constant. FIXED 2026-06-07
 
 ## 3. Medium
@@ -163,6 +163,17 @@ Well under a third of the ~6,800 gameplay script lines map to plan items. The Sh
 6. **H2/H3/H11** AI stall, command spam, freed-HQ guard.
 7. **H12/H13** The two hot loops (NoiseField range-check-first; throttle Scout/idle gatherers).
 8. Medium batch: pop-cap enforcement in corpse rises + horde clamps, Shaman fixes, TownPlanner alley/seed/spawn-coordinate fixes.
+
+## 7.5 Post-fix follow-up notes (added 2026-06-07, after all C/H items closed)
+
+Observations from diff-verification of the fix batches — real but minor; fold into future batches when touching these files:
+
+- **AITactician rally liveness gap:** if fewer than ATTACK_DISPATCH_GROUP_SIZE (4) units can ever stage (army capped by losses + dead economy), staged units wait at the rally indefinitely. Add a dispatch timeout (e.g., staged > 0 with no dispatch for 30s → send what you have). Related, accepted-as-is: pass 2 dispatches an engaged-at-rally unit (one move_to mid-fight at the dispatch moment) — chosen over leaving stragglers behind.
+- **AI economic dead-end remains by design:** stall recovery (H2 fix) requires 50 salvage for a replacement Looter; an AI with zero Looters and <50 banked has no income path and quietly loses. Acceptable as a defeat state; revisit if AI gets a trickle income.
+- **Engineer wall-resume (H1 fix) re-paths every tick** while out of range — same per-tick `_nav.target_position` pattern as the Medium Brawler/Engineer chase item. Throttle when that item gets fixed.
+- **Subclass invariant (from H3's is_engaged accessor):** Unit subclasses that override _process without calling the engagement-timer logic silently break is_engaged() for the tactician. Documented here so the next unit class doesn't trip it.
+- **NoiseField suppression print** (fixed earlier batch) and **unit_died faction int-vs-string** in MatchStats events remain open one-liners.
+- **Lootables are no longer click-selectable** (H10 ownership gate side effect — they're NEUTRAL, not player-owned). Verify in play whether lootable inspection mattered; if so, allow selecting NEUTRAL buildings read-only.
 
 ## 8. The bigger question
 

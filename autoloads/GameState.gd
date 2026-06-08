@@ -18,6 +18,11 @@ var salvage: int = STARTING_SALVAGE:
 
 var player_faction: Faction = Faction.MILITARY
 var ai_enabled: bool = false
+# Headless balance-lab mode. When true, Main skips spawning a player HQ and
+# instead spawns a second AIController in the "player slot" so two AIs fight
+# each other. TitleScreen also bypasses to Main on _ready. Driven by the
+# --ai-vs-ai CLI flag.
+var ai_vs_ai_mode: bool = false
 # When set, Main.gd loads map data from this JSON path instead of running the
 # procedural TownPlanner. Empty string = procedural. Used by the image-to-map
 # PoC pipeline to feed extracted-from-image map data into the gameplay layer.

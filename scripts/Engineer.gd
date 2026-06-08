@@ -245,6 +245,13 @@ func _tick_repair_channel(delta: float) -> void:
 func _tick_constructing(delta: float) -> void:
 	if _building_wall:
 		if global_position.distance_to(_wall_target) > WALL_ARRIVE_RANGE:
+			# H1: a player move order during CONSTRUCTING does NOT clear _sub
+			# (the guard in move_to keeps us in CONSTRUCTING) but it DID
+			# overwrite _nav.target_position. Once the Engineer arrives at the
+			# player's move target, _follow_navigation reports "finished" and
+			# we sit forever, never counting down the construction timer.
+			# Restore the wall target each tick so the resume path is correct.
+			_nav.target_position = _wall_target
 			_follow_navigation()
 			return
 		velocity = Vector2.ZERO

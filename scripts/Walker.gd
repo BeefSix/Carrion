@@ -6,12 +6,16 @@ const SALVAGE_PER_TRIP := 25
 const CHANNEL_TIME := 3.0
 const INTERACTION_RANGE := 80.0
 const SEARCH_RADIUS := 1000.0
+# H13: when no lootable is in range, hold off the next scan for this long
+# instead of re-iterating the lootable group every physics frame.
+const LOOTABLE_RETRY_INTERVAL := 1.0
 
 var _sub: Sub = Sub.NONE
 var _target_lootable = null
 var _home_base = null
 var _channel_timer := 0.0
 var _carrying := 0
+var _lootable_retry_timer: float = 0.0
 
 
 func gather_from(lootable) -> void:
@@ -39,7 +43,13 @@ func _physics_process(delta: float) -> void:
 		if _carrying > 0:
 			_start_return_home()
 		else:
-			_try_find_lootable()
+			# H13: cool down between failed lootable scans instead of
+			# re-iterating the lootable group every physics frame.
+			_lootable_retry_timer = max(0.0, _lootable_retry_timer - delta)
+			if _lootable_retry_timer <= 0.0:
+				_try_find_lootable()
+				if _sub == Sub.NONE:
+					_lootable_retry_timer = LOOTABLE_RETRY_INTERVAL
 
 	match _sub:
 		Sub.GATHER_APPROACH:

@@ -16,6 +16,13 @@ const FATIGUE_DURATION := 2.0
 const FATIGUE_MULT := 0.7
 const COOLDOWN_DURATION := 4.0
 const ZOMBIE_DETECT_RANGE := 256.0
+# H13: throttle the zombie-detect scan to 2 Hz, matching the base class's
+# ENGAGEMENT_CHECK_INTERVAL. Pre-fix this was an unthrottled all-units distance
+# scan every physics frame - 4 scouts vs 300 zombies = ~72k checks/sec.
+const ZOMBIE_SCAN_INTERVAL := 0.5
+# When no lootable is in range, wait LOOTABLE_RETRY_INTERVAL before scanning
+# the lootable group again. Pre-fix the scan repeated every physics frame.
+const LOOTABLE_RETRY_INTERVAL := 1.0
 
 const NORMAL_COLOR := Color("7a5c3c")
 const BURST_COLOR := Color("c89060")
@@ -28,6 +35,9 @@ var _carrying := 0
 var _channel_timer := 0.0
 var _energy_state: EnergyState = EnergyState.NORMAL
 var _energy_timer := 0.0
+var _zombie_scan_timer: float = 0.0
+var _zombie_in_range_cached: bool = false
+var _lootable_retry_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -80,7 +90,13 @@ func _physics_process(delta: float) -> void:
 		if _carrying >= CARRY_CAP:
 			_start_return_home()
 		else:
-			_try_find_lootable()
+			# H13: throttle the idle lootable scan - pre-fix this re-iterated
+			# the whole lootable group every frame when nothing was found.
+			_lootable_retry_timer = max(0.0, _lootable_retry_timer - delta)
+			if _lootable_retry_timer <= 0.0:
+				_try_find_lootable()
+				if _sub == Sub.NONE:
+					_lootable_retry_timer = LOOTABLE_RETRY_INTERVAL
 
 	match _sub:
 		Sub.GATHER_APPROACH:
@@ -99,7 +115,14 @@ func _update_energy(delta: float) -> void:
 		if _energy_timer <= 0:
 			_transition_energy_state()
 	if _energy_state == EnergyState.NORMAL:
-		if _zombie_within_detect_range():
+		# H13: 2 Hz polled zombie scan with cached result. The BURST trigger
+		# only checks a single bool here at 60 Hz; the actual all-units scan
+		# happens twice per second.
+		_zombie_scan_timer -= delta
+		if _zombie_scan_timer <= 0.0:
+			_zombie_scan_timer = ZOMBIE_SCAN_INTERVAL
+			_zombie_in_range_cached = _zombie_within_detect_range()
+		if _zombie_in_range_cached:
 			_set_energy_state(EnergyState.BURST, BURST_DURATION)
 
 

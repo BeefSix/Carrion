@@ -16,6 +16,10 @@ const EDGE_SPAWN_INTERVAL := 90.0
 const EDGE_INSET := 60.0
 const EDGE_SPAWN_KEEPOUT := 1200.0  # avoid dumping wanderers on top of the player corner
 
+# AI-vs-AI hard cap on match duration (sim seconds). If neither HQ falls by
+# then we force a "timeout" result so headless batches don't hang forever.
+const AI_VS_AI_MAX_DURATION_SIM_SEC := 1800.0
+
 # Per-faction corner spawns. Tile (18, 18) center inside the rubble edge band; clear zone
 # is the surrounding 12x12 tiles, big enough to drop HQ + a few small buildings + walls.
 # Per-faction corner spawns. Players land inside their residential zone with
@@ -159,14 +163,25 @@ func _ready() -> void:
 		var planner = TOWN_PLANNER_SCRIPT.new()
 		_town_data = planner.plan_town()
 		$GroundTiles.apply_tile_grid(_town_data["tile_grid"])
-	_spawn_hq()
+	if GameState.ai_vs_ai_mode:
+		# AI-vs-AI replaces the normal player_hq + opposing_hq spawn flow with
+		# two AIControllers: one in the player slot (tags player_units /
+		# player_buildings, sets _player_hq), one in the AI slot (existing
+		# behavior). Lootables, nav, MatchStats all work unchanged.
+		# Speed up sim so the 1800s sim-time safety cap doesn't take 30 min
+		# wall time when nothing decisive happens. 4x matches the F2 dev shortcut.
+		Engine.time_scale = DEV_SPEED
+		_spawn_ai_vs_ai_opponents()
+	else:
+		_spawn_hq()
 	_spawn_lootables()
 	_rebake_navigation()
 	_center_camera_on_spawn()
-	if GameState.ai_enabled:
-		_spawn_ai_opponent()
-	else:
-		_spawn_inert_opposing_hq()
+	if not GameState.ai_vs_ai_mode:
+		if GameState.ai_enabled:
+			_spawn_ai_opponent()
+		else:
+			_spawn_inert_opposing_hq()
 	_install_win_overlay()
 	# Telemetry header: built once all match-shape state (matchup, ai_enabled,
 	# map source) is locked in. MatchStats owns the schema; we just trigger it.
@@ -301,6 +316,30 @@ func _spawn_ai_opponent() -> void:
 	add_child(ai)
 
 
+func _spawn_ai_vs_ai_opponents() -> void:
+	# Headless balance-lab path. Two AIControllers, mirrored: one drives the
+	# player slot (player spawn position, player_* ownership tags), the other
+	# drives the opposing slot (AI spawn position, ai_* tags). Default
+	# matchup is Military mirror.
+	var ai_script := load("res://scripts/ai/AIController.gd") as Script
+	if ai_script == null:
+		return
+	var player_pos: Vector2 = _get_spawn_position()
+	var ai_pos: Vector2 = _get_ai_spawn_position()
+	var player_ai = ai_script.new()
+	player_ai.faction = GameState.Faction.MILITARY
+	player_ai.spawn_position = player_pos
+	player_ai.enemy_hq_position = ai_pos
+	player_ai.as_player_slot = true
+	add_child(player_ai)
+	var opposing_ai = ai_script.new()
+	opposing_ai.faction = GameState.Faction.MILITARY
+	opposing_ai.spawn_position = ai_pos
+	opposing_ai.enemy_hq_position = player_pos
+	opposing_ai.as_player_slot = false
+	add_child(opposing_ai)
+
+
 func _spawn_inert_opposing_hq() -> void:
 	var scene: PackedScene = _opposing_inert_scene()
 	if scene == null:
@@ -328,6 +367,12 @@ func set_opposing_hq(hq: Node2D) -> void:
 	_opposing_hq = hq
 
 
+func set_player_hq(hq: Node2D) -> void:
+	# AI-vs-AI: the "player slot" AIController calls this from its _spawn_hq
+	# so Main's win-condition tracks the correct node. Mirrors set_opposing_hq.
+	_player_hq = hq
+
+
 func _install_win_overlay() -> void:
 	_win_overlay = WIN_OVERLAY_SCENE.instantiate()
 	add_child(_win_overlay)
@@ -336,27 +381,35 @@ func _install_win_overlay() -> void:
 func _check_win_conditions() -> void:
 	if _match_ended:
 		return
+	# AI-vs-AI: hard timeout so a stalemate doesn't hang headless batches.
+	if GameState.ai_vs_ai_mode and GameState.sim_seconds() >= AI_VS_AI_MAX_DURATION_SIM_SEC:
+		_finalize_match("timeout", "NONE")
+		return
 	if _player_hq != null and not is_instance_valid(_player_hq):
-		_match_ended = true
-		MatchStats.match_end({
-			"result": "defeat",
-			"winner_faction": "AI" if GameState.ai_enabled else "NONE",
-			"duration_sim_sec": GameState.sim_seconds(),
-		})
-		GameState.end_match()
+		_finalize_match("defeat", "AI" if GameState.ai_enabled else "NONE")
 		if _win_overlay != null:
 			_win_overlay.show_defeat()
 		return
 	if _opposing_hq != null and not is_instance_valid(_opposing_hq):
-		_match_ended = true
-		MatchStats.match_end({
-			"result": "victory",
-			"winner_faction": "PLAYER",
-			"duration_sim_sec": GameState.sim_seconds(),
-		})
-		GameState.end_match()
+		_finalize_match("victory", "PLAYER")
 		if _win_overlay != null:
 			_win_overlay.show_victory()
+
+
+func _finalize_match(result: String, winner_faction: String) -> void:
+	_match_ended = true
+	MatchStats.match_end({
+		"result": result,
+		"winner_faction": winner_faction,
+		"duration_sim_sec": GameState.sim_seconds(),
+	})
+	GameState.end_match()
+	# AI-vs-AI is a headless batch run; quit the process so the calling script
+	# (CI, balance lab) sees an exit code and can move on to the next seed.
+	# Deferred so MatchStats's close-on-end and any in-flight queue_redraw
+	# settle before SceneTree teardown.
+	if GameState.ai_vs_ai_mode:
+		get_tree().quit.call_deferred()
 
 
 func _get_ai_spawn_position() -> Vector2:

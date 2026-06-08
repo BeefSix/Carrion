@@ -214,6 +214,13 @@ func _process(delta: float) -> void:
 	_update_veterancy()
 
 
+func is_engaged() -> bool:
+	# Public accessor for the cached engagement state. Consumed by AITactician
+	# (H3) so it can skip overriding move orders on units that are already
+	# fighting. Reads the same 2Hz-refreshed cache _process maintains.
+	return _engaged_cached
+
+
 func _is_engaged() -> bool:
 	# Routed through GameState.is_hostile (AUDIT H4) so the Military mirror
 	# accrues combat_time for XP - the previous u.faction == faction skip

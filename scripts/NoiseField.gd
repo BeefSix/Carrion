@@ -135,12 +135,35 @@ func _input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	var decay: float = NOISE_DECAY_RATE * delta
 	var to_remove: Array = []
+	# H5 follow-up: pre-fix the H5 retry behavior fired _maybe_trigger_horde
+	# every physics frame on every above-threshold emitter while the global
+	# cooldown was active, flooding stdout and (more importantly) MatchStats
+	# with thousands of horde_suppressed events per second. Gate the entire
+	# per-emitter tier check on the global cooldown / pop cap up front so the
+	# H5 intent (re-armed tiers re-fire when blockers clear) is preserved
+	# without the per-frame retry spam.
+	var now_sec: float = Time.get_ticks_msec() / 1000.0
+	var horde_on_cooldown: bool = (now_sec - _last_horde_time) < HORDE_COOLDOWN
+	var pop_capped: bool = false
+	var zf = get_tree().get_first_node_in_group("zombie_field")
+	if zf != null and zf.has_method("get_zombie_count"):
+		pop_capped = zf.get_zombie_count() >= MAX_ZOMBIE_POPULATION
+	var hordes_blocked: bool = horde_on_cooldown or pop_capped
 	for i in range(_emitters.size()):
 		var e = _emitters[i]
 		e.intensity = max(0.0, e.intensity - decay)
 
 		if e.intensity < SMALL_THRESHOLD:
 			e.tiers_fired = [false, false, false, false]
+
+		if hordes_blocked:
+			# Skip the tier check this frame; _maybe_trigger_horde would just
+			# reject and emit a noise event. Tiers_fired stays armed (or not),
+			# so a sustained noise excursion still triggers the moment the
+			# cooldown / pop cap clears.
+			if e.intensity < MIN_INTENSITY:
+				to_remove.append(i)
+			continue
 
 		# H5: only consume the tier flag when the horde *actually* fires. Pre-fix
 		# the flag was set before _maybe_trigger_horde checked cooldown / pop

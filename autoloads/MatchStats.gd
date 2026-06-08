@@ -116,6 +116,7 @@ func _build_header() -> Dictionary:
 		"schema": SCHEMA_VERSION,
 		"seed": GameState.match_seed,
 		"matchup": {"player": player_name, "ai": ai_name},
+		"ai_vs_ai": GameState.ai_vs_ai_mode,
 		"map": {"source": map_source, "size_tiles": 192},
 		"started_wall": Time.get_datetime_string_from_system(),
 		"constants": {
