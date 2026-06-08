@@ -1,13 +1,19 @@
 class_name Looter
 extends "res://scripts/CombatUnit.gd"
 
+# Sub-state machine (territorial farmer redesign 2026-06-08; DESIGN_MASTER §7.1):
+#   NONE          - idle at work anchor, will reconsider next tick
+#   HUNT_APPROACH - walking toward a zombie inside the leash zone
+#   HUNT_FIRE     - in magnum range, firing + back-away kite
+#   RETURN_HOME   - carrying scrap, fast-running to the home CP to deposit
+#   PATROL        - slow walk back to the work anchor when no target is in zone
+# (Previous RETURN_TO_HUNT / SEARCH states are gone with the kill-memory
+# loop they served - the work-anchor is the canonical "where I work" now.)
 enum Sub {
 	NONE,
 	HUNT_APPROACH,
 	HUNT_FIRE,
 	RETURN_HOME,
-	RETURN_TO_HUNT,
-	SEARCH,
 	PATROL,
 }
 
@@ -17,18 +23,35 @@ const MAGNUM_RANGE := 128.0
 const MAGNUM_NOISE := 20.0
 
 # Projectile config: heavier brass-toned bullet to read as a magnum round.
-# Speed is 2x move_speed (set at fire time). Looter at 96 -> 192 px/s.
+# Speed is 4x move_speed (set at fire time, see _fire_at).
 const PROJECTILE_COLOR := Color(0.92, 0.66, 0.30)
 const BASE_ACCURACY_DEG := 5.0  # mid-range between Rifleman (4) and HG (8)
 const HUNT_VISION := 384.0
 const SALVAGE_PER_KILL := 25
 const CARRY_CAP := 25
 const INTERACTION_RANGE := 80.0
-const KILL_AREA_ARRIVE_RANGE := 80.0
 const RETARGET_INTERVAL := 0.3
-const SEARCH_DURATION := 6.0
-const SEARCH_RADIUS := 150.0
-const SEARCH_WANDER_INTERVAL := 1.5
+
+# Territorial farmer (DESIGN_MASTER §7.1, designed 2026-06-08).
+# The Looter only hunts zombies whose CURRENT position is within
+# LEASH_RADIUS_PX of its work anchor. The anchor defaults to the home
+# Command Post on spawn; right-clicking ground re-stakes it. Hunt
+# targets that wander out of leash are dropped. Income is emergent:
+# Military noise pulls zombies into the leash zone where the Looter
+# farms them; the Looter does NOT chase outside.
+const LEASH_RADIUS_PX := 6.0 * 32.0
+# Hold-at-anchor arrive band. Same value the old PATROL_ARRIVE_RANGE
+# used; we keep the magic number under a clearer name now that the
+# patrol state is repurposed as "walk back to anchor".
+const ANCHOR_ARRIVE_RANGE := 48.0
+
+# Speed flips with load (DESIGN_MASTER §7.1 v1, binary). Slow while
+# working/hunting; fast while running scrap home. The burst only points
+# homeward - this is what structurally prevents the Looter from being a
+# rush unit (you cannot deploy it forward at the hauling speed). Both
+# placeholders, lab-tunable.
+const BASE_MOVE_SPEED := 60.0      # slow: working in the leash zone
+const HAULING_MOVE_SPEED := 120.0  # fast: carrying scrap to the CP
 
 # Carrying-loot avoidance: when a zombie is within AVOID_RANGE on the return
 # trip, retarget the nav agent to a sidestep waypoint instead of straight
@@ -47,14 +70,10 @@ const AVOID_RETARGET_INTERVAL := 0.5
 const KITE_BACKAWAY_RANGE := 56.0
 const KITE_BACKAWAY_SPEED_MULT := 1.0  # full move speed while kiting
 
-# Patrol behavior: when a Looter spawns with no kill memory and no zombie
-# in immediate vision, they pick small random offsets and walk to scan
-# new ground rather than standing still. Each leg is short so they cover
-# territory gradually and stay re-routable when zombies appear.
-const PATROL_RADIUS_MIN := 150.0
-const PATROL_RADIUS_MAX := 350.0
+# Patrol scan cadence. Repurposed: while walking BACK to the work anchor
+# (Sub.PATROL), the Looter looks for in-leash zombies every PATROL_SCAN
+# _INTERVAL seconds so it can divert into a hunt instead of marching past.
 const PATROL_SCAN_INTERVAL := 0.5
-const PATROL_ARRIVE_RANGE := 48.0
 
 var _sub: Sub = Sub.NONE
 var _target_zombie = null
@@ -63,14 +82,12 @@ var _carrying := 0
 var _attack_cooldown := 0.0
 var _retarget_timer := 0.0
 
-# _has_kill is the sentinel for "this Looter has killed something this match
-# and knows where to go hunt again." Previously we keyed on _last_kill_pos
-# being non-zero, which broke the moment a kill happened to land on (0, 0)
-# and was just a code smell otherwise.
-var _has_kill: bool = false
-var _last_kill_pos: Vector2 = Vector2.ZERO
-var _search_timer := 0.0
-var _search_wander_timer := 0.0
+# Work anchor (DESIGN_MASTER §7.1). Set to the home CP position on _ready;
+# rewritten by set_work_anchor() when the player right-clicks ground with
+# this Looter selected (the right-click is staked into a farming order, not
+# a raw move). Used by _find_zombie_to_hunt + _zombie_in_leash to constrain
+# hunting to the zone around this point.
+var _work_anchor: Vector2 = Vector2.ZERO
 
 # Throttle to avoid hammering _nav.target_position every frame on the return
 # trip; the nav agent re-paths whenever the target changes.
@@ -103,13 +120,45 @@ func _sprite_anim_speeds() -> Dictionary:
 func _ready() -> void:
 	super._ready()
 	_init_sprite()
+	# Anchor at the home CP on spawn. If for some reason no CP is owned
+	# (test scenes, edge cases) fall back to the spawn position itself.
+	var cp = _find_nearest_command_post()
+	_work_anchor = cp.position if cp != null else global_position
 
 
 func move_to(world_pos: Vector2) -> void:
+	# Right-clicking ground with a Looter selected re-stakes the work
+	# anchor at that spot instead of issuing a raw move order. The
+	# Looter walks there (via the normal MOVE command); once arrived it
+	# falls into the work loop and farms within LEASH_RADIUS of the new
+	# anchor. This is how the player tells a Looter "go work that infested
+	# house" without coding a separate verb.
+	set_work_anchor(world_pos)
 	super.move_to(world_pos)
-	# Preserve _last_kill_pos so the cycle resumes after the manual detour.
 	_sub = Sub.NONE
 	_target_zombie = null
+
+
+func set_work_anchor(world_pos: Vector2) -> void:
+	_work_anchor = world_pos
+	# Reset the hunt cycle so the next decision picks targets relative to
+	# the new zone, not the old one.
+	_target_zombie = null
+	_sub = Sub.NONE
+
+
+# Speed flips with load (DESIGN_MASTER §7.1 v1). Slow base when working
+# in the leash zone; fast when running scrap home. Layered on top of the
+# usual veterancy / suppression / squad multipliers so a suppressed
+# loaded Looter is still slow per the suppression rules. Replaces
+# Unit.get_effective_move_speed for this class.
+func get_effective_move_speed() -> float:
+	var base: float = HAULING_MOVE_SPEED if _carrying > 0 else BASE_MOVE_SPEED
+	base *= speed_mult
+	var sf = get_tree().get_first_node_in_group("suppression_field")
+	if sf != null and sf.has_method("speed_multiplier_at"):
+		base *= sf.speed_multiplier_at(global_position)
+	return base
 
 
 func _physics_process(delta: float) -> void:
@@ -127,8 +176,6 @@ func _physics_process(delta: float) -> void:
 		var new_kills: int = kills_count - _last_kills_count
 		_last_kills_count = kills_count
 		_carrying = min(_carrying + new_kills * SALVAGE_PER_KILL, CARRY_CAP)
-		_last_kill_pos = global_position
-		_has_kill = true
 		_target_zombie = null
 		_start_return_home()
 
@@ -147,10 +194,6 @@ func _physics_process(delta: float) -> void:
 			_tick_hunt_fire()
 		Sub.RETURN_HOME:
 			_tick_return_home()
-		Sub.RETURN_TO_HUNT:
-			_tick_return_to_hunt()
-		Sub.SEARCH:
-			_tick_search(delta)
 		Sub.PATROL:
 			_tick_patrol(delta)
 		_:
@@ -161,54 +204,95 @@ func _pick_next_action() -> void:
 	if _carrying > 0:
 		_start_return_home()
 		return
-	if _has_kill:
-		_start_return_to_hunt()
-		return
 	_try_start_auto_hunt()
 
 
 func _try_start_auto_hunt() -> void:
-	var z = _find_nearest_zombie_in_range(HUNT_VISION)
+	var z = _find_zombie_to_hunt()
 	if z == null:
-		# Nothing in vision - start patrolling small offsets to scan more
-		# ground instead of standing still until a zombie wanders by.
-		_start_patrol()
+		# No in-leash target - hold at anchor (walk back if drifted).
+		# This is the "territorial" guarantee: no zombie in our zone =
+		# we don't roam looking for one.
+		_hold_at_anchor()
 		return
 	_target_zombie = z
 	_sub = Sub.HUNT_APPROACH
 	_nav.target_position = z.global_position
 
 
+func _hold_at_anchor() -> void:
+	# If drifted off the anchor (e.g. chasing kited last shot or pushed
+	# by separation), walk back. Otherwise stand still and wait for a
+	# zombie to enter the zone (the noise/horde loop will pull them in).
+	if global_position.distance_to(_work_anchor) > ANCHOR_ARRIVE_RANGE:
+		_start_patrol()
+	else:
+		_sub = Sub.NONE
+		velocity = Vector2.ZERO
+
+
 func _start_patrol() -> void:
-	var angle: float = randf() * TAU
-	var dist: float = randf_range(PATROL_RADIUS_MIN, PATROL_RADIUS_MAX)
-	var target: Vector2 = global_position + Vector2.from_angle(angle) * dist
-	target.x = clamp(target.x, 50.0, 6094.0)
-	target.y = clamp(target.y, 50.0, 6094.0)
-	_patrol_target = target
+	# Repurposed (2026-06-08): the patrol state is now "walk back to the
+	# work anchor", NOT roam to a random offset. The territorial
+	# constraint means the Looter has exactly one place to go when
+	# unoccupied - home.
+	_patrol_target = _work_anchor
 	_patrol_scan_timer = 0.0
 	_sub = Sub.PATROL
-	_nav.target_position = _patrol_target
+	_nav.target_position = _work_anchor
 
 
 func _tick_patrol(delta: float) -> void:
-	# Scan for zombies on the way - if one comes into vision, switch to
-	# hunt immediately. Patrol is just to find new ground; the moment
-	# there's a target the patrol is over.
+	# Mid-walk-back, look for in-leash zombies and divert to hunt if one
+	# appears. The patrol target stays the anchor; only an actual target
+	# inside the leash interrupts the walk.
 	_patrol_scan_timer -= delta
 	if _patrol_scan_timer <= 0.0:
 		_patrol_scan_timer = PATROL_SCAN_INTERVAL
-		var z = _find_nearest_zombie_in_range(HUNT_VISION)
+		var z = _find_zombie_to_hunt()
 		if z != null:
 			_target_zombie = z
 			_sub = Sub.HUNT_APPROACH
 			_nav.target_position = z.global_position
 			return
-	# Arrived or nav stuck - pick a fresh patrol leg.
-	if global_position.distance_to(_patrol_target) <= PATROL_ARRIVE_RANGE or _nav.is_navigation_finished():
-		_start_patrol()
+	# Arrived at the anchor - stand still until next tick reconsiders.
+	if global_position.distance_to(_patrol_target) <= ANCHOR_ARRIVE_RANGE or _nav.is_navigation_finished():
+		_sub = Sub.NONE
+		velocity = Vector2.ZERO
 		return
 	_follow_navigation()
+
+
+func _zombie_in_leash(z) -> bool:
+	# Leash test: is the zombie inside our work zone? Measured from the
+	# work anchor (the zone center), NOT from the Looter's position -
+	# the leash is the work area, not a personal-bubble around the
+	# Looter. A zombie that wanders out of the zone is no longer our
+	# problem; another faction's noise can pull it elsewhere.
+	if z == null or not is_instance_valid(z):
+		return false
+	return _work_anchor.distance_to(z.global_position) <= LEASH_RADIUS_PX
+
+
+func _find_zombie_to_hunt():
+	# Like _find_nearest_zombie_in_range but with the leash filter
+	# layered on - only zombies INSIDE the work zone qualify, even if
+	# closer ones exist outside it. This is the core territorial rule
+	# that keeps the Looter from chasing maps.
+	var best = null
+	var best_dist := HUNT_VISION
+	for u in get_tree().get_nodes_in_group("units"):
+		if u == self or not is_instance_valid(u):
+			continue
+		if u.faction != GameState.Faction.ZOMBIE:
+			continue
+		if _work_anchor.distance_to(u.global_position) > LEASH_RADIUS_PX:
+			continue
+		var d: float = global_position.distance_to(u.global_position)
+		if d <= best_dist:
+			best_dist = d
+			best = u
+	return best
 
 
 func _start_return_home() -> void:
@@ -220,22 +304,20 @@ func _start_return_home() -> void:
 	_nav.target_position = _home_base.position
 
 
-func _start_return_to_hunt() -> void:
-	if global_position.distance_to(_last_kill_pos) <= KILL_AREA_ARRIVE_RANGE:
-		_enter_search()
-		return
-	_sub = Sub.RETURN_TO_HUNT
-	_nav.target_position = _last_kill_pos
-
-
-func _enter_search() -> void:
-	_sub = Sub.SEARCH
-	_search_timer = SEARCH_DURATION
-	_search_wander_timer = 0.0
+# (Removed 2026-06-08: _start_return_to_hunt + _enter_search. The
+# kill-memory loop they served is gone - the work anchor is now the
+# canonical "where I work" and post-deposit the Looter just resumes the
+# hunt cycle via _pick_next_action -> _try_start_auto_hunt.)
 
 
 func _tick_hunt_approach() -> void:
 	if _target_zombie == null or not is_instance_valid(_target_zombie):
+		_sub = Sub.NONE
+		return
+	# Leash break: target wandered out of our zone, abandon and let
+	# something in-zone be picked up next tick.
+	if not _zombie_in_leash(_target_zombie):
+		_target_zombie = null
 		_sub = Sub.NONE
 		return
 	var dist := global_position.distance_to(_target_zombie.global_position)
@@ -251,6 +333,10 @@ func _tick_hunt_approach() -> void:
 
 func _tick_hunt_fire() -> void:
 	if _target_zombie == null or not is_instance_valid(_target_zombie):
+		_sub = Sub.NONE
+		return
+	if not _zombie_in_leash(_target_zombie):
+		_target_zombie = null
 		_sub = Sub.NONE
 		return
 	var dist := global_position.distance_to(_target_zombie.global_position)
@@ -350,43 +436,10 @@ func _try_defensive_fire() -> void:
 	z.take_damage(resolve_damage(raw, self, z), self)
 
 
-func _tick_return_to_hunt() -> void:
-	var z = _find_nearest_zombie_in_range(HUNT_VISION)
-	if z != null:
-		_target_zombie = z
-		_sub = Sub.HUNT_APPROACH
-		_nav.target_position = z.global_position
-		return
-	if global_position.distance_to(_last_kill_pos) <= KILL_AREA_ARRIVE_RANGE:
-		_enter_search()
-		return
-	_follow_navigation()
-
-
-func _tick_search(delta: float) -> void:
-	_search_timer -= delta
-	var z = _find_nearest_zombie_in_range(HUNT_VISION)
-	if z != null:
-		_target_zombie = z
-		_sub = Sub.HUNT_APPROACH
-		_nav.target_position = z.global_position
-		return
-	if _search_timer <= 0.0:
-		_sub = Sub.NONE
-		velocity = Vector2.ZERO
-		return
-	_search_wander_timer -= delta
-	if _search_wander_timer <= 0.0:
-		_search_wander_timer = SEARCH_WANDER_INTERVAL
-		var offset := Vector2(randf_range(-SEARCH_RADIUS, SEARCH_RADIUS), randf_range(-SEARCH_RADIUS, SEARCH_RADIUS))
-		var t: Vector2 = _last_kill_pos + offset
-		t.x = clamp(t.x, 50.0, 6094.0)
-		t.y = clamp(t.y, 50.0, 6094.0)
-		_nav.target_position = t
-	if not _nav.is_navigation_finished():
-		_follow_navigation()
-	else:
-		velocity = Vector2.ZERO
+# (Removed 2026-06-08: _tick_return_to_hunt + _tick_search. Their job -
+# remember the last kill spot, walk back, then wander randomly looking
+# for the next one - is subsumed by the work anchor and the per-tick
+# in-leash scan in _try_start_auto_hunt / _tick_patrol.)
 
 
 func _deposit_at_home() -> void:

@@ -7,8 +7,8 @@ size = Vector2(18, 18)
 
 [node name="Looter" type="CharacterBody2D" groups=["units", "player_units"]]
 script = ExtResource("1_looter")
-max_hp = 60
-move_speed = 96.0
+max_hp = 35
+move_speed = 60.0
 body_color = Color(0.353, 0.4, 0.267, 1)
 clean_kills = true
 size_px = 18
@@ -20,7 +20,7 @@ shape = SubResource("RectangleShape2D_looter")
 path_desired_distance = 16.0
 target_desired_distance = 24.0
 radius = 9.0
-max_speed = 96.0
+max_speed = 120.0
 avoidance_enabled = false
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
