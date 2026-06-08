@@ -123,15 +123,45 @@ func _update_posture() -> void:
 
 
 func _enter_attack() -> void:
+	var prev: String = get_state_name()
 	_state = State.ATTACK
-	_peak_combat = controller.get_combat_count()
-	controller.tactician.set_attack_order(controller.get_enemy_hq_position())
+	var army_size: int = controller.get_combat_count()
+	_peak_combat = army_size
+	var target: Vector2 = controller.get_enemy_hq_position()
+	controller.tactician.set_attack_order(target)
+	# Telemetry: surface the transition + the parameters of the order so the
+	# timeline can answer "did this AI ever attack, and with what?". Logged
+	# AFTER the state change so the snapshot shows the new state.
+	MatchStats.log_event(&"ai_posture_changed", {
+		"controller": controller.get_controller_id(),
+		"from": prev,
+		"to": get_state_name(),
+	})
+	MatchStats.log_event(&"ai_attack_ordered", {
+		"controller": controller.get_controller_id(),
+		"target_pos": [target.x, target.y],
+		"army_size": army_size,
+	})
 
 
 func _enter_retreat() -> void:
+	var prev: String = get_state_name()
 	_state = State.RETREAT
 	_peak_combat = 0
 	controller.tactician.set_retreat_order(controller.get_hq_position())
+	MatchStats.log_event(&"ai_posture_changed", {
+		"controller": controller.get_controller_id(),
+		"from": prev,
+		"to": get_state_name(),
+	})
+
+
+func get_step() -> int:
+	# Public accessor for the build-order step counter. Consumed by
+	# AIController._emit_phase_snapshot so the JSONL records progress
+	# through BUILD_ORDER without leaking the field name to the rest of
+	# the codebase.
+	return _step
 
 
 func get_state_name() -> String:

@@ -292,6 +292,102 @@ def default_directory() -> Path:
     return Path.cwd() / "matches"
 
 
+def _print_timeline(match_path: Path) -> int:
+    """--timeline mode: chronological AI decision log for both controllers."""
+    match = load_match(match_path)
+    if match is None:
+        print(f"error: could not parse {match_path}", file=sys.stderr)
+        return 1
+    header = match["header"]
+    matchup = header.get("matchup", {})
+    is_ava = header.get("ai_vs_ai", False)
+    dgs = header.get("constants", {}).get("dispatch_group_size", "?")
+    print(f"# Timeline: {match_path.name}")
+    print(
+        f"# matchup: player={matchup.get('player', '?')} ai={matchup.get('ai', '?')} "
+        f"(ai_vs_ai={is_ava})  dispatch_group_size={dgs}  seed={header.get('seed', '?')}"
+    )
+    end = next((e for e in reversed(match["events"]) if e.get("e") == "match_end"), None)
+    if end is not None:
+        print(
+            f"# outcome: {end.get('result', '?')} winner={end.get('winner_faction', '?')} "
+            f"duration_sim_sec={end.get('duration_sim_sec', 0):.0f}"
+        )
+    print()
+    print(f"{'sim_t':>9}  {'ctrl':<7}  {'event':<22}  details")
+    print(f"{'-'*9}  {'-'*7}  {'-'*22}  {'-'*40}")
+    # AI-side event vocabulary
+    AI_EVENTS = {
+        "ai_phase",
+        "ai_posture_changed",
+        "ai_attack_ordered",
+        "ai_unit_dispatched",
+    }
+    # Stable order on ties: posture/order/dispatch events first, snapshots
+    # second, so a single t reads "decision then state".
+    EVENT_SORT_ORDER = {
+        "ai_posture_changed": 0,
+        "ai_attack_ordered": 1,
+        "ai_unit_dispatched": 2,
+        "ai_phase": 3,
+    }
+    rows = []
+    for ev in match["events"]:
+        if ev.get("e") not in AI_EVENTS:
+            continue
+        rows.append(ev)
+    rows.sort(key=lambda e: (float(e.get("t", 0.0)), EVENT_SORT_ORDER.get(e.get("e"), 99)))
+    if not rows:
+        print("(no AI decision events found - was this match run after the AI telemetry was wired?)")
+        return 0
+    for ev in rows:
+        t = float(ev.get("t", 0.0))
+        ctrl = ev.get("controller", "?")
+        etype = ev.get("e", "?")
+        if etype == "ai_phase":
+            details = (
+                f"step={ev.get('step', '?')} state={ev.get('state', '?')} "
+                f"sal={ev.get('salvage', '?')} looters={ev.get('looters', '?')} "
+                f"combat={ev.get('combat', '?')} barracks={ev.get('has_barracks', '?')}"
+            )
+        elif etype == "ai_posture_changed":
+            details = f"{ev.get('from', '?')} -> {ev.get('to', '?')}"
+        elif etype == "ai_attack_ordered":
+            tp = ev.get("target_pos", [0, 0])
+            details = f"target=[{tp[0]:.0f},{tp[1]:.0f}] army_size={ev.get('army_size', '?')}"
+        elif etype == "ai_unit_dispatched":
+            details = f"count={ev.get('count', '?')}"
+        else:
+            details = json.dumps({k: v for k, v in ev.items() if k not in ("t", "e", "controller")})
+        print(f"{t:>9.1f}  {ctrl:<7}  {etype:<22}  {details}")
+    # Summary at the bottom answers the operator's question without scanning.
+    print()
+    reached_attack = {c: any(e.get("e") == "ai_posture_changed" and e.get("controller") == c and e.get("to") == "ATTACK"
+                              for e in rows)
+                       for c in ("player", "ai")}
+    last_state = {}
+    for ev in rows:
+        if ev.get("e") == "ai_phase":
+            last_state[ev.get("controller")] = ev.get("state")
+    print("## Summary")
+    for ctrl in ("player", "ai"):
+        if reached_attack[ctrl]:
+            atks = [e for e in rows
+                    if e.get("e") == "ai_attack_ordered" and e.get("controller") == ctrl]
+            first = atks[0] if atks else None
+            if first is not None:
+                tp = first.get("target_pos", [0, 0])
+                print(
+                    f"  {ctrl}: REACHED ATTACK at t={float(first.get('t', 0.0)):.1f}s  "
+                    f"target=[{tp[0]:.0f},{tp[1]:.0f}] army_size={first.get('army_size', '?')}"
+                )
+            else:
+                print(f"  {ctrl}: REACHED ATTACK (no order recorded?)")
+        else:
+            print(f"  {ctrl}: NEVER attacked. last observed state={last_state.get(ctrl, '?')}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Aggregate Long Wake match telemetry.")
     parser.add_argument(
@@ -300,7 +396,14 @@ def main() -> int:
         default=str(default_directory()),
         help="Directory of *.jsonl match logs. Defaults to %APPDATA%/Godot/app_userdata/Carrion Prototype/matches.",
     )
+    parser.add_argument(
+        "--timeline",
+        metavar="MATCH_JSONL",
+        help="Single-match mode: print a chronological side-by-side AI decision log for the given .jsonl file.",
+    )
     args = parser.parse_args()
+    if args.timeline:
+        return _print_timeline(Path(args.timeline))
     return report(Path(args.directory))
 
 

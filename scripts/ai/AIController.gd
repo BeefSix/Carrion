@@ -34,8 +34,17 @@ var salvage: int = 200
 var strategist: AIStrategist
 var tactician: AITactician
 
+const PHASE_SNAPSHOT_INTERVAL := 10.0  # sim seconds between ai_phase snapshots
+const LOOTER_SCRIPT := preload("res://scripts/Looter.gd")
+
 var _strategic_timer: float = 0.0
 var _tactical_timer: float = 0.0
+# Sim-time anchor for phase snapshots (NOT a delta-accumulating timer).
+# Pre-fix, accumulating _process delta at Engine.time_scale = 8x produced
+# snapshots ~8x more often than 10 sim sec because the scaled delta drove
+# the timer while sim_seconds() advances independently. Using sim_seconds()
+# directly gives a stable 10-sim-second cadence regardless of time_scale.
+var _next_phase_snapshot_sim: float = 0.0
 var _hq: Node2D = null
 var _barracks: Node2D = null
 
@@ -81,9 +90,34 @@ func _process(delta: float) -> void:
 		_tactical_timer = 0.0
 		tactician.evaluate()
 
+	var now_sim: float = GameState.sim_seconds()
+	if now_sim >= _next_phase_snapshot_sim:
+		_next_phase_snapshot_sim = now_sim + PHASE_SNAPSHOT_INTERVAL
+		_emit_phase_snapshot()
+
 
 func is_alive() -> bool:
 	return _hq != null and is_instance_valid(_hq)
+
+
+# Stable controller identity for the telemetry stream. "player" = the AI
+# driving the player slot in AI-vs-AI mode; "ai" = the opposing slot or
+# the only AI in single-AI mode. Reads of the JSONL key off this string
+# so both sides can be charted on one timeline.
+func get_controller_id() -> String:
+	return "player" if as_player_slot else "ai"
+
+
+func _emit_phase_snapshot() -> void:
+	MatchStats.log_event(&"ai_phase", {
+		"controller": get_controller_id(),
+		"step": strategist.get_step() if strategist != null else -1,
+		"state": strategist.get_state_name() if strategist != null else "UNKNOWN",
+		"salvage": salvage,
+		"looters": count_units_with_script(LOOTER_SCRIPT),
+		"combat": get_combat_count(),
+		"has_barracks": has_barracks(),
+	})
 
 
 # ---------- Strategist-facing API (production) ----------

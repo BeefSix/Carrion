@@ -98,6 +98,7 @@ func _evaluate_attack(units: Array) -> void:
 	# Pass 2: if the rally has reached critical mass, dispatch every staged
 	# unit at once. They march together rather than trickling.
 	if staged_count >= GameState.dispatch_group_size:
+		var dispatched_count: int = 0
 		for u in units:
 			if not is_instance_valid(u) or not u.has_method("move_to"):
 				continue
@@ -107,7 +108,13 @@ func _evaluate_attack(units: Array) -> void:
 			if u.global_position.distance_to(rally_pt) > ARRIVED_THRESHOLD_PX:
 				continue
 			_dispatched[id] = true
+			dispatched_count += 1
 			_issue_if_changed(u, _target_pos)
+		if dispatched_count > 0:
+			MatchStats.log_event(&"ai_unit_dispatched", {
+				"controller": controller.get_controller_id(),
+				"count": dispatched_count,
+			})
 
 
 func _evaluate_retreat(units: Array) -> void:
