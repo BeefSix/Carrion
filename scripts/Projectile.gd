@@ -1,6 +1,12 @@
 class_name Projectile
 extends Area2D
 
+# Preload the CombatUnit script so resolve_damage is callable here. The
+# globally-registered class_name CombatUnit isn't always parsed before
+# Projectile (parser order depends on which scene Godot loads first); the
+# preload makes the dependency explicit and order-independent.
+const CombatUnitScript := preload("res://scripts/CombatUnit.gd")
+
 # Direct-fire projectile. Travels in a straight line from origin to a velocity
 # direction; on first collision with a CollisionObject2D (Unit or Building/Wall
 # StaticBody2D) resolves damage if applicable and despawns. Arc variant
@@ -188,8 +194,13 @@ func _resolve_collision(collider) -> void:
 			_despawn()
 			return
 		if collider.has_method("take_damage"):
-			var reduced: int = max(1, int(round(damage * BUILDING_DAMAGE_FRACTION)))
-			collider.take_damage(reduced, firer)
+			# Counter-system seam (DESIGN_MASTER §6.1): resolve through
+			# CombatUnitScript.resolve_damage so armor and the size x type matrix
+			# apply to building damage too. Neutral matrix today; the
+			# BUILDING_DAMAGE_FRACTION pre-scale stays since it's the "bullets
+			# chip slowly" intent, separate from per-target armor.
+			var reduced: float = damage * BUILDING_DAMAGE_FRACTION
+			collider.take_damage(CombatUnitScript.resolve_damage(reduced, firer, collider), firer)
 	_despawn()
 
 
@@ -202,7 +213,10 @@ func _resolve_impact_on_unit(target_unit) -> void:
 	if area_radius > 0.0:
 		_apply_area_damage(position)
 	elif target_unit.has_method("take_damage"):
-		target_unit.take_damage(int(round(damage)), firer)
+		# Counter-system seam: resolve through CombatUnitScript.resolve_damage so
+		# the damage_type x unit_size matrix + armor apply at impact. Neutral
+		# matrix in this batch -> arithmetically identical to int(round(damage)).
+		target_unit.take_damage(CombatUnitScript.resolve_damage(damage, firer, target_unit), firer)
 	_despawn()
 
 
@@ -230,7 +244,8 @@ func _apply_area_damage(center: Vector2) -> void:
 				continue
 		if u.global_position.distance_squared_to(center) <= r_sq:
 			if u.has_method("take_damage"):
-				u.take_damage(int(round(damage)), firer)
+				# Counter-system seam: per-target resolve.
+				u.take_damage(CombatUnitScript.resolve_damage(damage, firer, u), firer)
 	# Opposing HQ splash (preserves HG's anti-HQ AOE from before projectiles).
 	# Group selection mirrors the unit's own ownership tag.
 	var enemy_group: String = ""
@@ -242,7 +257,8 @@ func _apply_area_damage(center: Vector2) -> void:
 				continue
 			if b.global_position.distance_squared_to(center) <= r_sq:
 				if b.has_method("take_damage"):
-					b.take_damage(int(round(damage)))
+					# Counter-system seam: per-target resolve.
+					b.take_damage(CombatUnitScript.resolve_damage(damage, firer, b), firer)
 
 
 func _despawn() -> void:

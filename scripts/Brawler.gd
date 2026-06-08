@@ -1,4 +1,4 @@
-extends "res://scripts/Unit.gd"
+extends "res://scripts/CombatUnit.gd"
 
 const ATTACK_RANGE := 36.0
 const ATTACK_DAMAGE := 22
@@ -32,7 +32,7 @@ func _physics_process(delta: float) -> void:
 	_retarget_timer -= delta
 	if _retarget_timer <= 0:
 		_retarget_timer = RETARGET_INTERVAL
-		_target = _find_nearest_hostile()
+		_target = _find_nearest_hostile(ENGAGE_RANGE)
 
 	if _target == null or not is_instance_valid(_target):
 		velocity = Vector2.ZERO
@@ -42,7 +42,12 @@ func _physics_process(delta: float) -> void:
 	if dist <= ATTACK_RANGE:
 		velocity = Vector2.ZERO
 		if _attack_cooldown <= 0:
-			_target.take_damage(get_effective_damage(ATTACK_DAMAGE), self)
+			# Melee damage routed through resolve_damage so armor
+			# and the size x type matrix apply uniformly with the ranged path.
+			# Neutral matrix in this batch -> arithmetically identical to the
+			# prior take_damage(get_effective_damage, ...) call.
+			var raw: float = float(get_effective_damage(ATTACK_DAMAGE))
+			_target.take_damage(resolve_damage(raw, self, _target), self)
 			_attack_cooldown = ATTACK_PERIOD
 	else:
 		_nav.target_position = _target.global_position
@@ -57,48 +62,11 @@ func _try_strike_in_range(delta: float) -> void:
 	_retarget_timer -= delta
 	if _retarget_timer <= 0:
 		_retarget_timer = RETARGET_INTERVAL
-		_target = _find_nearest_hostile()
+		_target = _find_nearest_hostile(ENGAGE_RANGE)
 	if _target == null or not is_instance_valid(_target):
 		return
 	var dist := global_position.distance_to(_target.global_position)
 	if dist <= ATTACK_RANGE and _attack_cooldown <= 0:
-		_target.take_damage(get_effective_damage(ATTACK_DAMAGE), self)
+		var raw: float = float(get_effective_damage(ATTACK_DAMAGE))
+		_target.take_damage(resolve_damage(raw, self, _target), self)
 		_attack_cooldown = ATTACK_PERIOD
-
-
-# Survivor Brawler engages anything hostile: zombies (cross-faction always
-# hostile), opposing-team Military/Tribal/Survivor. Melee silent (NOISE_PER_HIT
-# = 0). Routed through GameState.is_hostile (AUDIT H4) so a future Survivor
-# mirror works the same way the Military mirror does.
-func _find_nearest_hostile():
-	var best = null
-	var best_dist := ENGAGE_RANGE
-	for u in get_tree().get_nodes_in_group("units"):
-		if u == self or not is_instance_valid(u):
-			continue
-		if not GameState.is_hostile(self, u):
-			continue
-		var d: float = global_position.distance_to(u.global_position)
-		if d <= best_dist:
-			best_dist = d
-			best = u
-	if best != null:
-		return best
-	return _find_nearest_hostile_hq(ENGAGE_RANGE)
-
-
-func _find_nearest_hostile_hq(range_px: float):
-	# Survivor Brawler engages anything non-Survivor, including opposing HQs.
-	var enemy_group: String = "player_buildings" if is_in_group("ai_units") else "ai_buildings"
-	var best = null
-	var best_dist := range_px
-	for b in get_tree().get_nodes_in_group(enemy_group):
-		if not is_instance_valid(b):
-			continue
-		if not b.is_in_group("hq"):
-			continue
-		var d: float = global_position.distance_to(b.global_position)
-		if d <= best_dist:
-			best_dist = d
-			best = b
-	return best

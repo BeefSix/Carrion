@@ -1,4 +1,4 @@
-extends "res://scripts/Unit.gd"
+extends "res://scripts/CombatUnit.gd"
 
 const ATTACK_RANGE := 160.0
 const ATTACK_PERIOD := 0.5
@@ -48,14 +48,14 @@ func _physics_process(delta: float) -> void:
 		_threat_cached = _find_nearest_threat_in_range(KITE_RANGE)
 	var threat = _threat_cached if (_threat_cached != null and is_instance_valid(_threat_cached)) else null
 	if threat != null:
-		_kite_from(threat)
+		_kite_from(threat, KITE_SPEED)
 	else:
 		velocity = Vector2.ZERO
 
 	_retarget_timer -= delta
 	if _retarget_timer <= 0:
 		_retarget_timer = RETARGET_INTERVAL
-		_target = _find_nearest_zombie()
+		_target = _find_nearest_hostile(ATTACK_RANGE)
 	if _target != null and is_instance_valid(_target):
 		var dist := global_position.distance_to(_target.global_position)
 		if dist <= ATTACK_RANGE and _attack_cooldown <= 0:
@@ -69,7 +69,7 @@ func _try_shoot_in_range(delta: float) -> void:
 	_retarget_timer -= delta
 	if _retarget_timer <= 0:
 		_retarget_timer = RETARGET_INTERVAL
-		_target = _find_nearest_zombie()
+		_target = _find_nearest_hostile(ATTACK_RANGE)
 	if _target == null or not is_instance_valid(_target):
 		return
 	var dist := global_position.distance_to(_target.global_position)
@@ -79,10 +79,10 @@ func _try_shoot_in_range(delta: float) -> void:
 
 
 func _fire_at(target) -> void:
-	# Noise fires at fire-time (per the projectile design doc). Damage is
-	# deferred to projectile impact - area_radius > 0 routes through the
-	# Projectile's AOE handler.
-	NoiseBus.emit(global_position, NOISE_PER_SHOT)
+	# Noise fires at fire-time (per the projectile design doc). Damage resolves
+	# at projectile-impact (Projectile.gd -> CombatUnit.resolve_damage);
+	# area_radius > 0 routes through the Projectile's AOE handler.
+	_emit_shot_noise(NOISE_PER_SHOT)
 	var spread: float = BASE_ACCURACY_DEG * (1.0 - squad_accuracy_bonus)
 	ProjectileManager.spawn_projectile({
 		"origin": global_position,
@@ -98,71 +98,5 @@ func _fire_at(target) -> void:
 		"color": PROJECTILE_COLOR,
 		"visual_width": 3.0,  # bullet radius in px (slightly bigger than Rifleman)
 	})
-
-
-func _find_nearest_zombie():
-	# Routed through GameState.is_hostile (AUDIT H4) - the previous faction-
-	# equality skip broke the Military mirror by dropping same-faction enemies.
-	# Falls back to opposing HQ when no hostile unit is in range.
-	var best = null
-	var best_dist := ATTACK_RANGE
-	for u in get_tree().get_nodes_in_group("units"):
-		if u == self or not is_instance_valid(u):
-			continue
-		if not GameState.is_hostile(self, u):
-			continue
-		var d: float = global_position.distance_to(u.global_position)
-		if d <= best_dist:
-			best_dist = d
-			best = u
-	if best != null:
-		return best
-	return _find_nearest_hostile_hq(ATTACK_RANGE)
-
-
-func _find_nearest_hostile_hq(range_px: float):
-	var enemy_group: String = "player_buildings" if is_in_group("ai_units") else "ai_buildings"
-	var best = null
-	var best_dist := range_px
-	for b in get_tree().get_nodes_in_group(enemy_group):
-		if not is_instance_valid(b):
-			continue
-		if not b.is_in_group("hq"):
-			continue
-		var d: float = global_position.distance_to(b.global_position)
-		if d <= best_dist:
-			best_dist = d
-			best = b
-	return best
-
-
-func _find_nearest_threat_in_range(range_px: float):
-	var best = null
-	var best_dist := range_px
-	for u in get_tree().get_nodes_in_group("units"):
-		if u == self or not is_instance_valid(u):
-			continue
-		if not GameState.is_hostile(self, u):
-			continue
-		var d: float = global_position.distance_to(u.global_position)
-		if d <= best_dist:
-			best_dist = d
-			best = u
-	for c in get_tree().get_nodes_in_group("corpses"):
-		if not is_instance_valid(c):
-			continue
-		var d: float = global_position.distance_to(c.global_position)
-		if d <= best_dist:
-			best_dist = d
-			best = c
-	return best
-
-
-func _kite_from(threat) -> void:
-	var away: Vector2 = global_position - threat.global_position
-	if away.length_squared() < 0.01:
-		away = Vector2.RIGHT
-	velocity = away.normalized() * KITE_SPEED
-	move_and_slide()
 
 
