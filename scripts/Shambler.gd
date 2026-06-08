@@ -218,10 +218,14 @@ const GROAN_MAGNITUDE := 30.0         # > HEARING_RELIABLE (15) -> reliable
 # Proximity acquire (2026-06-08 feel pass). 360 short-range detection
 # that bypasses the vision cone and edge/range fuzz. Runs every tick in
 # every active non-CHASE/non-ATTACK state so a zombie wandered or
-# pulled near a unit locks on. Same target filter as _find_visible_target
-# (faction/Walker/tribal_aligned exempt) - we are NOT lowering who counts
-# as a target, only how close detection works. Fixed acquisition delay
-# (no randf) so it's snappy AND deterministic per CLAUDE.md Rule #1.
+# pulled near a unit locks on. Eligibility filter is identical to the
+# cone path's: hostile faction only (faction != ZOMBIE), Walker
+# exemption (load-bearing Tribal immunity mechanic - zombies NEVER
+# target Walkers), tribal-aligned exemption (force-spawned zombies
+# treat Tribal as ally during their 30-sec alignment window). We are
+# NOT lowering who counts as a target, only how close detection works.
+# Fixed acquisition delay (no randf) so it's snappy AND deterministic
+# per CLAUDE.md Rule #1.
 const PROXIMITY_DETECT_PX := 96.0       # 3 tiles
 const PROXIMITY_ACQUISITION_DELAY := 0.05
 # (CLUSTER_CROWD_THRESHOLD / TRAVEL / REPEL constants removed 2026-06-08.
@@ -685,8 +689,9 @@ func _physics_process(delta: float) -> void:
 	# ATTACK (already biting). This covers the feel-test case where a
 	# unit walked into a packed horde and zombies ignored it because the
 	# cone-based vision missed any zombie not happening to face the unit.
-	# Same target filter as _find_visible_target; fixed-delay acquisition
-	# (no RNG per Determinism Rule #1).
+	# Eligibility filter (hostile faction, Walker exempt, tribal-aligned
+	# Tribal exempt) is enforced inside _find_proximity_target itself.
+	# Fixed-delay acquisition (no RNG per Determinism Rule #1).
 	if _zombie_state != ZombieState.CHASE and _zombie_state != ZombieState.ATTACK:
 		var prox = _find_proximity_target()
 		if prox != null and prox != _acquiring_target:
@@ -1317,11 +1322,22 @@ func _update_perception(_delta: float) -> void:
 # Proximity acquire (2026-06-08). 360 deg short-range detection that bypasses
 # the vision cone + edge/range fuzz so a unit standing right next to the
 # zombie is reliably noticed - the "walking into a packed horde and they
-# don't react" case the feel-test caught. Uses the SAME target filter as
-# _find_visible_target (faction != ZOMBIE, not Walker, not tribal-allied
-# Tribal); does NOT lower who counts as a target. Returns nearest valid
-# target within PROXIMITY_DETECT_PX, or null. LOS check kept so walls
-# still block (a zombie in the next room shouldn't smell through a wall).
+# don't react" case the feel-test caught.
+#
+# Eligibility (the same target filter the cone path enforces, written out
+# explicitly here so the rules don't depend on cross-reading another
+# function):
+#   - Skip self and invalid nodes.
+#   - Skip nodes without a faction property (buildings, etc.).
+#   - Skip ZOMBIE faction (no zombie-on-zombie targeting).
+#   - Skip the "walkers" group: Walkers are load-bearing for Tribal's
+#     zombie-immunity identity; zombies NEVER target them.
+#   - Skip TRIBAL faction while this zombie is tribal-aligned (the
+#     30-sec force-spawn alliance window).
+#
+# Returns nearest valid target within PROXIMITY_DETECT_PX, or null. LOS
+# check kept so walls still block (a zombie in the next room shouldn't
+# smell through a wall). No RNG.
 func _find_proximity_target():
 	var best = null
 	var best_dist: float = PROXIMITY_DETECT_PX
