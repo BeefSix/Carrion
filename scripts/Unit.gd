@@ -295,12 +295,31 @@ func _die(attacker = null) -> void:
 	var left_corpse: bool = _should_leave_corpse(attacker)
 	if left_corpse:
 		_spawn_corpse()
+	# Classify the death so analysis can split human deaths by what killed
+	# them. "zombie" = killed by Zombie faction; "enemy" = killed by an
+	# opposite-team non-zombie (the H4 hostility helper decides);
+	# "friendly" = same-team kill (FF or self-damage); "unknown" =
+	# attribution missing (decay, despawn, etc.).
+	var cause: String = "unknown"
+	var killer_faction_str: String = "UNKNOWN"
+	if attacker != null and is_instance_valid(attacker):
+		if "faction" in attacker:
+			killer_faction_str = GameState.faction_name(attacker.faction)
+			if attacker.faction == GameState.Faction.ZOMBIE:
+				cause = "zombie"
+			elif GameState.is_hostile(self, attacker):
+				cause = "enemy"
+			else:
+				cause = "friendly"
+		else:
+			cause = "enemy"  # building / structure attacker (no faction field)
 	MatchStats.log_event(&"unit_died", {
-		"faction": faction,
+		"faction": GameState.faction_name(faction),
 		"type": _telemetry_unit_type(),
 		"pos": [global_position.x, global_position.y],
-		"killer_faction": attacker.faction if attacker != null and is_instance_valid(attacker) and "faction" in attacker else -1,
+		"killer_faction": killer_faction_str,
 		"killer_type": _telemetry_attacker_type(attacker),
+		"cause": cause,
 		"left_corpse": left_corpse,
 		"veterancy": veterancy_level,
 	})
@@ -351,6 +370,7 @@ func _spawn_corpse() -> void:
 	c.position = global_position
 	c.original_max_hp = max_hp
 	c.was_military = (faction == GameState.Faction.MILITARY)
+	c.prev_faction = faction
 	c.veterancy_at_death = veterancy_level
 	c.return_delay = 30.0 + float(max_hp) / 5.0
 	get_parent().add_child(c)

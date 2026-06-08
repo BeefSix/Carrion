@@ -33,6 +33,10 @@ var custom_map_path: String = ""
 # Overridable via --seed=N CLI arg (after Godot's `--` separator).
 var match_seed: int = 0
 
+# AITactician rally → dispatch threshold. Overridable via --dispatch-group-size=N
+# CLI for balance sweeps; defaults to AITactician.ATTACK_DISPATCH_GROUP_SIZE.
+var dispatch_group_size: int = 4
+
 # Sim-time clock. Increments once per physics frame while _in_match is true,
 # so 60 ticks = 1 sim second regardless of Engine.time_scale (the F2 dev 4x
 # changes wall speed but not physics-frame count). MatchStats timestamps all
@@ -57,13 +61,19 @@ func reset_match() -> void:
 	# Pick the match seed. CLI override (--seed=N) wins; otherwise Godot's
 	# global randi() picks a fresh per-match seed. Either way, SimRng is
 	# reseeded so all sim randomness starts from a known point.
+	# Also parse --dispatch-group-size=N for AITactician's rally threshold;
+	# defaults to 4 if absent so non-sweep runs are unchanged.
 	var override_seed: int = -1
+	dispatch_group_size = 4
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--seed="):
-			var s: String = arg.substr(7)
+			var s: String = arg.substr("--seed=".length())
 			if s.is_valid_int():
 				override_seed = int(s)
-			break
+		elif arg.begins_with("--dispatch-group-size="):
+			var s: String = arg.substr("--dispatch-group-size=".length())
+			if s.is_valid_int():
+				dispatch_group_size = int(s)
 	if override_seed >= 0:
 		match_seed = override_seed
 	else:
@@ -112,6 +122,19 @@ func add_salvage(amount: int) -> void:
 # faction, so the Military mirror (player Military vs AI Military) actually
 # fights. Unit-specific design quirks (Hunter ignoring zombies, Looter only
 # hunting zombies) layer ON TOP of this helper; they're not in scope here.
+
+
+func faction_name(f: int) -> String:
+	# Canonical int -> string mapping. Used by MatchStats payloads (so the
+	# JSONL is self-describing without a separate enum-name table) and by
+	# any other code that wants to render a faction id for telemetry / UI.
+	match f:
+		Faction.MILITARY: return "MILITARY"
+		Faction.TRIBAL: return "TRIBAL"
+		Faction.ZOMBIE: return "ZOMBIE"
+		Faction.NEUTRAL: return "NEUTRAL"
+		Faction.SURVIVOR: return "SURVIVOR"
+		_: return "UNKNOWN"
 
 
 func is_owned_by_player(node) -> bool:

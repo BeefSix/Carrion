@@ -102,7 +102,7 @@ func _flush() -> void:
 
 
 func _build_header() -> Dictionary:
-	var player_name: String = _faction_name(GameState.player_faction)
+	var player_name: String = GameState.faction_name(GameState.player_faction)
 	# When ai_enabled is false the opposing HQ is inert (no AI faction).
 	# Record "none" so post-hoc analysis can separate human-vs-AI from
 	# human-vs-dummy matches.
@@ -110,7 +110,7 @@ func _build_header() -> Dictionary:
 	if GameState.ai_enabled:
 		# AI is hardcoded MILITARY in Main._spawn_ai_opponent today (see
 		# AUDIT.md H4) - keep the header honest about that.
-		ai_name = _faction_name(GameState.Faction.MILITARY)
+		ai_name = GameState.faction_name(GameState.Faction.MILITARY)
 	var map_source: String = "custom" if GameState.custom_map_path != "" else "procedural"
 	return {
 		"schema": SCHEMA_VERSION,
@@ -139,15 +139,6 @@ func _build_header() -> Dictionary:
 			"hearing_range_px": ShamblerScript.HEARING_RANGE_PX,
 			"vision_range_px": ShamblerScript.VISION_RANGE_PX,
 			"shambler_attack_damage": ShamblerScript.ATTACK_DAMAGE,
+			"dispatch_group_size": GameState.dispatch_group_size,
 		},
 	}
-
-
-func _faction_name(f: int) -> String:
-	match f:
-		GameState.Faction.MILITARY: return "MILITARY"
-		GameState.Faction.TRIBAL: return "TRIBAL"
-		GameState.Faction.ZOMBIE: return "ZOMBIE"
-		GameState.Faction.NEUTRAL: return "NEUTRAL"
-		GameState.Faction.SURVIVOR: return "SURVIVOR"
-		_: return "UNKNOWN"

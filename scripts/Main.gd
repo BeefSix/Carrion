@@ -18,7 +18,11 @@ const EDGE_SPAWN_KEEPOUT := 1200.0  # avoid dumping wanderers on top of the play
 
 # AI-vs-AI hard cap on match duration (sim seconds). If neither HQ falls by
 # then we force a "timeout" result so headless batches don't hang forever.
-const AI_VS_AI_MAX_DURATION_SIM_SEC := 1800.0
+# 600s gives ~10 sim min - enough for the strategist's ATTACK phase to enter
+# (units cross ATTACK_THRESHOLD at sim ~200s) and dispatch the rally pool at
+# least once. Late-game CPU saturation (471+ units) drags effective time_scale
+# to ~1x, so a longer cap turns sweep budgets into multi-hour runs.
+const AI_VS_AI_MAX_DURATION_SIM_SEC := 600.0
 
 # Per-faction corner spawns. Tile (18, 18) center inside the rubble edge band; clear zone
 # is the surrounding 12x12 tiles, big enough to drop HQ + a few small buildings + walls.
@@ -169,8 +173,10 @@ func _ready() -> void:
 		# player_buildings, sets _player_hq), one in the AI slot (existing
 		# behavior). Lootables, nav, MatchStats all work unchanged.
 		# Speed up sim so the 1800s sim-time safety cap doesn't take 30 min
-		# wall time when nothing decisive happens. 4x matches the F2 dev shortcut.
-		Engine.time_scale = DEV_SPEED
+		# wall time when nothing decisive happens. 8x makes a stalemated match
+		# fit in ~3.75 min wall and a 30-match sweep run in ~2 hr worst case.
+		# Headless has no rendering so the higher tick rate is CPU-only.
+		Engine.time_scale = DEV_SPEED * 2.0
 		_spawn_ai_vs_ai_opponents()
 	else:
 		_spawn_hq()

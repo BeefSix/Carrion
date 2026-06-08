@@ -12,6 +12,12 @@ const VETERAN_DAMAGE_SCALE := { 1: 1.0, 2: 1.15, 3: 1.25 }
 @export var return_delay: float = 42.0
 @export var was_military: bool = false
 @export var veterancy_at_death: int = 1
+# Full faction at time of death (GameState.Faction). The was_military bool
+# above used to be the only ancestry hint; this expands the record so
+# telemetry can report e.g. "Tribal corpse rose" once non-Military corpses
+# exist. Defaults to NEUTRAL when the spawner doesn't fill it in (older
+# call sites or test stubs).
+@export var prev_faction: int = GameState.Faction.NEUTRAL
 
 var _timer := 0.0
 var _initial_delay := 0.0
@@ -63,6 +69,7 @@ func _rise() -> void:
 	MatchStats.log_event(&"corpse_rose", {
 		"pos": [position.x, position.y],
 		"prev_was_military": was_military,
+		"prev_faction": GameState.faction_name(prev_faction),
 		"veterancy": veterancy_at_death,
 		"new_max_hp": z.max_hp,
 	})

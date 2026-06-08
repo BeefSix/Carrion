@@ -109,6 +109,12 @@ def report(directory: Path) -> int:
     print(f"matches analyzed: {len(matches)}")
     print()
 
+    # --- Comparison by dispatch_group_size ----------------------------------
+    # When the matches dir contains a sweep across dispatch values, lead with
+    # the side-by-side table so the operator sees the answer first. Falls back
+    # silently if all matches share one setting (or none recorded the value).
+    _print_dispatch_comparison(matches)
+
     # --- Win rates by side ---------------------------------------------------
     results = Counter()
     winners = Counter()
@@ -209,6 +215,73 @@ def report(directory: Path) -> int:
     print()
 
     return 0
+
+
+def _print_dispatch_comparison(matches: list[dict]) -> None:
+    """Comparison table across dispatch_group_size settings, sweep-style."""
+    groups: dict = {}
+    for m in matches:
+        dgs = m["header"].get("constants", {}).get("dispatch_group_size")
+        groups.setdefault(dgs, []).append(m)
+    # Only emit the comparison if multiple settings are present (sweep) AND
+    # at least one of them is an integer (i.e. not all None).
+    int_keys = [k for k in groups.keys() if isinstance(k, int)]
+    if len(int_keys) < 2:
+        return
+    int_keys.sort()
+    print("## Comparison by ATTACK_DISPATCH_GROUP_SIZE")
+    rows: list[tuple[str, list[str]]] = []
+
+    def add_row(label: str, fn) -> None:
+        rows.append((label, [fn(groups[k]) for k in int_keys]))
+
+    add_row("matches", lambda ms: str(len(ms)))
+    add_row(
+        "victory rate",
+        lambda ms: fmt_pct(sum(1 for m in ms if m["end"].get("result") == "victory"), len(ms)),
+    )
+    add_row(
+        "timeout rate",
+        lambda ms: fmt_pct(sum(1 for m in ms if m["end"].get("result") == "timeout"), len(ms)),
+    )
+    def mean_duration(ms):
+        durations = [float(m["end"].get("duration_sim_sec", 0.0)) for m in ms]
+        return f"{statistics.mean(durations):.0f}s" if durations else "-"
+    add_row("mean duration", mean_duration)
+
+    # Human deaths split by cause: filter out faction=ZOMBIE on the victim
+    # (we want non-zombie unit_died events) then bucket by `cause`.
+    def deaths_by_cause(ms, target_cause):
+        n = 0
+        for m in ms:
+            for ev in m["events"]:
+                if ev.get("e") != "unit_died":
+                    continue
+                if ev.get("faction") == "ZOMBIE":
+                    continue
+                if ev.get("cause") == target_cause:
+                    n += 1
+        return n
+    def total_human_deaths(ms):
+        return sum(
+            1
+            for m in ms
+            for ev in m["events"]
+            if ev.get("e") == "unit_died" and ev.get("faction") != "ZOMBIE"
+        )
+    add_row("human deaths", lambda ms: str(total_human_deaths(ms)))
+    for cause in ("zombie", "enemy", "friendly", "unknown"):
+        add_row(f"  by {cause}", lambda ms, c=cause: str(deaths_by_cause(ms, c)))
+
+    # Column-aligned print. Label column is left-padded to the longest label;
+    # value columns are right-aligned to a fixed width.
+    label_w = max(len(r[0]) for r in rows)
+    col_w = 10
+    header_cells = [f"size={k:<2}".rjust(col_w) for k in int_keys]
+    print(f"{'':<{label_w}}  " + "".join(header_cells))
+    for label, values in rows:
+        print(f"{label:<{label_w}}  " + "".join(v.rjust(col_w) for v in values))
+    print()
 
 
 def default_directory() -> Path:

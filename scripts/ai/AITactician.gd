@@ -22,6 +22,9 @@ extends RefCounted
 
 enum Order { HOLD, ATTACK, RETREAT }
 
+# Default dispatch threshold when no CLI override is in play. Live value is
+# read from GameState.dispatch_group_size at evaluate time so balance sweeps
+# can vary it per-match via --dispatch-group-size=N without recompiling.
 const ATTACK_DISPATCH_GROUP_SIZE := 4
 const ARRIVED_THRESHOLD_PX := 100.0
 const TARGET_REISSUE_EPSILON_PX := 8.0
@@ -94,7 +97,7 @@ func _evaluate_attack(units: Array) -> void:
 			_issue_if_changed(u, rally_pt)
 	# Pass 2: if the rally has reached critical mass, dispatch every staged
 	# unit at once. They march together rather than trickling.
-	if staged_count >= ATTACK_DISPATCH_GROUP_SIZE:
+	if staged_count >= GameState.dispatch_group_size:
 		for u in units:
 			if not is_instance_valid(u) or not u.has_method("move_to"):
 				continue
