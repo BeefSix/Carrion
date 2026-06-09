@@ -46,6 +46,15 @@ const RETARGET_INTERVAL := 0.3
 # Military noise pulls zombies into the leash zone where the Looter
 # farms them; the Looter does NOT chase outside.
 const LEASH_RADIUS_PX := 6.0 * 32.0
+# Self-defense radius (2026-06-09 amendment). The leash filter alone
+# can leave a Looter standing still while a zombie chews on it - any
+# zombie outside the leash zone (anchor-distance > 192 px) but close
+# enough to bite the Looter (Looter-distance < 36 px) was being
+# filtered out by _find_zombie_to_hunt. "If I can hit it with my
+# magnum, I will" - set to MAGNUM_RANGE so engagement is bounded by
+# what the Looter can actually shoot. Slightly under the leash so
+# territorial behavior dominates when both zones overlap.
+const SELF_DEFENSE_RADIUS_PX := MAGNUM_RANGE
 # Hold-at-anchor arrive band. Same value the old PATROL_ARRIVE_RANGE
 # used; we keep the magic number under a clearer name now that the
 # patrol state is repurposed as "walk back to anchor".
@@ -98,7 +107,7 @@ var _hunt_scan_timer: float = 0.0
 # Work anchor (DESIGN_MASTER §7.1). Set to the home CP position on _ready;
 # rewritten by set_work_anchor() when the player right-clicks ground with
 # this Looter selected (the right-click is staked into a farming order, not
-# a raw move). Used by _find_zombie_to_hunt + _zombie_in_leash to constrain
+# a raw move). Used by _find_zombie_to_hunt + _zombie_in_engagement_zone to constrain
 # hunting to the zone around this point.
 var _work_anchor: Vector2 = Vector2.ZERO
 
@@ -286,22 +295,34 @@ func _tick_patrol(delta: float) -> void:
 	_follow_navigation()
 
 
-func _zombie_in_leash(z) -> bool:
-	# Leash test: is the zombie inside our work zone? Measured from the
-	# work anchor (the zone center), NOT from the Looter's position -
-	# the leash is the work area, not a personal-bubble around the
-	# Looter. A zombie that wanders out of the zone is no longer our
-	# problem; another faction's noise can pull it elsewhere.
+func _zombie_in_engagement_zone(z) -> bool:
+	# Union of two zones (2026-06-09):
+	#   1. Leash - zombie inside the territorial work area (anchor-centered).
+	#      This is the original "this is my zone" rule, unchanged.
+	#   2. Self-defense - zombie close enough to the LOOTER itself to be a
+	#      personal threat, regardless of anchor distance. Without this, a
+	#      Looter that's drifted off-anchor (or whose anchor sits at a corner
+	#      while a zombie approaches from outside) just stands there and
+	#      gets bit. "If I can shoot it, I will."
+	# Self-defense radius < leash radius so territorial behavior dominates
+	# when both zones overlap; the new branch only matters at the leash edge
+	# and beyond.
 	if z == null or not is_instance_valid(z):
 		return false
-	return _work_anchor.distance_to(z.global_position) <= LEASH_RADIUS_PX
+	if _work_anchor.distance_to(z.global_position) <= LEASH_RADIUS_PX:
+		return true
+	if global_position.distance_to(z.global_position) <= SELF_DEFENSE_RADIUS_PX:
+		return true
+	return false
 
 
 func _find_zombie_to_hunt():
-	# Like _find_nearest_zombie_in_range but with the leash filter
-	# layered on - only zombies INSIDE the work zone qualify, even if
-	# closer ones exist outside it. This is the core territorial rule
-	# that keeps the Looter from chasing maps.
+	# Filters by engagement-zone (leash union self-defense, 2026-06-09).
+	# Zombies inside the work zone qualify (territorial); zombies close to
+	# the Looter's body qualify (self-defense) even when outside the leash.
+	# Order matters for the cheap-cull: anchor-leash first since most idle
+	# scans return a target from there; self-defense is the fallback that
+	# catches the "zombie biting me on the leash edge" case.
 	var best = null
 	var best_dist := HUNT_VISION
 	for u in get_tree().get_nodes_in_group("units"):
@@ -309,9 +330,10 @@ func _find_zombie_to_hunt():
 			continue
 		if u.faction != GameState.Faction.ZOMBIE:
 			continue
-		if _work_anchor.distance_to(u.global_position) > LEASH_RADIUS_PX:
-			continue
+		var in_leash: bool = _work_anchor.distance_to(u.global_position) <= LEASH_RADIUS_PX
 		var d: float = global_position.distance_to(u.global_position)
+		if not in_leash and d > SELF_DEFENSE_RADIUS_PX:
+			continue
 		if d <= best_dist:
 			best_dist = d
 			best = u
@@ -337,9 +359,10 @@ func _tick_hunt_approach() -> void:
 	if _target_zombie == null or not is_instance_valid(_target_zombie):
 		_sub = Sub.NONE
 		return
-	# Leash break: target wandered out of our zone, abandon and let
-	# something in-zone be picked up next tick.
-	if not _zombie_in_leash(_target_zombie):
+	# Engagement-zone break: target left both the leash AND our self-defense
+	# bubble. Drop it and re-scan next tick. Pre-2026-06-09 this was leash-only,
+	# which abandoned kited targets that drifted 1 px past the leash edge.
+	if not _zombie_in_engagement_zone(_target_zombie):
 		_target_zombie = null
 		_sub = Sub.NONE
 		return
@@ -358,7 +381,7 @@ func _tick_hunt_fire() -> void:
 	if _target_zombie == null or not is_instance_valid(_target_zombie):
 		_sub = Sub.NONE
 		return
-	if not _zombie_in_leash(_target_zombie):
+	if not _zombie_in_engagement_zone(_target_zombie):
 		_target_zombie = null
 		_sub = Sub.NONE
 		return
