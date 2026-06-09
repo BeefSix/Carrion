@@ -17,6 +17,18 @@ func _ready() -> void:
 		# adding/removing children". One-tick deferral lets the tree settle.
 		get_tree().call_deferred("change_scene_to_file", "res://scenes/Main.tscn")
 		return
+	# --replay=<path>: jump to Main like ai-vs-ai does so the recorded match
+	# can be re-simulated headless. Replay loads its own seed + town in
+	# Main._ready; we just need to bypass the title screen and set the
+	# faction/AI flags the recorded match used.
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--replay="):
+			GameState.player_faction = GameState.Faction.MILITARY
+			GameState.ai_enabled = true
+			GameState.ai_vs_ai_mode = true  # AI controllers still spawn; their _process is suppressed by ReplayRecorder.is_playing
+			GameState.custom_map_path = ""
+			get_tree().call_deferred("change_scene_to_file", "res://scenes/Main.tscn")
+			return
 	# Diagnostic hook (2026-06-08): --repro-hg-horde transitions to Main as a
 	# Military player with no AI opponent. Main._ready detects the same flag
 	# and spawns the focused HG-vs-horde scenario (see _repro_hg_horde).

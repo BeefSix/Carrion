@@ -162,6 +162,10 @@ func record_command(kind: String, actor, args: Dictionary, src: String) -> void:
 		"args": _encode_args(args),
 	}
 	_file.store_line(JSON.stringify(row))
+	# Flush per-line so abnormal exits (kill during a smoke test, crash mid-
+	# match) leave a usable replay file. Bounded cost: append + fsync per
+	# command issuance, which is rare relative to physics frames.
+	_file.flush()
 
 
 func record_checksum(h: int) -> void:
@@ -172,6 +176,7 @@ func record_checksum(h: int) -> void:
 		"kind": "hash",
 		"h": h,
 	}))
+	_file.flush()
 
 
 func stop_recording(end_payload: Dictionary) -> void:
