@@ -89,7 +89,8 @@ func _start_production(item: String) -> void:
 	_produce_timer = LOOTER_BUILD_TIME if item == "looter" else BARRACKS_BUILD_TIME
 
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	# D5 (AUDIT 2026-06-09): production is sim state — physics tick, not wall frames.
 	_time_alive += delta
 	if _producing:
 		_produce_timer -= delta

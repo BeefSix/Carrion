@@ -72,7 +72,8 @@ func _start_production() -> void:
 	_produce_timer = SCOUT_BUILD_TIME
 
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	# D5 (AUDIT 2026-06-09): production is sim state — physics tick, not wall frames.
 	if _producing:
 		_produce_timer -= delta
 		if _produce_timer <= 0:

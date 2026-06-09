@@ -12,7 +12,8 @@ func _ready() -> void:
 	add_to_group("greenhouse")
 
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	# D5 (AUDIT 2026-06-09): income tick is sim state — physics tick, not wall frames.
 	_tick_timer -= delta
 	if _tick_timer <= 0.0:
 		_tick_timer = TICK_INTERVAL

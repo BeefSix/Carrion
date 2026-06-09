@@ -97,7 +97,8 @@ func take_salvage(amount: int) -> int:
 	return taken
 
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	# D5 (AUDIT 2026-06-09): infested spawn timer is sim state — physics tick.
 	if not is_infested:
 		return
 	# Spawn rate scales with local decay: 2x at 50+, 3x at 100+ (item 33).
