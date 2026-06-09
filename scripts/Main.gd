@@ -193,6 +193,10 @@ func _ready() -> void:
 	# Telemetry header: built once all match-shape state (matchup, ai_enabled,
 	# map source) is locked in. MatchStats owns the schema; we just trigger it.
 	MatchStats.match_start()
+	# Replay recording: starts AFTER MatchStats but BEFORE any sim-tick-zero
+	# commands could be issued. Town snapshot is captured into the replay
+	# header so playback doesn't depend on TownPlanner being deterministic.
+	ReplayRecorder.start_recording(_town_data)
 	# Diagnostic hook (2026-06-08): --repro-hg-horde drops 1 HG + 2 Riflemen
 	# next to the player HQ, then a 150-Shambler cluster ~800 px ahead, and
 	# issues a move order at the horde center. Reproduces the player's
@@ -455,6 +459,10 @@ func _finalize_match(result: String, winner_faction: String) -> void:
 		"result": result,
 		"winner_faction": winner_faction,
 		"duration_sim_sec": GameState.sim_seconds(),
+	})
+	ReplayRecorder.stop_recording({
+		"result": result,
+		"winner_faction": winner_faction,
 	})
 	GameState.end_match()
 	# AI-vs-AI is a headless batch run; quit the process so the calling script
