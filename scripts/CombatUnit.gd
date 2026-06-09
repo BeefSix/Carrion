@@ -181,6 +181,294 @@ func _should_skip_target(_u) -> bool:
 	return false
 
 
+# ---- Morale + Personality (DESIGN_MASTER §5.1, v1) ----------------------
+#
+# Personality archetype, rolled once at spawn via SimRng. Fixed for the
+# unit's life. v1 tunes the morale thresholds below; v2 is the full
+# "veterancy dampens personality extremes toward a grizzled-veteran
+# baseline" convergence (§5.1 explicitly defers it). Determinism: archetype
+# uses SimRng, not bare randf (rule #1); morale ticks use the 5 Hz
+# delta-accumulator (rule #2); no transcendentals in the band math.
+#
+# Subclasses opt in via _morale_enabled(). v1 enables Military Rifleman +
+# HeavyGunner only - Brawler/Hunter/Looter keep current behavior bit-exact
+# in this commit. The threat behaviors (§5.1 axes: reaction, formation)
+# are explicitly v2.
+
+enum Archetype { STEADY, SKITTISH, HOTHEAD, GREEN }
+enum MoraleBand { STEADY, SHAKEN, BROKEN }
+
+@export var archetype: int = Archetype.GREEN
+
+var morale: float = 1.0
+var _morale_band_cached: int = MoraleBand.STEADY
+var _morale_tick_timer: float = 0.0
+var _flee_lockout_timer: float = 0.0
+# One-shot drains (friendly deaths) accumulate here between ticks so the
+# per-tick math stays consolidated inside _tick_morale.
+var _morale_pending_drain: float = 0.0
+
+# Tick cadence. Matches other 0.2s polls in this substrate; fixed-tick
+# delta accumulator per CLAUDE.md rule #2.
+const MORALE_TICK_INTERVAL := 0.2
+
+# Threshold bases (lab placeholders).
+const SHAKEN_MORALE_BASE := 0.55
+const BROKEN_MORALE_BASE := 0.25
+
+# Recovery rate per second when no drain inputs are active. "Safe = courage
+# returns" per the spec.
+const MORALE_RECOVERY_PER_SEC := 0.15
+
+# Continuous-drain inputs (sim-state driven, no RNG; each linearly summed).
+const HP_LOW_FRACTION := 0.4              # below this hp_frac -> hp drain
+const HP_LOW_DRAIN_PER_SEC := 0.12        # scaled by deficit
+const SUPPRESSION_DRAIN_THRESHOLD := 0.5  # SuppressionField.value_at trigger
+const SUPPRESSION_DRAIN_PER_SEC := 0.20   # scaled by suppression value
+const OUTNUMBERED_RADIUS_PX := 6.0 * 32.0  # 6 tiles - close pressure ring
+const OUTNUMBERED_THRESHOLD := 4          # zombies in radius before drain starts
+const OUTNUMBERED_DRAIN_PER_SEC := 0.08   # per zombie over threshold
+
+# One-shot friendly-death drain. Triggered by Unit._die broadcasting to
+# nearby same-team combat units.
+const FRIENDLY_DEATH_DRAIN := 0.15
+
+# BROKEN-band controls.
+const BROKEN_LOCKOUT_SEC := 2.0       # explicit "briefly ignoring orders" from spec
+const FEAR_STEP_SPEED := 30.0         # SHAKEN back-step when no immediate kite threat
+const SHAKEN_SPREAD_MULT := 1.5       # widen accuracy cone (telegraphed via shake border)
+
+# Per-archetype profile: threshold multipliers + body-color tint vector.
+# SKITTISH > 1.0 means shakes/breaks at HIGHER morale (more fragile, breaks
+# earlier in a fight). STEADY < 1.0 means breaks only at very low morale.
+# HOTHEAD resists breaking moderately but does NOT fear-step when SHAKEN
+# (the "overcommits" interpretation; see _morale_should_fear_step).
+# Tint is a per-channel multiplier on body_color, applied once at spawn.
+const ARCHETYPE_PROFILES := {
+	Archetype.STEADY:   {"shake_mult": 0.70, "break_mult": 0.60, "tint": Vector3(0.92, 0.96, 1.00)},
+	Archetype.SKITTISH: {"shake_mult": 1.20, "break_mult": 1.20, "tint": Vector3(1.05, 1.05, 1.05)},
+	Archetype.HOTHEAD:  {"shake_mult": 0.85, "break_mult": 0.70, "tint": Vector3(1.10, 0.98, 0.92)},
+	Archetype.GREEN:    {"shake_mult": 1.00, "break_mult": 1.00, "tint": Vector3(1.00, 1.00, 1.00)},
+}
+
+
+# Subclasses opt in by overriding. Default off so existing CombatUnit
+# subclasses (Brawler / Hunter / Looter) keep their current behavior
+# bit-exact this commit. Rifleman + HeavyGunner override to true.
+func _morale_enabled() -> bool:
+	return false
+
+
+func _ready() -> void:
+	super._ready()
+	if _morale_enabled():
+		# SimRng (not bare randf) so the spawn archetype roll is reproducible
+		# across clients for lockstep multiplayer.
+		archetype = SimRng.randi_range(Archetype.STEADY, Archetype.GREEN)
+		_apply_archetype_tint()
+
+
+func _apply_archetype_tint() -> void:
+	# Subtle persistent visual tell per archetype (§5.1: "even just a tint /
+	# marker so the player can learn 'that one's skittish'"). Per-channel
+	# multiplier on body_color clamped to [0..1]. Applied once at spawn.
+	var profile: Dictionary = ARCHETYPE_PROFILES[archetype]
+	var tint: Vector3 = profile["tint"]
+	body_color = Color(
+		clamp(body_color.r * tint.x, 0.0, 1.0),
+		clamp(body_color.g * tint.y, 0.0, 1.0),
+		clamp(body_color.b * tint.z, 0.0, 1.0),
+		body_color.a,
+	)
+
+
+# Called by Unit._broadcast_friendly_death when a same-team combat unit
+# dies inside the broadcast radius. Queues a one-shot drain consumed on
+# the next morale tick (so all morale math stays inside _tick_morale).
+func on_friendly_died(_pos: Vector2) -> void:
+	if not _morale_enabled():
+		return
+	_morale_pending_drain += FRIENDLY_DEATH_DRAIN
+
+
+# Subclass _physics_process calls this once per tick. Returns the cached
+# morale band so the subclass can branch on it (kite when SHAKEN, walk to
+# flee target when BROKEN). Sim-state-driven; the only RNG was the spawn
+# archetype roll above.
+func _tick_morale(delta: float) -> int:
+	if not _morale_enabled():
+		return MoraleBand.STEADY
+	_flee_lockout_timer = max(0.0, _flee_lockout_timer - delta)
+	_morale_tick_timer -= delta
+	if _morale_tick_timer > 0.0:
+		return _morale_band_cached
+	_morale_tick_timer = MORALE_TICK_INTERVAL
+	var prev_band: int = _morale_band_cached
+	# Sum continuous-drain inputs. Recovery only fires when total drain is
+	# zero (per spec: "recovers over time when none of those are present").
+	var drain_per_sec: float = 0.0
+	var max_eff: int = get_effective_max_hp()
+	if max_eff > 0:
+		var hp_frac: float = float(current_hp) / float(max_eff)
+		if hp_frac < HP_LOW_FRACTION:
+			var hp_deficit: float = (HP_LOW_FRACTION - hp_frac) / HP_LOW_FRACTION
+			drain_per_sec += HP_LOW_DRAIN_PER_SEC * hp_deficit
+	var sf = get_tree().get_first_node_in_group("suppression_field")
+	if sf != null and sf.has_method("value_at"):
+		var s: float = sf.value_at(global_position)
+		if s >= SUPPRESSION_DRAIN_THRESHOLD:
+			drain_per_sec += SUPPRESSION_DRAIN_PER_SEC * s
+	var nearby_z: int = _count_nearby_hostile_zombies()
+	if nearby_z > OUTNUMBERED_THRESHOLD:
+		drain_per_sec += OUTNUMBERED_DRAIN_PER_SEC * float(nearby_z - OUTNUMBERED_THRESHOLD)
+	if drain_per_sec > 0.0:
+		morale = max(0.0, morale - drain_per_sec * MORALE_TICK_INTERVAL)
+	else:
+		morale = min(1.0, morale + MORALE_RECOVERY_PER_SEC * MORALE_TICK_INTERVAL)
+	if _morale_pending_drain > 0.0:
+		morale = max(0.0, morale - _morale_pending_drain)
+		_morale_pending_drain = 0.0
+	var new_band: int = _compute_band(morale)
+	if new_band != prev_band:
+		_on_morale_band_changed(prev_band, new_band)
+	_morale_band_cached = new_band
+	return _morale_band_cached
+
+
+# Veterancy's v1-lite flat resistance per §5.1: "higher veterancy_level
+# adds flat morale resistance (raises the effective morale, resists
+# breaking)". Additive bonus on the comparison side, NOT on the raw morale
+# value, so the unit still feels the drain - it just survives it longer.
+func _veterancy_morale_bonus() -> float:
+	return float(max(0, veterancy_level - 1)) * 0.05
+
+
+func _compute_band(raw_morale: float) -> int:
+	var profile: Dictionary = ARCHETYPE_PROFILES[archetype]
+	var effective: float = raw_morale + _veterancy_morale_bonus()
+	var shake_thresh: float = SHAKEN_MORALE_BASE * float(profile["shake_mult"])
+	var break_thresh: float = BROKEN_MORALE_BASE * float(profile["break_mult"])
+	if effective <= break_thresh:
+		return MoraleBand.BROKEN
+	if effective <= shake_thresh:
+		return MoraleBand.SHAKEN
+	return MoraleBand.STEADY
+
+
+func _on_morale_band_changed(prev: int, next: int) -> void:
+	# Entering BROKEN: take the FLEE branch and route nav to a safe spot.
+	# The lockout window (2s) is the explicit "briefly ignoring orders" the
+	# spec calls for; the shake-border telegraph in _draw_morale_border
+	# warns the player before this fires.
+	if next == MoraleBand.BROKEN:
+		_flee_lockout_timer = BROKEN_LOCKOUT_SEC
+		current_command = Command.FLEE
+		_nav.target_position = _flee_target_position()
+		MatchStats.log_event(&"morale_broke", {
+			"archetype": archetype,
+			"veterancy": veterancy_level,
+			"morale": morale,
+			"pos": [global_position.x, global_position.y],
+		})
+	elif prev == MoraleBand.BROKEN and next != MoraleBand.BROKEN:
+		# Recovered: clear FLEE so the subclass resumes the IDLE/threat path.
+		current_command = Command.IDLE
+		MatchStats.log_event(&"morale_recovered", {
+			"archetype": archetype,
+			"veterancy": veterancy_level,
+			"morale": morale,
+		})
+
+
+# Count of ZOMBIE-faction hostile units inside the pressure ring. Iterates
+# the units group (small ring + 5 Hz cadence keeps it cheap). Routes
+# through faction == ZOMBIE rather than is_hostile because only ZOMBIE
+# pressure feeds the outnumbered drain (player-vs-player attrition is
+# already covered by the friendly-death broadcast + HP-low drain).
+func _count_nearby_hostile_zombies() -> int:
+	var count: int = 0
+	var r_sq: float = OUTNUMBERED_RADIUS_PX * OUTNUMBERED_RADIUS_PX
+	for u in get_tree().get_nodes_in_group("units"):
+		if u == self or not is_instance_valid(u):
+			continue
+		if not ("faction" in u) or u.faction != GameState.Faction.ZOMBIE:
+			continue
+		if global_position.distance_squared_to(u.global_position) <= r_sq:
+			count += 1
+	return count
+
+
+# Read-side helpers consumed by subclass _physics_process. Defaults live
+# here so non-morale CombatUnit subclasses get sensible no-ops.
+
+func _morale_spread_mult() -> float:
+	if _morale_band_cached == MoraleBand.SHAKEN:
+		return SHAKEN_SPREAD_MULT
+	return 1.0
+
+
+func _morale_should_fear_step() -> bool:
+	if _morale_band_cached != MoraleBand.SHAKEN:
+		return false
+	# HOTHEAD doesn't fear-step (overcommits, by design). All other
+	# archetypes back away while still firing - the readable shake before
+	# the break.
+	return archetype != Archetype.HOTHEAD
+
+
+# Nearest own-team building (HQ, Barracks, CP - whatever's intact). Falls
+# back to current position if no friendly buildings remain (last-stand
+# edge case where flee resolves to "hold ground").
+func _flee_target_position() -> Vector2:
+	var friendly_group: String = "player_buildings" if is_in_group("player_units") else "ai_buildings"
+	var best = null
+	var best_dist: float = INF
+	for b in get_tree().get_nodes_in_group(friendly_group):
+		if not is_instance_valid(b):
+			continue
+		var d: float = global_position.distance_to(b.global_position)
+		if d < best_dist:
+			best_dist = d
+			best = b
+	if best == null:
+		return global_position
+	return best.position
+
+
+# Override of Unit.move_to. While BROKEN with the lockout active, refuse
+# player MOVE orders - the explicit "briefly ignoring orders" from §5.1.
+# Lockout is short (BROKEN_LOCKOUT_SEC = 2s) and the shake-border telegraphs
+# the impending break, so the player sees it coming.
+func move_to(world_pos: Vector2) -> void:
+	if _morale_band_cached == MoraleBand.BROKEN and _flee_lockout_timer > 0.0:
+		return
+	super.move_to(world_pos)
+
+
+# Render-side morale telegraph. Called from Unit._draw via has_method
+# duck-type so non-CombatUnit subclasses don't need to know about it.
+# Yellow border = SHAKEN (early warning); red border = BROKEN. Polyline
+# traces the same trapezoid the body uses so the cue sits on the silhouette.
+func _draw_morale_border(bw: float, body_top_y: float) -> void:
+	if not _morale_enabled():
+		return
+	var border_color: Color
+	if _morale_band_cached == MoraleBand.BROKEN:
+		border_color = Color(0.95, 0.30, 0.30, 0.95)
+	elif _morale_band_cached == MoraleBand.SHAKEN:
+		border_color = Color(0.95, 0.85, 0.30, 0.85)
+	else:
+		return
+	var poly := PackedVector2Array([
+		Vector2(-bw * 0.42, body_top_y + 2.0),
+		Vector2(bw * 0.42, body_top_y + 2.0),
+		Vector2(bw * 0.5, -1.0),
+		Vector2(-bw * 0.5, -1.0),
+		Vector2(-bw * 0.42, body_top_y + 2.0),
+	])
+	draw_polyline(poly, border_color, 1.5, false)
+
+
 # Move directly away from a threat at the given speed. Used by ranged units'
 # IDLE-state defensive kite. Uses Vector2.normalized (sqrt only - not a
 # transcendental); the gameplay rule "back away when threatened" is fully

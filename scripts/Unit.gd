@@ -372,7 +372,40 @@ func _die(attacker = null) -> void:
 		"left_corpse": left_corpse,
 		"veterancy": veterancy_level,
 	})
+	# Morale broadcast (DESIGN_MASTER §5.1): nearby same-team combat units
+	# take a one-shot drain when an ally dies. Lives here because the
+	# broadcaster is any dying unit; the receive-side is CombatUnit's
+	# on_friendly_died (which gates on _morale_enabled internally).
+	_broadcast_friendly_death()
 	queue_free()
+
+
+# Per §5.1: friendly-death drain has a tight close-pack radius - watching
+# someone next to you die hits harder than someone across the map. Lives
+# as a separate const here because Unit.gd owns the broadcast; CombatUnit
+# owns the drain amount.
+const BROADCAST_FRIENDLY_DEATH_RADIUS_PX := 8.0 * 32.0  # 8 tiles
+
+
+func _broadcast_friendly_death() -> void:
+	var r_sq: float = BROADCAST_FRIENDLY_DEATH_RADIUS_PX * BROADCAST_FRIENDLY_DEATH_RADIUS_PX
+	# Team-aware: same team is "both in player_units" or "both in ai_units".
+	# Same-faction-different-team (Military mirror) is an OPPOSING team and
+	# does NOT count as a friendly death. Zombies satisfy neither group, so
+	# zombie deaths don't broadcast (the on_friendly_died has_method guard
+	# below would filter them anyway since zombies don't define the method).
+	var i_am_player: bool = is_in_group("player_units")
+	var pos: Vector2 = global_position
+	for u in get_tree().get_nodes_in_group("combat_units"):
+		if u == self or not is_instance_valid(u):
+			continue
+		if u.is_in_group("player_units") != i_am_player:
+			continue
+		if not u.has_method("on_friendly_died"):
+			continue
+		if pos.distance_squared_to(u.global_position) > r_sq:
+			continue
+		u.on_friendly_died(pos)
 
 
 func _telemetry_unit_type() -> String:
@@ -547,6 +580,13 @@ func _draw() -> void:
 	# Veterancy chevrons sit above the HP bar (or just above the head when
 	# HP is full and the bar is hidden).
 	_draw_veterancy_chevrons(head_y - hr - 8.0)
+
+	# Morale telegraph border (DESIGN_MASTER §5.1, v1). Duck-typed so
+	# non-CombatUnit subclasses (Shambler, Walker, Engineer, Scout, Shaman)
+	# don't need the method. Yellow border = SHAKEN, red = BROKEN; the
+	# render-side helper no-ops for STEADY-band or morale-disabled units.
+	if has_method("_draw_morale_border"):
+		call("_draw_morale_border", bw, body_top_y)
 
 
 func _draw_facing_wedge(body_top_y: float, bh: float, bw: float) -> void:

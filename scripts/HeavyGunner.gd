@@ -25,10 +25,21 @@ var _threat_check_timer: float = 0.0
 var _threat_cached = null
 
 
+func _morale_enabled() -> bool:
+	return true
+
+
 func _physics_process(delta: float) -> void:
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
 	if current_command == Command.CREMATE:
 		velocity = Vector2.ZERO
+		return
+	# Morale tick (DESIGN_MASTER §5.1). FLEE state is entered by
+	# CombatUnit._on_morale_band_changed on the BROKEN edge.
+	var band: int = _tick_morale(delta)
+	if current_command == Command.FLEE:
+		if not _follow_navigation():
+			velocity = Vector2.ZERO
 		return
 	if current_command == Command.MOVE:
 		var still_moving := _follow_navigation()
@@ -49,6 +60,15 @@ func _physics_process(delta: float) -> void:
 	var threat = _threat_cached if (_threat_cached != null and is_instance_valid(_threat_cached)) else null
 	if threat != null:
 		_kite_from(threat, KITE_SPEED)
+	elif band == MoraleBand.SHAKEN and _morale_should_fear_step():
+		# SHAKEN fear-step: back away from the nearest in-range zombie even
+		# without an immediate kite-range threat. HOTHEAD profile's fear-step
+		# is false (overcommits) - this branch skips for them.
+		var fear_threat = _find_nearest_threat_in_range(ATTACK_RANGE)
+		if fear_threat != null:
+			_kite_from(fear_threat, FEAR_STEP_SPEED)
+		else:
+			velocity = Vector2.ZERO
 	else:
 		velocity = Vector2.ZERO
 
@@ -83,8 +103,9 @@ func _fire_at(target) -> void:
 	# at projectile-impact (Projectile.gd -> CombatUnit.resolve_damage);
 	# area_radius > 0 routes through the Projectile's AOE handler.
 	_emit_shot_noise(NOISE_PER_SHOT)
-	# Suppression widens the cone at the shooter's position (DESIGN_MASTER §7.1).
-	var spread: float = BASE_ACCURACY_DEG * (1.0 - squad_accuracy_bonus) * _suppression_spread_multiplier()
+	# Spread stack: base * (squad accuracy aura) * (suppression at position) *
+	# (morale band - SHAKEN widens by 1.5x). DESIGN_MASTER §7.1 + §5.1.
+	var spread: float = BASE_ACCURACY_DEG * (1.0 - squad_accuracy_bonus) * _suppression_spread_multiplier() * _morale_spread_mult()
 	ProjectileManager.spawn_projectile({
 		"origin": global_position,
 		"target_pos": target.global_position,
