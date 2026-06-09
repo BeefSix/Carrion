@@ -220,6 +220,17 @@ const BROKEN_MORALE_BASE := 0.25
 # returns" per the spec.
 const MORALE_RECOVERY_PER_SEC := 0.15
 
+# Band hysteresis (amendment 2026-06-09): single-threshold band selection
+# flickers every tick when morale grazes a boundary, painting the yellow/red
+# border in/out as the unit drifts. The fix is sticky exits: once SHAKEN,
+# require effective morale to climb HYSTERESIS_MARGIN above shake_thresh to
+# return to STEADY; once BROKEN, require climbing above break_thresh + margin
+# to step back to SHAKEN. Entry crossings stay snap-in so the telegraph fires
+# the instant a unit truly enters a band. Recovery from BROKEN walks BROKEN
+# -> SHAKEN (yellow border, fear-step, wide spread) -> STEADY across two
+# ticks at minimum, telegraphing the calming-down.
+const HYSTERESIS_MARGIN := 0.10
+
 # Continuous-drain inputs (sim-state driven, no RNG; each linearly summed).
 const HP_LOW_FRACTION := 0.4              # below this hp_frac -> hp drain
 const HP_LOW_DRAIN_PER_SEC := 0.12        # scaled by deficit
@@ -328,7 +339,7 @@ func _tick_morale(delta: float) -> int:
 	if _morale_pending_drain > 0.0:
 		morale = max(0.0, morale - _morale_pending_drain)
 		_morale_pending_drain = 0.0
-	var new_band: int = _compute_band(morale)
+	var new_band: int = _compute_band(morale, prev_band)
 	if new_band != prev_band:
 		_on_morale_band_changed(prev_band, new_band)
 	_morale_band_cached = new_band
@@ -343,16 +354,43 @@ func _veterancy_morale_bonus() -> float:
 	return float(max(0, veterancy_level - 1)) * 0.05
 
 
-func _compute_band(raw_morale: float) -> int:
+func _compute_band(raw_morale: float, prev_band: int) -> int:
+	# Hysteresis-aware band selection (amendment 2026-06-09). The previous
+	# band determines which side of each threshold the comparison fires on:
+	# entry is snap-in (the moment morale crosses down past a threshold the
+	# unit enters that band), exit is sticky (morale must climb
+	# HYSTERESIS_MARGIN above the threshold to leave). This prevents the
+	# every-tick STEADY/SHAKEN flicker at boundary morale values that the
+	# original single-threshold check produced.
 	var profile: Dictionary = ARCHETYPE_PROFILES[archetype]
 	var effective: float = raw_morale + _veterancy_morale_bonus()
 	var shake_thresh: float = SHAKEN_MORALE_BASE * float(profile["shake_mult"])
 	var break_thresh: float = BROKEN_MORALE_BASE * float(profile["break_mult"])
-	if effective <= break_thresh:
-		return MoraleBand.BROKEN
-	if effective <= shake_thresh:
-		return MoraleBand.SHAKEN
-	return MoraleBand.STEADY
+	match prev_band:
+		MoraleBand.STEADY:
+			if effective <= break_thresh:
+				return MoraleBand.BROKEN
+			if effective <= shake_thresh:
+				return MoraleBand.SHAKEN
+			return MoraleBand.STEADY
+		MoraleBand.SHAKEN:
+			# BROKEN entry stays snap-in (downward crossing is honored
+			# even from SHAKEN). Exit to STEADY needs the margin.
+			if effective <= break_thresh:
+				return MoraleBand.BROKEN
+			if effective > shake_thresh + HYSTERESIS_MARGIN:
+				return MoraleBand.STEADY
+			return MoraleBand.SHAKEN
+		MoraleBand.BROKEN:
+			# Recovery is one band at a time: BROKEN -> SHAKEN at
+			# break_thresh + margin, then SHAKEN -> STEADY on a later
+			# tick when shake_thresh + margin is cleared. Two-step
+			# telegraph: yellow border before the unit goes fully calm.
+			if effective > break_thresh + HYSTERESIS_MARGIN:
+				return MoraleBand.SHAKEN
+			return MoraleBand.BROKEN
+		_:
+			return MoraleBand.STEADY
 
 
 func _on_morale_band_changed(prev: int, next: int) -> void:
@@ -416,23 +454,58 @@ func _morale_should_fear_step() -> bool:
 	return archetype != Archetype.HOTHEAD
 
 
-# Nearest own-team building (HQ, Barracks, CP - whatever's intact). Falls
-# back to current position if no friendly buildings remain (last-stand
-# edge case where flee resolves to "hold ground").
+# Emergency flee distance when no friendly HQ exists - 15 tiles puts
+# breathing room between the broken unit and the threat without flinging
+# it across the map.
+const FLEE_EMERGENCY_DISTANCE_PX := 15.0 * 32.0
+
+
+# Flee destination (amendment 2026-06-09). Targets the unit's friendly HQ
+# specifically - NOT the nearest friendly building. Walls, Barracks, and
+# forward CPs can sit between the broken unit and home; routing the flee
+# to the nearest building can drag the unit deeper into danger when the
+# nearest "friendly" structure is a forward wall it built moments ago.
+# Order of preference:
+#   1. Nearest friendly building in the "hq" group (CommandPost / etc).
+#   2. No HQ alive (last-stand): flee straight away from nearest hostile
+#      by FLEE_EMERGENCY_DISTANCE_PX, so the unit moves SOMEWHERE safer
+#      rather than freezing in place.
+#   3. No HQ and no hostiles findable: hold position (degenerate).
 func _flee_target_position() -> Vector2:
 	var friendly_group: String = "player_buildings" if is_in_group("player_units") else "ai_buildings"
-	var best = null
+	var best_hq = null
 	var best_dist: float = INF
-	for b in get_tree().get_nodes_in_group(friendly_group):
+	for b in get_tree().get_nodes_in_group("hq"):
 		if not is_instance_valid(b):
+			continue
+		if not b.is_in_group(friendly_group):
 			continue
 		var d: float = global_position.distance_to(b.global_position)
 		if d < best_dist:
 			best_dist = d
-			best = b
-	if best == null:
-		return global_position
-	return best.position
+			best_hq = b
+	if best_hq != null:
+		return best_hq.position
+	# Fallback: flee directly away from nearest ZOMBIE-faction hostile.
+	# Never toward a forward structure even if one exists - the design
+	# intent is "run home or run away from the threat", not "run toward
+	# the nearest piece of friendly architecture".
+	var nearest_z = null
+	var nearest_d_sq: float = INF
+	for u in get_tree().get_nodes_in_group("units"):
+		if not is_instance_valid(u):
+			continue
+		if not ("faction" in u) or u.faction != GameState.Faction.ZOMBIE:
+			continue
+		var d_sq: float = global_position.distance_squared_to(u.global_position)
+		if d_sq < nearest_d_sq:
+			nearest_d_sq = d_sq
+			nearest_z = u
+	if nearest_z != null:
+		var away: Vector2 = global_position - nearest_z.global_position
+		if away.length_squared() > 0.01:
+			return global_position + away.normalized() * FLEE_EMERGENCY_DISTANCE_PX
+	return global_position
 
 
 # Override of Unit.move_to. While BROKEN with the lockout active, refuse
