@@ -132,7 +132,8 @@ func _issue_if_changed(u, pos: Vector2) -> void:
 		var prev: Vector2 = _last_target_by_unit[id]
 		if prev.distance_to(pos) < TARGET_REISSUE_EPSILON_PX:
 			return
-	u.move_to(pos)
+	var src: String = CommandBus.SRC_AI_PLAYER_SLOT if controller.as_player_slot else CommandBus.SRC_AI_OPPOSING
+	CommandBus.issue("move", u, {"target": pos}, src)
 	_last_target_by_unit[id] = pos
 
 
