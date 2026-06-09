@@ -15,17 +15,43 @@ const PROJECTILE_COLOR := Color(0.45, 0.35, 0.22)
 # Tighter cone than Rifleman: Hunter is a deliberate aimed shooter.
 const BASE_ACCURACY_DEG := 3.0
 
+# Ambient clicking (DESIGN_MASTER §7.2): Hunter emits a constant low-grade
+# noise that pulls nearby zombies into a "living armor" cluster around him.
+# Inverted signature vs the Military Rifleman (which is loud on fire, silent
+# on ambient — Hunter is silent on fire, loud on ambient). The clicking is
+# what makes the Hunter fire from INSIDE a horde he attracted.
+const CLICK_INTERVAL := 2.0    # sim seconds between emits
+const CLICK_MAGNITUDE := 3.0   # noise magnitude — louder than NOISE_PER_SHOT
+
 var _target = null
 var _attack_cooldown := 0.0
 var _retarget_timer := 0.0
+var _click_timer: float = 0.0   # accumulates delta; emits when >= CLICK_INTERVAL
 # Threat-scan cache - 5Hz polling instead of per-frame.
 const THREAT_CHECK_INTERVAL := 0.2
 var _threat_check_timer: float = 0.0
 var _threat_cached = null
 
 
+# Opt in to morale + personality (CombatUnit §5.1). DESIGN_MASTER says every
+# unit has morale + personality + reaction; v1 enabled it on Military
+# combat units (Rifleman + HeavyGunner). Tribal Hunter joins them here.
+# Counter-seam fields (damage_type / unit_size / armor) inherit CombatUnit's
+# neutral defaults per NETCODE.md Decision #2.
+func _morale_enabled() -> bool:
+	return true
+
+
 func _physics_process(delta: float) -> void:
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
+	# Ambient clicking — runs every physics tick regardless of command state.
+	# Emits even while moving / firing / idle: it's identity, not behavior.
+	# NoiseBus is deterministic (broadcasts to listeners + deposits to the
+	# NoiseField grid, both physics-tick driven).
+	_click_timer += delta
+	if _click_timer >= CLICK_INTERVAL:
+		_click_timer = 0.0
+		NoiseBus.emit(global_position, CLICK_MAGNITUDE)
 	if current_command == Command.CREMATE:
 		velocity = Vector2.ZERO
 		return
