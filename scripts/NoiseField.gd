@@ -132,7 +132,12 @@ func _input(event: InputEvent) -> void:
 		queue_redraw()
 
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	# D1 (AUDIT 2026-06-09): runs on the physics tick, not _process. Emitter
+	# decay + horde-tier firing are sim state (CLAUDE.md Rule #2); on _process
+	# they advanced at wall rate, so the AI-vs-AI lab at time_scale 8 saw 8x
+	# faster noise decay per sim-second than real matches. Behavior-identical
+	# at time_scale 1.
 	var decay: float = NOISE_DECAY_RATE * delta
 	var to_remove: Array = []
 	# H5 follow-up: pre-fix the H5 retry behavior fired _maybe_trigger_horde
@@ -142,7 +147,10 @@ func _process(delta: float) -> void:
 	# per-emitter tier check on the global cooldown / pop cap up front so the
 	# H5 intent (re-armed tiers re-fire when blockers clear) is preserved
 	# without the per-frame retry spam.
-	var now_sec: float = Time.get_ticks_msec() / 1000.0
+	# D1: cooldown measured in SIM seconds (was wall-clock Time.get_ticks_msec,
+	# which made horde timing depend on machine speed / time_scale — a desync
+	# source and a lab distortion).
+	var now_sec: float = GameState.sim_seconds()
 	var horde_on_cooldown: bool = (now_sec - _last_horde_time) < HORDE_COOLDOWN
 	var pop_capped: bool = false
 	var zf = get_tree().get_first_node_in_group("zombie_field")
@@ -204,9 +212,10 @@ func _process(delta: float) -> void:
 
 func _maybe_trigger_horde(pos: Vector2, base_size: int, tier_label: String) -> bool:
 	# Returns true iff a horde actually spawned. The caller (per-tier check in
-	# _process) only marks tiers_fired on a true return so a suppressed horde
-	# can re-trigger once cooldown/pop-cap allow it. See H5.
-	var now: float = Time.get_ticks_msec() / 1000.0
+	# _physics_process) only marks tiers_fired on a true return so a suppressed
+	# horde can re-trigger once cooldown/pop-cap allow it. See H5.
+	# D1: sim clock, not wall clock — see _physics_process.
+	var now: float = GameState.sim_seconds()
 	var time_since_last: float = now - _last_horde_time
 	if time_since_last < HORDE_COOLDOWN:
 		print("[NoiseField] %s horde suppressed (cooldown %.1fs remaining)" % [tier_label, HORDE_COOLDOWN - time_since_last])
@@ -373,7 +382,9 @@ func _pick_edge_spawn(target: Vector2) -> Vector2:
 func _draw() -> void:
 	if not _debug_visible:
 		return
-	var now: float = Time.get_ticks_msec() / 1000.0
+	# D1: _last_horde_time is now sim-seconds; read the same clock for the
+	# debug overlay (render reading sim state is fine — never the reverse).
+	var now: float = GameState.sim_seconds()
 	var cooldown_remaining: float = max(0.0, HORDE_COOLDOWN - (now - _last_horde_time))
 	for e in _emitters:
 		var reach: float = min(e.intensity * REACH_PER_NOISE, MAX_REACH)
