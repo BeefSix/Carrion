@@ -1,0 +1,20 @@
+{
+  "_comment": "Project-level Claude Code settings. Checked into the repo. User-specific permission grants live in settings.local.json (gitignored).",
+
+  "_disabling_hooks": "To disable the Stop hook temporarily: delete the 'hooks' block below, OR set 'disableAllHooks': true at the top level, OR set CARRION_DISABLE_PARSE_CHECK=1 in your shell env before launching Claude.",
+
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash tools/parse_check_hook.sh",
+            "timeout": 90
+          }
+        ]
+      }
+    ]
+  }
+}
