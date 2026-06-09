@@ -1445,6 +1445,14 @@ func _find_proximity_target():
 			continue
 		if is_tribal_aligned and u.faction == GameState.Faction.TRIBAL:
 			continue
+		# "Blood breaks the mask" — DESIGN_MASTER §7.2. A HEALTHY Tribal unit
+		# is invisible to zombie targeting; a wounded Tribal unit reads as
+		# prey. v1 uses an HP threshold as the proxy for "bleeding" — the
+		# full blood/scent-trail version lands with the scent system later.
+		# Walkers stay unconditionally immune above via the walkers-group
+		# check (the bone-painted scavenger; they always wear the mask).
+		if _tribal_mask_intact(u):
+			continue
 		var d: float = global_position.distance_to(u.global_position)
 		if d > best_dist:
 			continue
@@ -1453,6 +1461,28 @@ func _find_proximity_target():
 		best_dist = d
 		best = u
 	return best
+
+
+# v1 conditional immunity per DESIGN_MASTER §7.2 ("blood breaks the mask").
+# A Tribal unit is exempt from zombie targeting while its HP is at or above
+# this fraction of its max. Below the threshold the mask cracks, the zombie
+# sees them, and they get pursued. 0.5 = "any heavy commit exposes you" —
+# tunable in the lab. Walker (in "walkers" group) is checked separately
+# upstream and stays unconditionally immune.
+const TRIBAL_MASK_HP_THRESHOLD := 0.5
+
+
+func _tribal_mask_intact(u) -> bool:
+	# Returns true iff the target is a healthy Tribal unit whose mask is
+	# still intact (above the HP threshold). Defensive nulls so an
+	# unfinished subclass without hp fields can't crash perception.
+	if u == null or not is_instance_valid(u):
+		return false
+	if not "faction" in u or u.faction != GameState.Faction.TRIBAL:
+		return false
+	if not "current_hp" in u or not "max_hp" in u or u.max_hp <= 0:
+		return false
+	return float(u.current_hp) >= float(u.max_hp) * TRIBAL_MASK_HP_THRESHOLD
 
 
 func _find_visible_target():
@@ -1484,6 +1514,10 @@ func _find_visible_target():
 		# Force-spawned zombies treat all Tribal as ally during the 30-sec
 		# alignment window.
 		if is_tribal_aligned and u.faction == GameState.Faction.TRIBAL:
+			continue
+		# "Blood breaks the mask" — healthy Tribal are invisible at long range
+		# too. See proximity branch above for the rationale.
+		if _tribal_mask_intact(u):
 			continue
 		if not _can_see(u.global_position):
 			continue
