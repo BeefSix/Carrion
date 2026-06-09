@@ -550,16 +550,16 @@ func _spawn_edge_wanderer() -> void:
 	var spawn_pos := _get_spawn_position()
 	var pos := Vector2.ZERO
 	for attempt in range(8):
-		var edge: int = randi() % 4
+		var edge: int = SimRng.randi() % 4
 		match edge:
 			0:
-				pos = Vector2(randf_range(EDGE_INSET, MAP_SIZE.x - EDGE_INSET), EDGE_INSET)
+				pos = Vector2(SimRng.randf_range(EDGE_INSET, MAP_SIZE.x - EDGE_INSET), EDGE_INSET)
 			1:
-				pos = Vector2(MAP_SIZE.x - EDGE_INSET, randf_range(EDGE_INSET, MAP_SIZE.y - EDGE_INSET))
+				pos = Vector2(MAP_SIZE.x - EDGE_INSET, SimRng.randf_range(EDGE_INSET, MAP_SIZE.y - EDGE_INSET))
 			2:
-				pos = Vector2(randf_range(EDGE_INSET, MAP_SIZE.x - EDGE_INSET), MAP_SIZE.y - EDGE_INSET)
+				pos = Vector2(SimRng.randf_range(EDGE_INSET, MAP_SIZE.x - EDGE_INSET), MAP_SIZE.y - EDGE_INSET)
 			_:
-				pos = Vector2(EDGE_INSET, randf_range(EDGE_INSET, MAP_SIZE.y - EDGE_INSET))
+				pos = Vector2(EDGE_INSET, SimRng.randf_range(EDGE_INSET, MAP_SIZE.y - EDGE_INSET))
 		if pos.distance_to(spawn_pos) >= EDGE_SPAWN_KEEPOUT:
 			break
 	var s = SHAMBLER_SCENE.instantiate()

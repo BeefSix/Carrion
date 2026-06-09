@@ -326,12 +326,12 @@ func _ready() -> void:
 	var angle: float = float(id_hash % 360) * deg_to_rad(1.0)
 	var radius: float = 14.0 + float(id_hash % 16)
 	_chase_offset = Vector2.from_angle(angle) * radius
-	_wander_timer = randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
-	_head_turn_timer = randf_range(HEAD_TURN_INTERVAL_MIN, HEAD_TURN_INTERVAL_MAX)
-	_ambient_noise_timer = randf_range(AMBIENT_NOISE_INTERVAL_MIN, AMBIENT_NOISE_INTERVAL_MAX)
+	_wander_timer = SimRng.randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
+	_head_turn_timer = SimRng.randf_range(HEAD_TURN_INTERVAL_MIN, HEAD_TURN_INTERVAL_MAX)
+	_ambient_noise_timer = SimRng.randf_range(AMBIENT_NOISE_INTERVAL_MIN, AMBIENT_NOISE_INTERVAL_MAX)
 	# Initial facing: random cardinal-ish so spawned zombies aren't all
 	# looking the same direction. Faces "south" by default before this.
-	_facing_angle = randf() * TAU
+	_facing_angle = SimRng.randf() * TAU
 	_desired_facing_angle = _facing_angle
 	facing_dir = Vector2.from_angle(_facing_angle)
 	# Preserve the original body color before the tribal-aligned override so
