@@ -23,6 +23,8 @@ The sim must eventually run lockstep across clients. Every violation written tod
 5. **Float discipline (decided 2026-06-08: float-with-discipline, NOT fixed-point — see NETCODE.md):** avoid accumulating tiny per-frame floats into long-lived gameplay state; prefer integer/fixed-step accumulators where feasible. **No transcendentals (`sin`/`cos`/`atan`/`atan2`/inverse-sqrt) in gameplay math** — they diverge across CPUs and are a latent desync source; use them freely in render/visual code only. Keep the sim layer structured so positions/combat could swap to fixed-point later if cross-machine testing ever demands it.
 6. **Sim/render separation:** gameplay state must never read from render state (positions are sim state; sprite offsets, iso projection, z-index are render).
 
+After any batch of gameplay-code changes (anything touching `scripts/*.gd` or `autoloads/*.gd`), invoke the **determinism-reviewer** subagent (`.claude/agents/determinism-reviewer.md`) on the diff BEFORE handing back to the human. It's read-only, scoped to these 6 rules, and reports findings as a tight `file:line — reason` list. The Stop hook handles parse correctness; the reviewer handles determinism correctness.
+
 ## Architecture conventions
 
 - **Ownership vs. hostility:** faction (`GameState.Faction`) is *allegiance flavor*; ownership/team is decided by groups (`player_units`/`ai_units`, `player_buildings`/`ai_buildings`). Hostility checks must be team-based, not faction-based (see AUDIT.md H4/H10 — this is currently broken in places; new code must not copy the broken pattern). A shared `is_hostile(a, b)` / `is_owned_by_player(node)` helper should be introduced and used everywhere.
