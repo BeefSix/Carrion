@@ -87,6 +87,13 @@ var _home_base = null
 var _carrying := 0
 var _attack_cooldown := 0.0
 var _retarget_timer := 0.0
+# Throttles _find_zombie_to_hunt scans from the NONE state. The scan
+# iterates get_nodes_in_group("units") - at high zombie populations the
+# unthrottled per-frame call was a measurable contributor to the
+# late-game perf cliff (2026-06-08 diagnostic). Cadence matches the
+# PATROL_SCAN_INTERVAL the patrol state already uses, so the idle scan
+# rhythm and the patrol scan rhythm stay consistent.
+var _hunt_scan_timer: float = 0.0
 
 # Work anchor (DESIGN_MASTER §7.1). Set to the home CP position on _ready;
 # rewritten by set_work_anchor() when the player right-clicks ground with
@@ -170,6 +177,7 @@ func get_effective_move_speed() -> float:
 func _physics_process(delta: float) -> void:
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
 	_retarget_timer = max(0.0, _retarget_timer - delta)
+	_hunt_scan_timer = max(0.0, _hunt_scan_timer - delta)
 	_attack_anim_timer = max(0.0, _attack_anim_timer - delta)
 	if use_sprite:
 		_update_sprite_animation()
@@ -214,6 +222,15 @@ func _pick_next_action() -> void:
 
 
 func _try_start_auto_hunt() -> void:
+	# Throttled scan (2026-06-08 perf-cliff fix). _find_zombie_to_hunt
+	# iterates get_nodes_in_group("units"); per-frame calls at 250+
+	# zombies were a hot loop. While the cooldown is up we just hold at
+	# anchor - identical no-target behavior, just postponed re-evaluation.
+	# Determinism: delta accumulator on the physics tick, no wall-clock.
+	if _hunt_scan_timer > 0.0:
+		_hold_at_anchor()
+		return
+	_hunt_scan_timer = PATROL_SCAN_INTERVAL
 	var z = _find_zombie_to_hunt()
 	if z == null:
 		# No in-leash target - hold at anchor (walk back if drifted).

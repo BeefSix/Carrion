@@ -248,6 +248,13 @@ var _target = null
 var _investigate_target: Vector2 = Vector2.ZERO
 var _attack_cooldown := 0.0
 var _perception_timer := 0.0
+# Cached result of _find_proximity_target. The scan runs only on the
+# perception tick (5 Hz, see _physics_process); the state-transition
+# check below reads the cached value every physics tick. Pre-throttle
+# this scan ran at 60 Hz and was the dominant cost in the late-game
+# perf cliff (~250 zombies x 60 Hz x ~250-unit iteration). Cleared on
+# every perception tick so stale values can't reacquire dead targets.
+var _proximity_cached: Node = null
 var _wandering := false
 var _wander_target: Vector2 = Vector2.ZERO
 var _wander_timer := 0.0
@@ -600,6 +607,28 @@ func _tick_facing(delta: float) -> void:
 # Stays compatible with the avoidance_enabled=false path (no Godot RVO -
 # that would be nondeterministic AND gridlocks).
 func _follow_navigation() -> bool:
+	# Two parallel bodies to keep the timing wraps' overhead out of the hot
+	# path when DIAG_SHAMBLER_TIMING is off (the default). They are kept in
+	# sync; if you touch one, touch the other.
+	if PerfProbe.DIAG_SHAMBLER_TIMING:
+		var t_nav_us: int = Time.get_ticks_usec()
+		if _nav.is_navigation_finished():
+			velocity = Vector2.ZERO
+			PerfProbe.shambler_nav_us += Time.get_ticks_usec() - t_nav_us
+			return false
+		var next_pos_t := _nav.get_next_path_position()
+		var to_next_t := next_pos_t - global_position
+		var desired_t: Vector2 = to_next_t.normalized() * get_effective_move_speed()
+		var t_sep_us: int = Time.get_ticks_usec()
+		desired_t += _compute_separation()
+		PerfProbe.shambler_sep_us += Time.get_ticks_usec() - t_sep_us
+		if _nav.avoidance_enabled:
+			_nav.set_velocity(desired_t)
+		else:
+			velocity = desired_t
+			move_and_slide()
+		PerfProbe.shambler_nav_us += Time.get_ticks_usec() - t_nav_us
+		return true
 	if _nav.is_navigation_finished():
 		velocity = Vector2.ZERO
 		return false
@@ -652,6 +681,22 @@ func _tick_idle_head_turn(delta: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# Diagnostic timing (2026-06-08). Gated by PerfProbe.DIAG_SHAMBLER_TIMING
+	# (default off). The wraps below + the helper split add up to ~120k
+	# Time.get_ticks_usec() calls/sec at 250 zombies x time_scale 8, so
+	# leaving them live skewed the very measurement they were taking.
+	# Helper split is kept either way so scattered `return` paths in the
+	# match block don't skip the post-tick accumulation when timing is on.
+	if PerfProbe.DIAG_SHAMBLER_TIMING:
+		var t_start_us: int = Time.get_ticks_usec()
+		_physics_tick(delta)
+		PerfProbe.shambler_total_us += Time.get_ticks_usec() - t_start_us
+		PerfProbe.shambler_ticks += 1
+	else:
+		_physics_tick(delta)
+
+
+func _physics_tick(delta: float) -> void:
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
 	_tick_facing(delta)
 	# Home pin tracking runs regardless of state - even chasing/investigating
@@ -680,21 +725,43 @@ func _physics_process(delta: float) -> void:
 	_perception_timer -= delta
 	if _perception_timer <= 0.0:
 		_perception_timer = PERCEPTION_INTERVAL
-		_update_perception(delta)
+		if PerfProbe.DIAG_SHAMBLER_TIMING:
+			var t_perc_us: int = Time.get_ticks_usec()
+			_update_perception(delta)
+			PerfProbe.shambler_perc_us += Time.get_ticks_usec() - t_perc_us
+		else:
+			_update_perception(delta)
 		if _target != null and _zombie_state == ZombieState.CHASE:
 			_nav.target_position = _target.global_position + _chase_offset
+		# Proximity acquire scan throttled to the perception tick on
+		# 2026-06-08 to fix the late-game cliff. Pre-throttle, this scan
+		# (iterates get_nodes_in_group("units")) ran every physics tick
+		# in every non-CHASE/non-ATTACK zombie - at ~250 zombies that was
+		# ~4M iterations/sec and dropped fps to <1 by t=90s. Now it runs
+		# at 5 Hz; the cached result is consumed every tick below for the
+		# cheap state transition. Determinism is preserved (delta
+		# accumulator on the physics tick, no wall-clock).
+		if _zombie_state != ZombieState.CHASE and _zombie_state != ZombieState.ATTACK:
+			if PerfProbe.DIAG_SHAMBLER_TIMING:
+				var t_prox_us: int = Time.get_ticks_usec()
+				_proximity_cached = _find_proximity_target()
+				PerfProbe.shambler_proxim_us += Time.get_ticks_usec() - t_prox_us
+			else:
+				_proximity_cached = _find_proximity_target()
+		else:
+			_proximity_cached = null
 
-	# Proximity acquire (2026-06-08). Runs every physics tick in every
-	# active state EXCEPT CHASE (already committed to a target) and
-	# ATTACK (already biting). This covers the feel-test case where a
-	# unit walked into a packed horde and zombies ignored it because the
-	# cone-based vision missed any zombie not happening to face the unit.
-	# Eligibility filter (hostile faction, Walker exempt, tribal-aligned
-	# Tribal exempt) is enforced inside _find_proximity_target itself.
-	# Fixed-delay acquisition (no RNG per Determinism Rule #1).
+	# Proximity acquire transition (2026-06-08). Consumes the cached scan
+	# from the perception block above. The state change is cheap (no
+	# iteration), so it stays on the 60 Hz physics tick - this preserves
+	# the snappy "walk into a horde, get grabbed" feel even though the
+	# scan only refreshes 5x/sec. Eligibility filter (hostile faction,
+	# Walker exempt, tribal-aligned Tribal exempt) is enforced inside
+	# _find_proximity_target itself. Fixed-delay acquisition (no RNG per
+	# Determinism Rule #1).
 	if _zombie_state != ZombieState.CHASE and _zombie_state != ZombieState.ATTACK:
-		var prox = _find_proximity_target()
-		if prox != null and prox != _acquiring_target:
+		var prox = _proximity_cached
+		if prox != null and is_instance_valid(prox) and prox != _acquiring_target:
 			_acquiring_target = prox
 			_acquisition_timer = PROXIMITY_ACQUISITION_DELAY
 			_zombie_state = ZombieState.ACQUIRING
@@ -1339,9 +1406,20 @@ func _update_perception(_delta: float) -> void:
 # check kept so walls still block (a zombie in the next room shouldn't
 # smell through a wall). No RNG.
 func _find_proximity_target():
+	# 2026-06-08 perf fix: scan player_units + ai_units instead of the full
+	# "units" group. Diagnostic showed this scan was 62% of Shambler tick
+	# time at 197 zombies because every zombie was iterating all 250 units
+	# (including 247 fellow zombies) at 5 Hz. The two team groups together
+	# hold only the ~10-20 non-zombie units that could ever be a target -
+	# 250 zombies are filtered at the group lookup instead of one-by-one.
+	# Iteration order is preserved (player_units first, ai_units second)
+	# so determinism is unchanged for any same-faction-but-opposite-team
+	# corner case the original code might have surfaced.
 	var best = null
 	var best_dist: float = PROXIMITY_DETECT_PX
-	for u in get_tree().get_nodes_in_group("units"):
+	var candidates: Array = get_tree().get_nodes_in_group("player_units")
+	candidates.append_array(get_tree().get_nodes_in_group("ai_units"))
+	for u in candidates:
 		if u == self or u == null or not is_instance_valid(u):
 			continue
 		if not ("faction" in u):

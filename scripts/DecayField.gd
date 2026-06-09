@@ -16,7 +16,14 @@ const MAX_DECAY := 150.0
 const EMIT_INTERVAL := 0.5
 const EMIT_PER_SEC := 0.1
 const DRAW_THRESHOLD := 5.0
-const DRAW_REFRESH_INTERVAL := 0.5
+# Slow ambient imagery (DESIGN_MASTER §2 demoted decay to visual-only intel),
+# so the redraw cadence dropped from 2 Hz (0.5s) to 1 Hz here. The 2026-06-08
+# perf pass also added viewport culling in _draw, so even the 1 Hz redraws are
+# cheap regardless of how many off-screen tiles are decayed.
+const DRAW_REFRESH_INTERVAL := 1.0
+# How many pixels of slack to add around the visible rect when culling. One
+# full iso tile of padding so tiles that are half off-screen still draw.
+const CULL_PADDING_PX := 64.0
 const DECAY_COLOR := Color(0.55, 0.18, 0.14)
 
 var _grid: PackedFloat32Array
@@ -27,9 +34,14 @@ var _draw_timer: float = 0.0
 # the full 36864-tile grid. Decay only ever accumulates (never decreases) so
 # the active set grows monotonically.
 var _active_indices: PackedInt32Array = PackedInt32Array()
-# Perf instrumentation - PerfProbe surfaces these in its 30s probes.
+# Perf instrumentation - PerfProbe surfaces these in its probes.
+# _last_active_tiles is the total monotonic decay-coverage size; _last_drawn
+# is the post-viewport-cull count actually submitted to draw. They're equal
+# pre-cull (legacy / headless w/o camera); post-cull the latter is the real
+# per-frame cost driver.
 var _last_draw_us: int = 0
 var _last_active_tiles: int = 0
+var _last_drawn: int = 0
 
 
 func _ready() -> void:
@@ -100,16 +112,40 @@ func get_value_at(world_pos: Vector2) -> float:
 
 
 func _draw() -> void:
-	# Iterate the cached active-tile list instead of all 36864 tiles.
-	# Active tile count is bounded by the CP radius (max ~452 tiles per CP
-	# at radius 12). Late game with multiple CPs: ~500-900 active tiles.
-	# Previously this iterated 36864 entries per draw regardless of how
-	# few were actually above threshold.
+	# Iterate the cached active-tile list (decay only ever accumulates, so
+	# inactive tiles never enter this list to begin with).
+	#
+	# Viewport cull (2026-06-08). _active_indices grows monotonically -
+	# a 2-hr match could have tens of thousands of decayed tiles - so the
+	# per-frame cost has to be bounded by what's actually visible, not by
+	# total decay coverage. Decay was demoted to visual-only intel imagery
+	# (DESIGN_MASTER §2): no sim consequence to skipping off-screen tiles.
+	# Skip = no iso projection, no polygon submission.
 	var t0_us: int = Time.get_ticks_usec()
 	var alpha_scale: float = 0.55 / MAX_DECAY
 	var half_w: float = IsoView.ISO_TILE_W * 0.5
 	var half_h: float = IsoView.ISO_TILE_H * 0.5
 	var tile_w: float = float(TILE_PX)
+	# Compute the iso-screen-space visible rect from the active Camera2D.
+	# Cull is gated on cam != null so headless / non-Camera2D scenes still
+	# render the legacy "draw all active" path (cull off => prior behavior).
+	var cull_enabled: bool = false
+	var cull_rect: Rect2 = Rect2()
+	var cam: Camera2D = get_viewport().get_camera_2d()
+	if cam != null:
+		var zoom: Vector2 = cam.zoom
+		if zoom.x > 0.0001 and zoom.y > 0.0001:
+			var visible_size := Vector2(
+				get_viewport_rect().size.x / zoom.x,
+				get_viewport_rect().size.y / zoom.y,
+			)
+			var pad := Vector2(CULL_PADDING_PX, CULL_PADDING_PX)
+			cull_rect = Rect2(
+				cam.global_position - visible_size * 0.5 - pad,
+				visible_size + pad * 2.0,
+			)
+			cull_enabled = true
+	var drawn: int = 0
 	for idx in _active_indices:
 		var v: float = _grid[idx]
 		var ty: int = idx / MAP_TILES
@@ -119,6 +155,8 @@ func _draw() -> void:
 			float(ty) * tile_w + tile_w * 0.5,
 		)
 		var iso_center: Vector2 = IsoView.world_to_screen(world_center)
+		if cull_enabled and not cull_rect.has_point(iso_center):
+			continue
 		var c := Color(DECAY_COLOR.r, DECAY_COLOR.g, DECAY_COLOR.b, v * alpha_scale)
 		draw_colored_polygon(PackedVector2Array([
 			iso_center + Vector2(0.0, -half_h),
@@ -126,5 +164,7 @@ func _draw() -> void:
 			iso_center + Vector2(0.0, half_h),
 			iso_center + Vector2(-half_w, 0.0),
 		]), c)
+		drawn += 1
 	_last_draw_us = Time.get_ticks_usec() - t0_us
 	_last_active_tiles = _active_indices.size()
+	_last_drawn = drawn

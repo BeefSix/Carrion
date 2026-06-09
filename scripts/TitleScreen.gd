@@ -17,6 +17,16 @@ func _ready() -> void:
 		# adding/removing children". One-tick deferral lets the tree settle.
 		get_tree().call_deferred("change_scene_to_file", "res://scenes/Main.tscn")
 		return
+	# Diagnostic hook (2026-06-08): --repro-hg-horde transitions to Main as a
+	# Military player with no AI opponent. Main._ready detects the same flag
+	# and spawns the focused HG-vs-horde scenario (see _repro_hg_horde).
+	if "--repro-hg-horde" in OS.get_cmdline_user_args():
+		GameState.player_faction = GameState.Faction.MILITARY
+		GameState.ai_enabled = false
+		GameState.ai_vs_ai_mode = false
+		GameState.custom_map_path = ""
+		get_tree().call_deferred("change_scene_to_file", "res://scenes/Main.tscn")
+		return
 	$VBox/MilitaryButton.pressed.connect(_on_military_pressed)
 	$VBox/TribalButton.pressed.connect(_on_tribal_pressed)
 	$VBox/SurvivorButton.pressed.connect(_on_survivor_pressed)

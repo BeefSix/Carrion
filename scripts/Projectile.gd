@@ -36,9 +36,15 @@ const DEFAULT_LIFETIME := 5.0
 # Bullets chip walls and buildings at reduced effectiveness. AOE / explosives
 # remain the efficient siege options per the audit response #3.
 const BUILDING_DAMAGE_FRACTION := 0.15
-# Collision mask for the per-frame motion raycast. Bit 0 = units (CharacterBody2D),
-# bit 1 = walls/buildings (StaticBody2D on layer 2). Matches scene mask.
-const MOTION_MASK := 3
+# Collision mask for the per-frame motion raycast. Bit 0 = non-zombie units
+# (layer 1, default for player/AI CharacterBody2D), bit 1 = walls/buildings
+# (StaticBody2D on layer 2), bit 3 = zombies (layer 4 - moved off layer 1
+# on 2026-06-08 to eliminate the zombie-zombie collision-pair O(N^2) cliff;
+# see Shambler.tscn). Without bit 3 set, raycasts from this projectile would
+# pass straight through zombies and they'd be invulnerable. Keep this mask in
+# sync with Projectile.tscn collision_mask (used by body_entered, currently
+# unused but documents intent).
+const MOTION_MASK := 11
 
 var damage: float = 10.0
 var speed: float = 800.0

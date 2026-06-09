@@ -7,6 +7,7 @@ const FORCE_SPAWN_CHANNEL_TIME := 5.0
 const FORCE_SPAWN_COUNT := 4
 const INTERACTION_RANGE := 80.0
 const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
+const NoiseFieldScript := preload("res://scripts/NoiseField.gd")
 
 var _sub: Sub = Sub.NONE
 var _target_building = null
@@ -80,8 +81,18 @@ func _execute_force_spawn() -> void:
 		current_command = Command.IDLE
 		return
 	spend_salvage(FORCE_SPAWN_COST)
+	# Per-spawn population cap (2026-06-08). Force-spawn rituals can rip
+	# 4 zombies at once; without this gate they'd silently push past the
+	# MAX_ZOMBIE_POPULATION ceiling enforced everywhere else. We check
+	# inside the loop, not just once, so the count includes zombies
+	# spawned earlier in this same ritual. Salvage is spent regardless -
+	# the cost is the ritual, not the headcount delivered.
+	var zf = get_tree().get_first_node_in_group("zombie_field")
 	var center: Vector2 = _target_building.position
 	for i in range(FORCE_SPAWN_COUNT):
+		if zf != null and zf.has_method("get_zombie_count"):
+			if zf.get_zombie_count() >= NoiseFieldScript.MAX_ZOMBIE_POPULATION:
+				break
 		var jitter := Vector2(randf_range(-32, 32), randf_range(-32, 32))
 		var s = SHAMBLER_SCENE.instantiate()
 		s.position = center + jitter

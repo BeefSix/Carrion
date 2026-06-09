@@ -6,6 +6,7 @@ const CP_SCENE := preload("res://scenes/buildings/CommandPost.tscn")
 const TC_SCENE := preload("res://scenes/buildings/TribalCamp.tscn")
 const SH_SCENE := preload("res://scenes/buildings/SettlementHub.tscn")
 const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
+const NoiseFieldScript := preload("res://scripts/NoiseField.gd")
 const WIN_OVERLAY_SCENE := preload("res://scenes/WinOverlay.tscn")
 const MAP_SIZE := Vector2(6144, 6144)
 const DEV_SPEED := 4.0
@@ -192,6 +193,13 @@ func _ready() -> void:
 	# Telemetry header: built once all match-shape state (matchup, ai_enabled,
 	# map source) is locked in. MatchStats owns the schema; we just trigger it.
 	MatchStats.match_start()
+	# Diagnostic hook (2026-06-08): --repro-hg-horde drops 1 HG + 2 Riflemen
+	# next to the player HQ, then a 150-Shambler cluster ~800 px ahead, and
+	# issues a move order at the horde center. Reproduces the player's
+	# "near-total system hang on group move into horde" report headlessly so
+	# the actual symptom can be measured. Remove after the bug is fixed.
+	if "--repro-hg-horde" in user_args:
+		_repro_hg_horde()
 
 
 # Image-to-map: load extracted map data + render the source image as
@@ -346,6 +354,45 @@ func _spawn_ai_vs_ai_opponents() -> void:
 	add_child(opposing_ai)
 
 
+func _repro_hg_horde() -> void:
+	# Direct repro of "player issues group move into horde -> hang".
+	# Spawns 1 HG + 2 Riflemen as player_units / MILITARY, drops a 150-zombie
+	# ring 800 px ahead, then calls move_to(horde_center) on the trio so the
+	# scenario fires the moment the engine starts the first physics frame.
+	# No AI involvement; the only sim load comes from the unit interactions.
+	var origin: Vector2 = _get_spawn_position()
+	var horde_center: Vector2 = origin + Vector2(800.0, 0.0)
+	var rifleman_scene: PackedScene = load("res://scenes/units/Rifleman.tscn")
+	var heavy_scene: PackedScene = load("res://scenes/units/HeavyGunner.tscn")
+	if rifleman_scene == null or heavy_scene == null:
+		print("[REPRO] missing unit scenes - abort")
+		return
+	var hg = heavy_scene.instantiate()
+	hg.position = origin
+	hg.faction = GameState.Faction.MILITARY
+	add_child(hg)
+	hg.add_to_group("player_units")
+	for i in range(2):
+		var r = rifleman_scene.instantiate()
+		r.position = origin + Vector2(32.0 * float(i + 1), 32.0)
+		r.faction = GameState.Faction.MILITARY
+		add_child(r)
+		r.add_to_group("player_units")
+	# Horde: 150 Shamblers in an annular cluster around horde_center.
+	for i in range(150):
+		var ang: float = (float(i) / 150.0) * TAU
+		var radius: float = 80.0 + float(i % 12) * 10.0
+		var s = SHAMBLER_SCENE.instantiate()
+		s.position = horde_center + Vector2(cos(ang), sin(ang)) * radius
+		add_child(s)
+	# Group move command (matches what SelectionManager._handle_right_click
+	# would issue on a real player click - move_to per unit).
+	for u in get_tree().get_nodes_in_group("player_units"):
+		if u.has_method("move_to"):
+			u.move_to(horde_center)
+	print("[REPRO] spawned 1 HG + 2 Riflemen at %s, 150 Shamblers around %s, move issued" % [origin, horde_center])
+
+
 func _spawn_inert_opposing_hq() -> void:
 	var scene: PackedScene = _opposing_inert_scene()
 	if scene == null:
@@ -439,6 +486,15 @@ func _process(delta: float) -> void:
 
 
 func _spawn_edge_wanderer() -> void:
+	# Population cap (2026-06-08): edge wanderers are ambient atmospheric
+	# spawns and should respect the same MAX_ZOMBIE_POPULATION ceiling
+	# that horde spawns and corpse rises now enforce. Without this gate,
+	# the every-90-seconds drip would still push past the cap in long
+	# matches once the other sites were locked down.
+	var zf = get_tree().get_first_node_in_group("zombie_field")
+	if zf != null and zf.has_method("get_zombie_count"):
+		if zf.get_zombie_count() >= NoiseFieldScript.MAX_ZOMBIE_POPULATION:
+			return
 	var spawn_pos := _get_spawn_position()
 	var pos := Vector2.ZERO
 	for attempt in range(8):
