@@ -38,3 +38,6 @@ Thumbs.db
 # Headless perf/diagnostic logs (created at runtime by Godot --headless runs)
 # Not part of the repo - rerun the diagnostic to regenerate.
 /*.log
+
+# Claude Code runtime lockfile (session-scoped, regenerated)
+.claude/scheduled_tasks.lock

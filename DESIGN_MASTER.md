@@ -45,6 +45,21 @@ Sometimes it is better to let a wounded man die alone than to bring him — and 
 
 The only faction whose presence *transforms the ground into a gameplay surface*. Tribal's SC-Zerg-creep analogue: a spreading territory ("Marrow") emanating from Tribal structures and/or dense zombie clusters. Tribal units gain bonuses on it (TBD — likely the ambush/regen/movement edge); it visibly marks claimed ground with its own bone/viscera visuals (distinct from the decay land-state). Marrow is the *only* faction-ground mechanic with real gameplay teeth — Military wears the land down (visual-only, §2), Survivor heals/repurposes via buildings (not ground), Tribal *claims* it. Ties the previously-vague density/clustering zones into ownable territory. Numbers and exact bonuses [OPEN] → Tribal phase + balance lab. (Naming candidates considered: Marrow [front-runner], Stain, the Mire, Blight, the Reek.)
 
+**Infested buildings = the contested three-stance object (coherence locked 2026-06-08).** The same map object means something opposite to each faction, and this is the asymmetric thesis in miniature:
+- **Survivor CLEARS** it → neutralizes infestation into safe resource ground (remove the threat).
+- **Military FARMS** it → stakes a Looter to profit from the spawns; *cannot* clear it because clearing it would destroy its own income (exploit the threat). This is why "Military can't clear infested houses" — not an arbitrary rule, an economic inevitability.
+- **Tribal SPREADS** it → infests more buildings to grow the Marrow economy (cultivate the threat).
+An infested house on a contested border is a three-way tug-of-war (sanitize / protect-and-milk / feed). Emergent from making the Looter coherent, not designed top-down.
+
+### 3.05 Perception chain — the horde must hear, pursue, and erupt (from feel-test 2026-06-08)
+
+A threatening horde requires the perception pieces to *chain*, not just exist. Three linked behaviors, all on the shared Shambler substrate:
+- **Proximity sense (360°, close range):** a valid target within ~3 tiles is detected regardless of facing — you can't sneak past or wade through something right next to you. Bypasses the long-range vision cone + fuzz (those stay, for atmospheric slow-noticing at distance).
+- **Hearing converts to pursuit:** a noise (gunfire) pulls the horde toward the *shooter's current position* (not the stale spot), and proximity locks them onto the actual unit on arrival → CHASE. Gunfire must turn into pursuit, or the horde just drifts to where-you-were and mills.
+- **Damaged-zombie groan:** a zombie taking attack-damage emits a groan that nearby zombies react to (direct zombie-to-zombie hearing, NOT NoiseField — or combat would trigger horde-spawns and snowball). Shoot one in a pack and the pack erupts. The wounded cry rallies the horde, and it's thesis-coherent: attacking a horde *escalates* it. This is the cascade/aggro-propagation done right; replaces the buggy speculative `_pending_cascade`.
+
+Design intent: walking a unit into a crowd should feel like a mistake. Numbers + envelopment (with the §3.1 separation so they surround rather than clump) make even slow zombies lethal at close range; Runners add the can't-escape pressure in the open later.
+
 ### 3.1 Clustering dynamics
 Zombies roam. Zombies make noise, which attracts zombies — so they cluster, and the map develops dense zones with their own geography: living walls, no-go areas, weapons. This positive feedback loop is the keystone system and requires damping (below) or the map converges to one mega-blob.
 
@@ -146,7 +161,10 @@ See NETCODE.md for the determinism decisions (float-with-discipline, no transcen
 **Suppression (combat identity, designed 2026-06-08):** a short-lived *field* fed by fire and read by position — same architecture as NoiseField (a decaying source-list, but fast-decay and small-radius). Every ranged shot that lands deposits suppression at the impact point. **Source is universal, but threshold requires volume** — one shooter's deposits decay before crossing the line, so a lone unit suppresses nothing; concentrated/sustained fire on one area builds a zone. Military's loud, massed, high-rate weapons dominate it by playstyle; Tribal's silent single-shot Hunters and Survivor's quiet crossbows barely register. Military *owns* suppression by volume, not by rule. Any unit in a suppressed zone — **human or zombie** — is slowed and fires less accurately (speed + accuracy). The zone dissipates in ~1–2s after fire stops. **Thesis interaction is free:** the suppressing fire already emits noise via NoiseBus, so pinning a horde simultaneously summons the next wave — Military buys control with noise, made mechanical. v1 is a flat debuff; **v2 hook**: veterancy resistance (rookies break under suppression, veterans hold — ties into behavioral veterancy §5). All numbers placeholder → balance lab.
 
 **Units:**
-- **Looter** (economy) — on spawn, patrols Military zones: clears zombies, builds salvage. Trained in headshots (always clean kills). Shoot-to-loot on corpses of any faction (§4).
+- **Looter** (economy + builder) — **redesigned 2026-06-08 from a feel-test** (felt chaotic/rush-y: no leash, chased zombies map-wide, mobile gun-unit silhouette). New design: a **territorial farmer**, not a roaming hunter. Hunts/clears zombies only within a leash radius of a **work-anchor** (default the Command Post; player-settable — stake them near infested houses and they farm the spawns). Trained in headshots (always clean kills). Shoot-to-loot on corpses of any faction (§4). Also the Military builder.
+  - **De-rush by construction:** slow + fragile, magnum is a slow single-shot that clean-kills lone zombies but is useless vs massed enemy units → terrible rusher, fine farmer.
+  - **Speed flips with load (binary, v1):** *slow* while working/hunting; *fast* the moment it's carrying scrap and running home. The burst only points homeward-fleeing, never toward combat — this is what structurally prevents the rush. Readable state (you and the enemy can see a loaded courier), and it sets up **interception counterplay**: loaded Looters dashing across contested ground are targets for enemy units and zombies, giving opponents a lever against Military's economy and the Military player a route/escort decision. v2 flavor: loaded Looters clatter (emit a little noise), making the run-back tense and tying it to the noise economy.
+  - **Income fed by Military noise:** Military is loud → loud draws zombies → zombies enter Looter territory → Looters farm them. The noise economy and the salvage economy are one loop: louder = richer = more dangerous. "Metabolize the horde" made literal. Income *rate* is [OPEN] → lab-tuned AFTER the zombie steering field lands (can't tune the farmer until the horde behaves).
 - **Rifleman** (basic attack) — doctrines: **Ghost** (silencer; less range/damage; quiet — anti-Tribal) / **Shotgunner** (much louder; less range; high damage; CQB breaching — anti-Survivor).
 - **Heavy Gunner** — loud, high-damage group clear, medium range. Doctrines **[PROPOSED]**: **Entrencher** (tripod deploy: stationary, wider arc, stronger suppression — a temporary turret, anti-Survivor siege) / **Incinerator** (incendiary belts: lower DPS, **kills leave no corpses** — the only Military firepower that clears a horde without manufacturing the next one; anti-Tribal).
 - **Engineer** — required for Command Post upgrades and doctrine upgrades. Grenades; blowtorch for close combat — and the blowtorch is the faction's fastest cremation tool **[PROPOSED]**.
@@ -225,6 +243,22 @@ Competitive multiplayer (up to 6p) is the end goal, which is an architecture dec
 Nine maps, three per faction: **basics → advanced → overwhelm** (Battlefield 1 model — short, scripted, tonal). The descent loop is the philosophical spine: each faction degrades across its three maps. No triumphant endings. Campaign teaches the systems the competitive game runs on.
 
 ---
+
+## 10.5 Visual identity — faction style anchors (locked 2026-06-08)
+
+Three foundational character references established (one per faction); every unit in a faction derives from its anchor. The Gemini pipeline uses these as style anchors.
+
+**Cross-faction visual thesis (the generative rule):**
+- **Face = identity.** Military: face *visible* (grizzled, confident — still an organization). Survivor: face *hidden* behind an improvised gas mask (anonymous, sealed against a poisoned world). Tribal: face *bare but transformed* (scarified, marked, adorned — became something else).
+- **Material = relationship to civilization.** Military wears civilization's *manufactured gear* (kevlar/nylon/gunmetal, maintained — the institution's remnant). Survivor wears its *scavenged scraps* (canvas, straps, patched layers — picking the corpse). Tribal wears its *absence* (bone, hide, sinew — made from the dead, abandoned it entirely).
+- Every new unit answers: how do this unit's face and kit express its faction's relationship to identity and the old world? This is what makes a roster read as one faction despite role variety.
+
+**Per-faction anchor:**
+- **Military** — modern infantry: combat helmet, plate carrier with pouches, maintained carbine + sidearm, olive/coyote/black palette, unit patch, upright disciplined stance. The most orderly/saturated of the three. *32px signature: helmet + rifle profile.*
+- **Survivor** — hooded scavenger: full improvised gas mask (round filter), layered earth-toned scavenged clothing, chest rig/pouches/straps, improvised weapon, grimy desaturated palette, wary hunched posture, face never seen. *32px signature: gas-mask filter + hood.*
+- **Tribal** — feral ritualist: dreadlocks, scarified bare torso, bone/antler ornaments, animal skull worn, hide wraps, barefoot, spear + bow, bone-white/leather/skin palette. *32px signature: skull + dreadlocks + spear/bow.*
+
+**Roster-derivation rules:** keep the faction silhouette/palette/material constant; vary role through weapon + gear bulk + size; **doctrine shows on the kit** (per §6 scoutability — Ghost suppressor, Shotgunner weapon, etc., so reading enemy commitments requires eyes on the army); support units (medics) need a distinct readable element for the focus-fire legibility (§7 medic thresholds). Protect the 32px signature above all — faction must be identifiable across a chaotic fight.
 
 ## 11. Production Notes
 
