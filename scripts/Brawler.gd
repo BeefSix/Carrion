@@ -13,6 +13,7 @@ var _retarget_timer := 0.0
 
 
 func _physics_process(delta: float) -> void:
+	_sim_upkeep(delta)  # D4 subclass invariant — see Unit._sim_upkeep
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
 	if current_command == Command.CREMATE:
 		velocity = Vector2.ZERO

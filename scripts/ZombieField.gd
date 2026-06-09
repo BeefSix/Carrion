@@ -78,7 +78,11 @@ func _ready() -> void:
 	_residue.resize(TOTAL_CELLS)
 
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	# D3 (AUDIT 2026-06-09): density + residue are zombie steering inputs
+	# (sim state, §3.2 core) — they advance on the physics tick, not wall
+	# frames. The internal interval accumulators are unchanged; only the
+	# driver moved. Behavior-identical at time_scale 1.
 	_density_timer += delta
 	if _density_timer >= DENSITY_UPDATE_INTERVAL:
 		_density_timer = 0.0

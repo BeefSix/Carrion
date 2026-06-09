@@ -79,6 +79,7 @@ func _get_energy_mult() -> float:
 
 
 func _physics_process(delta: float) -> void:
+	_sim_upkeep(delta)  # D4 subclass invariant — see Unit._sim_upkeep
 	_update_energy(delta)
 
 	if current_command == Command.MOVE:

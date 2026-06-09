@@ -48,6 +48,7 @@ func _morale_enabled() -> bool:
 
 
 func _physics_process(delta: float) -> void:
+	_sim_upkeep(delta)  # D4 subclass invariant — see Unit._sim_upkeep
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
 	_attack_anim_timer = max(0.0, _attack_anim_timer - delta)
 	if use_sprite:

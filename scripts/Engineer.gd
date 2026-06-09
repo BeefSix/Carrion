@@ -161,6 +161,7 @@ func _request_nav_rebake() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_sim_upkeep(delta)  # D4 subclass invariant — see Unit._sim_upkeep
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
 
 	var max_eff: int = get_effective_max_hp()

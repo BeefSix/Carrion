@@ -223,13 +223,16 @@ func get_xp_total() -> float:
 	return float(kills_count * 10) + (damage_dealt * 0.1) + (combat_time * 0.5)
 
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
+	# RENDER ONLY (D4, AUDIT 2026-06-09). Sim upkeep (cremation, engagement/
+	# XP, veterancy) moved to _sim_upkeep() on the physics tick — it was
+	# advancing at wall rate here, coupling XP accrual and cremation channels
+	# to framerate and time_scale.
 	if velocity.length_squared() > 1.0:
 		facing_dir = velocity.normalized()
 		queue_redraw()
 	# Iso depth sort: back-to-front by world_x + world_y. Updated every frame
-	# because units move; cheap (one multiply + clamp). Zombies sort too, so
-	# we do this before the zombie-fast-path early return.
+	# because units move; cheap (one multiply + clamp). Zombies sort too.
 	z_index = IsoView.z_for(global_position)
 	# When a sprite child is present, shift it into iso screen space so the
 	# pixel-art character lines up with the iso ground tile under the unit.
@@ -238,10 +241,21 @@ func _process(delta: float) -> void:
 		var sprite: Node2D = get_node_or_null("AnimatedSprite2D")
 		if sprite != null:
 			sprite.position = IsoView.world_to_screen(position) - position
+
+
+func _sim_upkeep(delta: float) -> void:
+	# Per-tick sim maintenance shared by every living unit: cremation channel,
+	# engagement cache + combat_time XP accrual, veterancy promotion.
+	#
+	# SUBCLASS INVARIANT (extends the §7.5 audit note): every Unit subclass
+	# that overrides _physics_process MUST call _sim_upkeep(delta) as its
+	# first line — NOT super._physics_process (which would double-run the
+	# base MOVE handling the subclasses deliberately replace). Zombies are
+	# internally guarded so a stray call is a cheap no-op.
 	if faction == GameState.Faction.ZOMBIE:
 		return
 	_tick_cremation(delta)
-	# Refresh engagement state at 2 Hz; accumulate combat_time per frame
+	# Refresh engagement state at 2 Hz; accumulate combat_time per tick
 	# while the cached state is true. Same XP-tracking outcome, 30x less work.
 	_engagement_check_timer -= delta
 	if _engagement_check_timer <= 0.0:
@@ -489,7 +503,8 @@ func _on_safe_velocity(safe_v: Vector2) -> void:
 	move_and_slide()
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	_sim_upkeep(delta)
 	if current_command != Command.MOVE:
 		return
 	if not _follow_navigation():

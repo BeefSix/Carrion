@@ -55,6 +55,7 @@ func _morale_enabled() -> bool:
 
 
 func _physics_process(delta: float) -> void:
+	_sim_upkeep(delta)  # D4 subclass invariant — see Unit._sim_upkeep
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
 	# Ambient clicking — runs every physics tick regardless of command state.
 	# Emits even while moving / firing / idle: it's identity, not behavior.

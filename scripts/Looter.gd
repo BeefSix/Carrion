@@ -184,6 +184,7 @@ func get_effective_move_speed() -> float:
 
 
 func _physics_process(delta: float) -> void:
+	_sim_upkeep(delta)  # D4 subclass invariant — see Unit._sim_upkeep
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
 	_retarget_timer = max(0.0, _retarget_timer - delta)
 	_hunt_scan_timer = max(0.0, _hunt_scan_timer - delta)

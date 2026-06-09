@@ -43,6 +43,7 @@ func move_to(world_pos: Vector2) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_sim_upkeep(delta)  # D4 subclass invariant — see Unit._sim_upkeep
 	if current_command == Command.MOVE:
 		if not _follow_navigation():
 			current_command = Command.IDLE

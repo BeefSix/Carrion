@@ -55,7 +55,10 @@ func cremate() -> void:
 	queue_free()
 
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	# D2 (AUDIT 2026-06-09): rise timer on the physics tick. The corpse
+	# economy is the design thesis; its timer was advancing at wall rate
+	# (framerate- and time_scale-coupled). Behavior-identical at scale 1.
 	if _cremated:
 		return
 	_timer -= delta
