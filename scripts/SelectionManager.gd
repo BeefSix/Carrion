@@ -45,7 +45,7 @@ func _confirm_wall_placement(world_pos: Vector2) -> void:
 		_cancel_wall_placement()
 		return
 	GameState.spend(WALL_COST)
-	_wall_builder.build_wall_at(snapped)
+	CommandBus.issue("build_wall", _wall_builder, {"target": snapped}, CommandBus.SRC_PLAYER)
 	_cancel_wall_placement()
 
 
@@ -166,16 +166,16 @@ func _handle_right_click(world_pos: Vector2) -> void:
 		# unit is a combat unit. cremate_target is inherited from Unit.gd by ALL
 		# subclasses (including workers), so we must filter by group.
 		if target_corpse != null and u.is_in_group("combat_units"):
-			u.cremate_target(target_corpse)
+			CommandBus.issue("cremate", u, {"target": target_corpse}, CommandBus.SRC_PLAYER)
 		elif target_building != null and is_damaged and building_is_player_owned and u.has_method("repair_at"):
-			u.repair_at(target_building)
+			CommandBus.issue("repair", u, {"target": target_building}, CommandBus.SRC_PLAYER)
 		elif target_lootable != null and is_infested and u.has_method("force_spawn_at"):
-			u.force_spawn_at(target_lootable)
+			CommandBus.issue("force_spawn", u, {"target": target_lootable}, CommandBus.SRC_PLAYER)
 		elif target_lootable != null and u.has_method("gather_from"):
-			u.gather_from(target_lootable)
+			CommandBus.issue("gather", u, {"target": target_lootable}, CommandBus.SRC_PLAYER)
 		elif u.has_method("move_to"):
 			var per_unit_target: Vector2 = _formation_position(world_pos, move_index, move_unit_count)
-			u.move_to(per_unit_target)
+			CommandBus.issue("move", u, {"target": per_unit_target}, CommandBus.SRC_PLAYER)
 			move_index += 1
 
 

@@ -26,6 +26,8 @@ ProjectileManager="*res://autoloads/ProjectileManager.gd"
 NoiseBus="*res://autoloads/NoiseBus.gd"
 PerfProbe="*res://autoloads/PerfProbe.gd"
 MatchStats="*res://autoloads/MatchStats.gd"
+ReplayRecorder="*res://autoloads/ReplayRecorder.gd"
+CommandBus="*res://autoloads/CommandBus.gd"
 
 [display]
 
