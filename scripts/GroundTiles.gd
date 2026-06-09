@@ -10,7 +10,7 @@ extends TileMapLayer
 #   $GroundTiles.apply_tile_grid(data["tile_grid"])
 
 const TILE_W := 64
-const TILE_H := 48
+const TILE_H := 32  # 2:1 dimetric. Was 48 (4:3 oblique) pre-2026-06-09.
 const MAP_TILES := 192
 
 # Tile PNG sources (Pixellab tiles_pro 64px isometric top-down) — slot index
