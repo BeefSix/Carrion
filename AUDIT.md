@@ -178,3 +178,53 @@ Observations from diff-verification of the fix batches — real but minor; fold 
 ## 8. The bigger question
 
 The prototype plan exists to answer one question — *do Military and Tribal feel like different games, and is the noise/zombie/decay loop worth keeping?* — and the three things that answer it (hot-seat, undiluted enhanced returns, the Looter's loud-gathering identity) are respectively missing, gutted, and replaced. The systems that were built instead (squads, veterancy, town generation, sprite art) are Phase-1+ work per your own plan. Before more feature work, consider: restore the corpse-return rate for combat units, give the Looter back a loot loop (or consciously update the design doc to the bounty-hunter identity), implement item 39's match-start state, and either build hot-seat or accept the AI as the test vehicle and fix H2-H4 so it can actually fight. Then run the Week-6 verdict the plan calls for.
+
+---
+
+# FOLLOW-UP AUDIT — 2026-06-09 (determinism sweep)
+
+*Scope: full re-sweep of scripts/ + autoloads/ against CLAUDE.md's six Determinism Rules, after the day's batches (CommandBus/replay/checksum harness, 2:1 projection migration, Tribal vertical slice, morale system). Method: pattern sweep (grep battery) + targeted hunk reads. Severity follows the 2026-06-07 scale. Numbering D1+ to avoid colliding with the original C/H/M/L items.*
+
+## Executive summary
+
+The new systems built this week (CommandBus, ReplayRecorder, SimChecksum, morale, Tribal slice, projection migration) are **clean** — they follow the rules they were built under. The violations concentrate in the **older substrate**, and they cluster into one theme: **sim state advancing on `_process(delta)` and wall-clock reads** — exactly the class of bug the replay harness will trip over first. The Tribal producers got fixed in the slice; their Military/Survivor siblings did not, so the codebase is now *inconsistently* deterministic. Worth closing the gap while the pattern is fresh.
+
+## D-Critical (will break replay/lockstep correctness directly)
+
+- **D1 — NoiseField advances sim state in `_process` AND uses wall-clock for the horde cooldown.** `NoiseField.gd:135` (emitter intensity decay + horde tier firing on render frames) and `NoiseField.gd:145,209` (`Time.get_ticks_msec()` gates the 30s horde cooldown). Double hit: (a) under `Engine.time_scale = 8` (AI-vs-AI lab), noise decays 8x faster per *sim* second than in normal play, so headless balance data does not represent real matches; (b) wall-clock cooldown means horde timing depends on machine speed — a guaranteed desync and a replay-divergence source. Fix: move decay/tier logic to `_physics_process`, replace wall-clock with `GameState.sim_seconds()`. **This is the single highest-priority determinism fix in the codebase.**
+- **D2 — Corpse rise timer runs on `_process`.** `Corpse.gd:58-65`. The corpse economy is the design thesis, and its central timer advances on render frames (time_scale- and framerate-coupled). Move to `_physics_process`.
+- **D3 — ZombieField density recompute + residue decay on `_process`.** `ZombieField.gd:81-89`. These are the zombie steering inputs — the core of §3.2. Move to `_physics_process` (the internal interval accumulators are already there; only the driver is wrong).
+- **D4 — Unit cremation channel + XP accrual on `_process`.** `Unit.gd:226,243-246`. `_tick_cremation(delta)` (a sim channel) and `combat_time` accumulation (feeds XP/veterancy) advance on render frames. The facing/z-index/sprite-offset part of this function is correct render work — split the function: render stays in `_process`, cremation + engagement/XP move to `_physics_process`.
+
+## D-High
+
+- **D5 — Military/Survivor producer buildings still run production on `_process`.** `Barracks.gd:88`, `CommandPost.gd:92`, `Workshop.gd:78`, `Safehouse.gd:75`, `SettlementHub.gd:113`, `Greenhouse.gd:15`, `WaterCollection.gd:15`, `Lootable.gd:100`. The identical violation was fixed for TribalCamp/HuntingLodge/RitualSite in the Tribal slice — these eight files need the same one-line change (`_process` → `_physics_process`). Until then, Military/Survivor build times are wall-time while Tribal build times are sim-time: a real cross-faction balance skew at any non-1.0 time_scale.
+- **D6 — Formation positions computed with transcendentals.** `SelectionManager.gd:201` (`cos/sin` in `_formation_position`). These results become nav targets = sim state (Rule #5). Fix: precomputed offset table (the ring layout is fixed — 6/12/18 slots) or integer-vector approximations. `Main.gd:414` has the same pattern but is the dev-only `--repro-hg-horde` path (Low). `Unit.gd:632` is in `_draw` — sanctioned render use.
+- **D7 — AIController production countdown uses raw `_process` delta.** `AIController.gd:74-78`. Comment says wall-time is intentional, but production completion mutates sim state (spawns units). Under time_scale 8, AI production is 8x faster per sim-second than the player's. Should anchor on `GameState.sim_seconds()` like the strategist/tactician loops in the same file already do.
+- **D8 — Bare RNG in remaining gameplay sites.** Sweep found 18 files; the high-value targets (everything new + Tribal producers + edge wanderer + Shambler init) were converted this week. Remaining notable: `Projectile.gd` (spread rolls), `CombatUnit.gd`, `Unit.gd` (corpse-chance rolls), `Lootable.gd`, `Barracks/CommandPost/Workshop/Safehouse/SettlementHub` spawn jitters, `NoiseField.gd` (horde spawn positions), `TownPlanner.gd` (map gen — replay-safe because replays snapshot the town, but cross-client live map gen would diverge), `Shambler.gd` hot path (~25 sites, documented as convert-when-CI-names-it in NETCODE.md). Convert opportunistically per CLAUDE.md's grandfathering rule; prioritize Projectile + Unit corpse rolls since they're combat-outcome-affecting.
+
+## D-Medium
+
+- **D9 — `GameState.spend` direct in all producer buildings + Engineer.** Known and deferred (AI doesn't use building actions today; it spawns directly from its own pool). Becomes load-bearing the day AI-run factions use `do_action`. Tracked in the Tribal slice plan; listed here for completeness.
+- **D10 — Projectile hit resolution via `intersect_ray`.** `Projectile.gd:139,153`. Physics query deciding gameplay outcomes (Rule #3) — grandfathered, but projectile hits are exactly the kind of thing that diverges across machines. The steering-field migration plan should include a projectile-hit rework (deterministic swept-segment vs. unit positions).
+- **D11 — Shambler vision via `intersect_shape`.** `Shambler.gd:1497-1499`. Grandfathered + already documented in NETCODE.md as an irreducible-until-steering-field item. No action now; listed so the audit is complete.
+- **D12 — DecayField `_process`.** `DecayField.gd:57`. Mostly draw-cost work (viewport cull), but verify the decay *state* mutation isn't in the `_process` path before declaring it render-only. 10-minute check next time the file is touched.
+
+## What's already clean (verified this sweep)
+
+- **CommandBus / ReplayRecorder / SimChecksum** — no violations; SimChecksum's pre-sort kills iteration-order sensitivity by construction.
+- **Tribal slice (Walker/Hunter/Shaman/TribalCamp/HuntingLodge/RitualSite)** — all five phases clean; the slice actually *removed* 7 pre-existing violations.
+- **Projection migration** — render-only, confirmed by replay checksum reproduction at ticks 60+120.
+- **Morale/personality system** — SimRng-rolled archetypes, physics-tick morale ticks.
+- **MatchStats/PerfProbe/HUD/RTSCamera/SquadSidebar `_process` uses** — I/O, UI, camera; legitimately wall-time.
+- **17 of the original audit's findings carry FIXED tags**; no regressions of those fixes found in this sweep.
+
+## Recommended fix order
+
+1. **D1** (NoiseField) — highest value; unblocks trustworthy balance-lab data AND removes the biggest replay divergence source.
+2. **D2 + D3 + D4** (Corpse/ZombieField/Unit) — same pattern, one batch, ~4 files.
+3. **D5** (eight producer buildings) — mechanical one-liners, one commit.
+4. **D6 + D7** — small targeted fixes.
+5. **D8** opportunistically; **D9-D12** when their systems are next touched.
+
+Estimated: items 1-4 are one focused session. After them, re-run `tools/determinism_test.sh 42` — the replay should reproduce significantly deeper than the current tick-180 divergence.
