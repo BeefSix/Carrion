@@ -15,30 +15,27 @@ const PROJECTILE_COLOR := Color(0.45, 0.35, 0.22)
 # Tighter cone than Rifleman: Hunter is a deliberate aimed shooter.
 const BASE_ACCURACY_DEG := 3.0
 
-# Ambient clicking (DESIGN_MASTER §7.2): Hunter emits a constant low-grade
-# noise that pulls nearby zombies into a "living armor" cluster around him.
-# Inverted signature vs the Military Rifleman (which is loud on fire, silent
-# on ambient — Hunter is silent on fire, loud on ambient). The clicking is
-# what makes the Hunter fire from INSIDE a horde he attracted.
-#
-# Tuning math (NoiseField.NOISE_DECAY_RATE = 10.0/sec):
-#   - Per-interval decay = 10.0 * CLICK_INTERVAL
-#   - Steady-state emitter intensity = CLICK_MAGNITUDE - (decay per interval)
-#   - 0.5s interval, 8.0 magnitude → decay 5.0 → steady-state ~3 (above
-#     MIN_INTENSITY=1.0 so emitter stays alive permanently).
-#   - Consecutive clicks within MERGE_RADIUS=96px merge into the same emitter,
-#     so a stationary Hunter accumulates a sustained presence.
-#   - Initial values (2.0s/3.0) had the emitter dying in 0.3s and 1.7s of
-#     total silence, often missed entirely by ATTRACT_INTERVAL=0.4s zombie polls.
-const CLICK_INTERVAL := 0.5    # sim seconds between emits — fast enough that
-                                # the emitter never dies between clicks
-const CLICK_MAGNITUDE := 8.0   # high enough to beat the per-interval decay (5.0)
-                                # and sustain a steady-state pull on nearby zombies
+# Thrall escort (DESIGN_MASTER §7.2 living-armor, redesigned 2026-06-09).
+# The clicking-as-area-noise version failed its feel-test: NoiseField
+# deposits triggered hordes and pulled 50+ zombies map-wide, making the
+# Hunter an army-summoner (that's the Shaman's role). Replaced with a
+# BOUNDED recruiter: the Hunter claims up to MAX_THRALLS nearby wild
+# zombies as a purely defensive escort. Thralls body-block threats and
+# absorb hits but contribute ZERO offense — the escort raises the
+# Hunter's survivability, never his killing power. Concentrated ranged
+# fire still reaches the Hunter past the escort (the Military counter).
+# Recruiting is direct assignment (no NoiseField, no noise event at all):
+# nearest unowned wild zombie within recruit range, checked on a fixed
+# interval, only while below the cap.
+const MAX_THRALLS := 4                    # placeholder — lab-tunable
+const THRALL_RECRUIT_RADIUS_PX := 128.0   # ~4 tiles; local pull only
+const THRALL_RECRUIT_INTERVAL := 1.0      # sim seconds between recruit attempts
 
 var _target = null
 var _attack_cooldown := 0.0
 var _retarget_timer := 0.0
-var _click_timer: float = 0.0   # accumulates delta; emits when >= CLICK_INTERVAL
+var _thralls: Array = []                  # owned Shamblers; pruned each attempt
+var _recruit_timer: float = 0.0
 # Threat-scan cache - 5Hz polling instead of per-frame.
 const THREAT_CHECK_INTERVAL := 0.2
 var _threat_check_timer: float = 0.0
@@ -57,14 +54,13 @@ func _morale_enabled() -> bool:
 func _physics_process(delta: float) -> void:
 	_sim_upkeep(delta)  # D4 subclass invariant — see Unit._sim_upkeep
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
-	# Ambient clicking — runs every physics tick regardless of command state.
-	# Emits even while moving / firing / idle: it's identity, not behavior.
-	# NoiseBus is deterministic (broadcasts to listeners + deposits to the
-	# NoiseField grid, both physics-tick driven).
-	_click_timer += delta
-	if _click_timer >= CLICK_INTERVAL:
-		_click_timer = 0.0
-		NoiseBus.emit(global_position, CLICK_MAGNITUDE)
+	# Thrall recruiting — fixed-interval accumulator on the physics tick.
+	# Runs in every command state (recruiting is passive identity), but
+	# only attempts while below the cap. No RNG, no NoiseField.
+	_recruit_timer += delta
+	if _recruit_timer >= THRALL_RECRUIT_INTERVAL:
+		_recruit_timer = 0.0
+		_try_recruit_thrall()
 	if current_command == Command.CREMATE:
 		velocity = Vector2.ZERO
 		return
@@ -145,3 +141,36 @@ func _fire_at(target) -> void:
 # top of the shared targeting/threat logic.
 func _should_skip_target(u) -> bool:
 	return u != null and "faction" in u and u.faction == GameState.Faction.ZOMBIE
+
+
+func _try_recruit_thrall() -> void:
+	# Prune dead/freed thralls first — a death frees the slot and recruiting
+	# resumes naturally on the next interval.
+	var alive: Array = []
+	for t in _thralls:
+		if t != null and is_instance_valid(t) and t.thrall_owner == self:
+			alive.append(t)
+	_thralls = alive
+	if _thralls.size() >= MAX_THRALLS:
+		return
+	# Nearest unowned WILD zombie within recruit range. Deterministic:
+	# strict nearest-by-distance, first-seen wins exact ties (group order;
+	# acceptable until spawn-ordinal ids land). Tribal-aligned zombies
+	# (Shaman force-spawns) are excluded — the Shaman's troops are not
+	# the Hunter's to poach, keeps the two roles distinct.
+	var best = null
+	var best_dist: float = THRALL_RECRUIT_RADIUS_PX
+	for z in get_tree().get_nodes_in_group("zombies"):
+		if z == null or not is_instance_valid(z):
+			continue
+		if not ("thrall_owner" in z) or z.thrall_owner != null:
+			continue
+		if "is_tribal_aligned" in z and z.is_tribal_aligned:
+			continue
+		var d: float = global_position.distance_to(z.global_position)
+		if d < best_dist:
+			best_dist = d
+			best = z
+	if best != null and best.has_method("make_thrall"):
+		if best.make_thrall(self):
+			_thralls.append(best)

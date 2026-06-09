@@ -241,6 +241,27 @@ const TRIBAL_ALIGNMENT_DURATION := 30.0
 @export var is_tribal_aligned: bool = false
 
 var _tribal_alignment_timer: float = 0.0
+
+# ---- Thrall system (Hunter escort, 2026-06-09) -------------------------
+# A Hunter recruits up to MAX_THRALLS wild zombies as a purely DEFENSIVE
+# escort (DESIGN_MASTER §7.2 living-armor redesign after the clicking
+# feel-test failure — area noise pulled 50+ zombies and fired hordes).
+# Thralls: follow the owning Hunter in a loose cluster, body-block between
+# threats and the owner, never attack (zero DPS contribution — the escort
+# raises survivability, never killing power; concentrated ranged fire can
+# still shoot the Hunter past the escort, the intended Military counter).
+# On the owner's death thralls revert to wild (validity-checked each tick,
+# so no Hunter-side cleanup hook is needed). Loyal regardless of owner HP
+# — the blood-breaks-the-mask rule applies to WILD zombies only.
+const THRALL_BLOCK_DIST_PX := 28.0       # how far from the owner the block position sits, toward the threat
+const THRALL_INTERCEPT_SCAN_PX := 224.0  # threat-scan radius around the owner (matches Hunter ATTACK_RANGE)
+const THRALL_SCAN_INTERVAL := 0.2        # 5 Hz threat scan, mirroring the perception cadence
+const THRALL_ARRIVE_EPS_PX := 4.0        # stop jittering when at the desired slot
+
+var thrall_owner: Node2D = null          # owning Hunter; null = wild
+var _pre_thrall_speed: float = -1.0      # restored on release
+var _thrall_scan_timer: float = 0.0
+var _thrall_threat: Node2D = null        # cached nearest threat to the owner
 var _baseline_body_color: Color = Color.WHITE
 
 var _zombie_state: int = ZombieState.IDLE
@@ -306,6 +327,12 @@ var _chase_offset: Vector2 = Vector2.ZERO
 
 func _ready() -> void:
 	super._ready()
+	# Group registration (2026-06-09): the "zombies" group did NOT exist
+	# before this line — Shambler was only in "units" (scene-set). Two
+	# consumers depended on it silently failing: SimChecksum was hashing an
+	# empty zombie list (zombie positions were invisible to the determinism
+	# CI), and the thrall threat-scan would never see wild zombies.
+	add_to_group("zombies")
 	# Vision query setup - one CircleShape2D + PhysicsShapeQueryParameters2D
 	# per zombie, reused on every perception tick. H6 layer split: non-zombie
 	# units join layer 3 in Unit._ready, so mask = 4 (layer 3 only) means the
@@ -413,6 +440,10 @@ func _draw() -> void:
 
 func investigate(world_pos: Vector2) -> void:
 	# (cascade_join_level param removed 2026-06-08 with the cascade system.)
+	# Thralls ignore noise — they hold their escort slot (purely defensive,
+	# never wander off toward stimuli; the owner is the only anchor).
+	if _is_thralled():
+		return
 	if _zombie_state == ZombieState.CHASE or _zombie_state == ZombieState.ATTACK:
 		return
 	if _zombie_state == ZombieState.LOST_TARGET:
@@ -456,6 +487,9 @@ func investigate(world_pos: Vector2) -> void:
 # per-type hearing range and noise attenuation; triggers investigate() if
 # the effective magnitude clears the threshold.
 func hear_noise(noise_pos: Vector2, magnitude: float, distance: float) -> void:
+	# Thralls are deaf to noise — escort slot only (see investigate()).
+	if _is_thralled():
+		return
 	if distance > HEARING_RANGE_PX:
 		return
 	var attenuation: float = 1.0 - (distance / HEARING_RANGE_PX)
@@ -689,6 +723,98 @@ func _tick_idle_head_turn(delta: float) -> void:
 		_desired_facing_angle = _facing_angle + randf_range(-2.094, 2.094)
 
 
+# ---- Thrall behavior ----------------------------------------------------
+
+
+func make_thrall(owner: Node2D) -> bool:
+	# Called by the recruiting Hunter. Returns false if already owned.
+	if thrall_owner != null or owner == null or not is_instance_valid(owner):
+		return false
+	thrall_owner = owner
+	_pre_thrall_speed = move_speed
+	# Speed-match the owner so the escort keeps pace (Hunters move faster
+	# than Shamblers; an escort that lags behind is no escort).
+	if "move_speed" in owner:
+		move_speed = owner.move_speed
+	# Drop whatever the wild brain was doing — the slot is the only goal.
+	_zombie_state = ZombieState.IDLE
+	_target = null
+	_wandering = false
+	return true
+
+
+func release_thrall() -> void:
+	# Revert to wild: clear the assignment, restore speed, and let the
+	# normal behavior tree resume next tick (it re-runs wild aggro
+	# naturally — a freed thrall near a loud battle will investigate it,
+	# the same dynamic as the Caller/Shaman control rule in §7.2).
+	thrall_owner = null
+	_thrall_threat = null
+	if _pre_thrall_speed > 0.0:
+		move_speed = _pre_thrall_speed
+		_pre_thrall_speed = -1.0
+
+
+func _is_thralled() -> bool:
+	return thrall_owner != null and is_instance_valid(thrall_owner)
+
+
+func _tick_thrall(delta: float) -> void:
+	# 5 Hz threat scan around the OWNER (not the thrall) — the escort exists
+	# to protect the Hunter, so threats are measured from his position.
+	_thrall_scan_timer -= delta
+	if _thrall_scan_timer <= 0.0:
+		_thrall_scan_timer = THRALL_SCAN_INTERVAL
+		_thrall_threat = _find_owner_threat()
+	# Desired slot: with a live threat, body-block on the segment owner ->
+	# threat at THRALL_BLOCK_DIST from the owner (absorb what's meant for
+	# him). Without one, hold a loose ring slot via the per-zombie stable
+	# _chase_offset so the escort doesn't stack into one pixel.
+	var slot: Vector2
+	if _thrall_threat != null and is_instance_valid(_thrall_threat):
+		var to_threat: Vector2 = _thrall_threat.global_position - thrall_owner.global_position
+		if to_threat.length_squared() > 1.0:
+			slot = thrall_owner.global_position + to_threat.normalized() * THRALL_BLOCK_DIST_PX + _chase_offset * 0.5
+		else:
+			slot = thrall_owner.global_position + _chase_offset
+	else:
+		slot = thrall_owner.global_position + _chase_offset
+	var to_slot: Vector2 = slot - global_position
+	if to_slot.length() <= THRALL_ARRIVE_EPS_PX:
+		velocity = Vector2.ZERO
+	else:
+		velocity = to_slot.normalized() * move_speed
+		_set_desired_facing(slot)
+	move_and_slide()
+
+
+func _find_owner_threat() -> Node2D:
+	# Nearest hostile to the owner within THRALL_INTERCEPT_SCAN_PX.
+	# Deterministic: strict nearest-by-distance, first-seen wins exact ties
+	# (group order — acceptable until spawn-ordinal ids land; ties are
+	# measure-zero in practice). Uses GameState.is_hostile so the scan
+	# covers both enemy humans and WILD zombies — a wounded owner's escort
+	# blocks the wild dead coming for him too. Thralled zombies (any
+	# owner's) are skipped: escorts don't block each other.
+	var best: Node2D = null
+	var best_dist: float = THRALL_INTERCEPT_SCAN_PX
+	var candidates: Array = get_tree().get_nodes_in_group("player_units")
+	candidates.append_array(get_tree().get_nodes_in_group("ai_units"))
+	candidates.append_array(get_tree().get_nodes_in_group("zombies"))
+	for u in candidates:
+		if u == self or u == null or not is_instance_valid(u):
+			continue
+		if "thrall_owner" in u and u.thrall_owner != null:
+			continue
+		if not GameState.is_hostile(thrall_owner, u):
+			continue
+		var d: float = thrall_owner.global_position.distance_to(u.global_position)
+		if d < best_dist:
+			best_dist = d
+			best = u
+	return best
+
+
 func _physics_process(delta: float) -> void:
 	# Diagnostic timing (2026-06-08). Gated by PerfProbe.DIAG_SHAMBLER_TIMING
 	# (default off). The wraps below + the helper split add up to ~120k
@@ -711,6 +837,16 @@ func _physics_tick(delta: float) -> void:
 	if use_sprite:
 		_update_shambler_sprite_animation()
 	_tick_facing(delta)
+	# Thrall escort path replaces the whole wild behavior tree (no wander,
+	# no perception, no attack — purely defensive body-blocking). Owner
+	# validity is checked every tick: a dead Hunter's thralls revert to
+	# wild here with no Hunter-side cleanup needed.
+	if thrall_owner != null:
+		if not is_instance_valid(thrall_owner):
+			release_thrall()
+		else:
+			_tick_thrall(delta)
+			return
 	# Home pin tracking runs regardless of state - even chasing/investigating
 	# zombies should keep their pin updated when they're near neighbors, so
 	# that after they finish the chase they return to the same pool.
