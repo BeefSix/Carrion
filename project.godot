@@ -28,6 +28,7 @@ PerfProbe="*res://autoloads/PerfProbe.gd"
 MatchStats="*res://autoloads/MatchStats.gd"
 ReplayRecorder="*res://autoloads/ReplayRecorder.gd"
 CommandBus="*res://autoloads/CommandBus.gd"
+SimChecksum="*res://autoloads/SimChecksum.gd"
 
 [display]
 
