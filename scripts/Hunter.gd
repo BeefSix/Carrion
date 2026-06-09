@@ -20,8 +20,20 @@ const BASE_ACCURACY_DEG := 3.0
 # Inverted signature vs the Military Rifleman (which is loud on fire, silent
 # on ambient — Hunter is silent on fire, loud on ambient). The clicking is
 # what makes the Hunter fire from INSIDE a horde he attracted.
-const CLICK_INTERVAL := 2.0    # sim seconds between emits
-const CLICK_MAGNITUDE := 3.0   # noise magnitude — louder than NOISE_PER_SHOT
+#
+# Tuning math (NoiseField.NOISE_DECAY_RATE = 10.0/sec):
+#   - Per-interval decay = 10.0 * CLICK_INTERVAL
+#   - Steady-state emitter intensity = CLICK_MAGNITUDE - (decay per interval)
+#   - 0.5s interval, 8.0 magnitude → decay 5.0 → steady-state ~3 (above
+#     MIN_INTENSITY=1.0 so emitter stays alive permanently).
+#   - Consecutive clicks within MERGE_RADIUS=96px merge into the same emitter,
+#     so a stationary Hunter accumulates a sustained presence.
+#   - Initial values (2.0s/3.0) had the emitter dying in 0.3s and 1.7s of
+#     total silence, often missed entirely by ATTRACT_INTERVAL=0.4s zombie polls.
+const CLICK_INTERVAL := 0.5    # sim seconds between emits — fast enough that
+                                # the emitter never dies between clicks
+const CLICK_MAGNITUDE := 8.0   # high enough to beat the per-interval decay (5.0)
+                                # and sustain a steady-state pull on nearby zombies
 
 var _target = null
 var _attack_cooldown := 0.0
