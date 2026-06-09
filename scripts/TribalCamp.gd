@@ -99,7 +99,10 @@ func _start_production(item: String) -> void:
 			_produce_timer = WALKER_BUILD_TIME
 
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	# Production timer runs on the physics tick (sim state mutation, CLAUDE.md
+	# Rule #2) — not _process(delta), which is wall-time-coupled and varies
+	# with framerate.
 	if _producing:
 		_produce_timer -= delta
 		if _produce_timer <= 0:
@@ -118,7 +121,9 @@ func _spawn_item(item: String) -> void:
 		"walker":
 			if walker_scene != null:
 				var w = walker_scene.instantiate()
-				var jitter := Vector2(randf_range(-SPAWN_JITTER, SPAWN_JITTER), randf_range(-SPAWN_JITTER, SPAWN_JITTER))
+				# SimRng for spawn jitter — gameplay-affecting (positions feed
+				# perception checks, pathing). CLAUDE.md Rule #1.
+				var jitter := Vector2(SimRng.randf_range(-SPAWN_JITTER, SPAWN_JITTER), SimRng.randf_range(-SPAWN_JITTER, SPAWN_JITTER))
 				w.position = global_position + WALKER_SPAWN_OFFSET + jitter
 				get_parent().add_child(w)
 		"hunting_lodge":

@@ -18,6 +18,15 @@ var _carrying := 0
 var _lootable_retry_timer: float = 0.0
 
 
+func _ready() -> void:
+	super._ready()
+	# Load-bearing: Shambler.gd's perception filter exempts the "walkers"
+	# group from targeting — this is what makes Walker "stroll through a
+	# horde untouched" (DESIGN_MASTER §7.2). Without this line, Walkers
+	# get eaten on contact and the Tribal economy collapses.
+	add_to_group("walkers")
+
+
 func gather_from(lootable) -> void:
 	if lootable == null or not is_instance_valid(lootable):
 		return

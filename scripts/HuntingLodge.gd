@@ -59,7 +59,8 @@ func _start_production() -> void:
 	_produce_timer = HUNTER_BUILD_TIME
 
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	# Production timer on the physics tick, not _process — CLAUDE.md Rule #2.
 	if _producing:
 		_produce_timer -= delta
 		if _produce_timer <= 0:
@@ -77,7 +78,8 @@ func _spawn_hunter() -> void:
 	if hunter_scene == null:
 		return
 	var h = hunter_scene.instantiate()
-	var jitter := Vector2(randf_range(-SPAWN_JITTER, SPAWN_JITTER), randf_range(-SPAWN_JITTER, SPAWN_JITTER))
+	# SimRng for spawn jitter — gameplay-affecting (CLAUDE.md Rule #1).
+	var jitter := Vector2(SimRng.randf_range(-SPAWN_JITTER, SPAWN_JITTER), SimRng.randf_range(-SPAWN_JITTER, SPAWN_JITTER))
 	h.position = global_position + SPAWN_OFFSET + jitter
 	get_parent().add_child(h)
 
