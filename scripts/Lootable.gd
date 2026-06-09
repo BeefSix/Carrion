@@ -83,7 +83,10 @@ func _ready() -> void:
 	($CollisionShape as CollisionShape2D).shape = shape
 	if is_infested:
 		body_color = INFESTED_BODY_COLOR
-		_spawn_timer = randf_range(FIRST_SPAWN_MIN_DELAY, SHAMBLER_SPAWN_INTERVAL)
+		# SimRng (D8/CI 2026-06-09): the first-spawn delay decides WHEN the
+		# first zombie appears — bare randf_range here was the tick-180
+		# record-vs-record divergence (same seed, different first spawn).
+		_spawn_timer = SimRng.randf_range(FIRST_SPAWN_MIN_DELAY, SHAMBLER_SPAWN_INTERVAL)
 	else:
 		body_color = NEIGHBORHOOD_COLORS.get(neighborhood_type, body_color)
 	queue_redraw()
@@ -133,7 +136,8 @@ func _spawn_shambler() -> void:
 			# cap by then if it drops.
 			return
 	var s = SHAMBLER_SCENE.instantiate()
-	var jitter := Vector2(randf_range(-30, 30), randf_range(-30, 30))
+	# SimRng (D8): spawn position feeds perception + pathing.
+	var jitter := Vector2(SimRng.randf_range(-30, 30), SimRng.randf_range(-30, 30))
 	s.position = global_position + jitter
 	_configure_variant(s)
 	get_parent().add_child(s)

@@ -71,16 +71,21 @@ func _ready() -> void:
 	_spawn_hq()
 
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	# D7 (AUDIT 2026-06-09): moved from _process. Production completion
+	# spawns units = sim state; on raw _process delta the spawn TICK varied
+	# between runs (frame-timing noise), which the record-vs-record CI
+	# caught as the tick-180 divergence — two same-seed runs disagreed on
+	# when the AI's first Looter landed. On the physics tick the countdown
+	# is identical across runs. Also fixes the time_scale skew where AI
+	# production ran 8x faster per sim-second in the lab than the player's.
+	#
 	# Replay: AI controllers must NOT make new decisions (the recorded
 	# commands drive playback). Skip strategist/tactician evaluation
 	# entirely. Production countdown stays off too so spawned units don't
 	# diverge from the recorded ordinal sequence.
 	if ReplayRecorder.is_playing:
 		return
-	# Production countdown still uses raw delta because it represents
-	# real wall-time progress of the build action; the strategist /
-	# tactician / phase loops below switched to sim_seconds() anchors.
 	_tick_production(delta)
 
 	# H11: once the AI HQ is destroyed, stop the strategist/tactician loops
@@ -279,7 +284,8 @@ func _spawn_unit(scene: PackedScene, pos: Vector2) -> void:
 	var u = scene.instantiate()
 	# Jitter prevents stacked spawns from being separated in arbitrary
 	# directions by the physics solver (the "ran left off the screen" bug).
-	var jitter := Vector2(randf_range(-SPAWN_JITTER, SPAWN_JITTER), randf_range(-SPAWN_JITTER, SPAWN_JITTER))
+	# SimRng (D8/CI 2026-06-09): AI spawn positions are sim state.
+	var jitter := Vector2(SimRng.randf_range(-SPAWN_JITTER, SPAWN_JITTER), SimRng.randf_range(-SPAWN_JITTER, SPAWN_JITTER))
 	u.position = pos + jitter
 	get_parent().add_child(u)
 	# After add_child the unit's scene-defined groups have applied. Flip
