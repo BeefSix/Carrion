@@ -151,16 +151,40 @@ var _town_data: Dictionary = {}
 
 
 func _ready() -> void:
+	# --replay=<path> overrides everything: load recorded JSONL, seed SimRng
+	# from the header, apply the recorded town snapshot. Done BEFORE
+	# reset_match so the override seed survives, and BEFORE map planning so
+	# the snapshot replaces the live TownPlanner pass.
+	var user_args := OS.get_cmdline_user_args()
+	var replay_path: String = ""
+	for arg in user_args:
+		if arg.begins_with("--replay="):
+			replay_path = arg.substr("--replay=".length())
+			break
+	if replay_path != "":
+		if not ReplayRecorder.load_replay(replay_path):
+			push_warning("Replay load failed; falling back to normal startup.")
+		else:
+			# Inject recorded seed before reset_match so its randi() override
+			# path takes the recorded value.
+			OS.set_environment("CARRION_REPLAY_SEED", str(ReplayRecorder.playback_seed()))
 	GameState.reset_match()
+	if replay_path != "" and ReplayRecorder.is_playing:
+		# Force the recorded seed (reset_match honors the env override).
+		GameState.match_seed = ReplayRecorder.playback_seed()
+		SimRng.seed_with(GameState.match_seed)
 	# Dev CLI override: --ridley flag (after Godot's -- separator) forces the
 	# image-to-map PoC path. Lets headless testing skip the TitleScreen.
-	var user_args := OS.get_cmdline_user_args()
 	if "--ridley" in user_args:
 		GameState.custom_map_path = "res://assets/maps/ridley_data.json"
 	# Image-to-map PoC: when GameState.custom_map_path is set, load that JSON
 	# instead of running TownPlanner. The image is rendered as an iso-projected
 	# Polygon2D background covering the world's diamond view space.
-	if GameState.custom_map_path != "":
+	if ReplayRecorder.is_playing:
+		# Replay: rebuild town from the recorded snapshot so playback
+		# doesn't depend on TownPlanner being deterministic across runs.
+		_apply_replay_town(ReplayRecorder.playback_town())
+	elif GameState.custom_map_path != "":
 		_load_custom_map(GameState.custom_map_path)
 	else:
 		# Standard procedural town generation. TownPlanner runs its 12-step
@@ -395,6 +419,26 @@ func _repro_hg_horde() -> void:
 		if u.has_method("move_to"):
 			u.move_to(horde_center)
 	print("[REPRO] spawned 1 HG + 2 Riflemen at %s, 150 Shamblers around %s, move issued" % [origin, horde_center])
+
+
+func _apply_replay_town(town: Dictionary) -> void:
+	# Rehydrate the town from the recorded snapshot: tile_grid bytes back into
+	# a PackedByteArray, lootables list back into the dict shape that
+	# _spawn_lootables consumes.
+	var grid := PackedByteArray()
+	var grid_arr: Array = town.get("tile_grid", [])
+	grid.resize(grid_arr.size())
+	for i in range(grid_arr.size()):
+		grid[i] = int(grid_arr[i])
+	$GroundTiles.apply_tile_grid(grid)
+	var lootables: Array = []
+	for entry in town.get("lootables", []):
+		var pos_arr = entry.get("pos", [0, 0])
+		lootables.append({
+			"pos": Vector2(pos_arr[0], pos_arr[1]),
+			"type": entry.get("type", "residential"),
+		})
+	_town_data = {"lootables": lootables}
 
 
 func _spawn_inert_opposing_hq() -> void:

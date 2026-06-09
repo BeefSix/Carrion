@@ -43,6 +43,8 @@ func _physics_process(_delta: float) -> void:
 	var h := compute_checksum()
 	if ReplayRecorder.is_recording:
 		ReplayRecorder.record_checksum(h)
+	if ReplayRecorder.is_playing:
+		ReplayRecorder.compare_live_hash(t, h)
 
 
 func compute_checksum() -> int:

@@ -72,6 +72,12 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	# Replay: AI controllers must NOT make new decisions (the recorded
+	# commands drive playback). Skip strategist/tactician evaluation
+	# entirely. Production countdown stays off too so spawned units don't
+	# diverge from the recorded ordinal sequence.
+	if ReplayRecorder.is_playing:
+		return
 	# Production countdown still uses raw delta because it represents
 	# real wall-time progress of the build action; the strategist /
 	# tactician / phase loops below switched to sim_seconds() anchors.

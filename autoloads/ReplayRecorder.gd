@@ -27,6 +27,82 @@ var is_playing: bool = false
 var _file: FileAccess = null
 var _path: String = ""
 
+# Playback state
+var _replay_header: Dictionary = {}
+var _replay_commands: Array = []          # [{tick, src, actor, cmd, args}]
+var _replay_hashes: Dictionary = {}        # {tick: int hash}
+var _command_cursor: int = 0
+var _divergence_reported: bool = false
+
+
+func playback_seed() -> int:
+	return int(_replay_header.get("seed", 0))
+
+
+func playback_town() -> Dictionary:
+	return _replay_header.get("town", {})
+
+
+func load_replay(path: String) -> bool:
+	# Parse a recorded JSONL: header (line 0), then a mix of cmd / hash / end
+	# rows. Populated dictionaries are queried by Main during _ready and by
+	# SimChecksum during the run. Returns false if file or schema is broken.
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		push_warning("[ReplayRecorder] cannot open replay: %s" % path)
+		return false
+	var first := true
+	while not f.eof_reached():
+		var line := f.get_line()
+		if line.strip_edges() == "":
+			continue
+		var row = JSON.parse_string(line)
+		if row == null or not (row is Dictionary):
+			continue
+		if first:
+			first = false
+			_replay_header = row
+			continue
+		var kind: String = row.get("kind", "")
+		match kind:
+			"cmd":
+				_replay_commands.append(row)
+			"hash":
+				_replay_hashes[int(row.get("tick", 0))] = int(row.get("h", 0))
+			"end":
+				pass
+	f.close()
+	_command_cursor = 0
+	_divergence_reported = false
+	is_playing = true
+	print("[ReplayRecorder] loaded replay %s: seed=%d cmds=%d hashes=%d" % [
+		path, playback_seed(), _replay_commands.size(), _replay_hashes.size(),
+	])
+	return true
+
+
+func expected_hash_for_tick(t: int) -> int:
+	# Returns -1 if no checksum was recorded at this tick.
+	return int(_replay_hashes.get(t, -1))
+
+
+func compare_live_hash(t: int, live: int) -> bool:
+	# Returns true if the live hash matches (or no expectation for this tick).
+	# Records the first divergence to stderr-style print so determinism CI can
+	# scrape it.
+	if _divergence_reported:
+		return false  # only report once
+	var expected: int = expected_hash_for_tick(t)
+	if expected == -1:
+		return true
+	if expected == live:
+		return true
+	_divergence_reported = true
+	print("[ReplayRecorder] DIVERGENCE at tick %d sim_sec=%.2f expected=%d live=%d" % [
+		t, float(t) / 60.0, expected, live,
+	])
+	return false
+
 
 func should_record() -> bool:
 	# Auto-record AI-vs-AI matches (the determinism CI lives there) and
