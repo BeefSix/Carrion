@@ -34,3 +34,7 @@ Thumbs.db
 
 # Local toolchain (Godot exe extracted for headless parse checks)
 .tools/
+
+# Headless perf/diagnostic logs (created at runtime by Godot --headless runs)
+# Not part of the repo - rerun the diagnostic to regenerate.
+/*.log

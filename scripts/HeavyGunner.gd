@@ -9,6 +9,15 @@ const RETARGET_INTERVAL := 0.3
 const KITE_RANGE := 80.0
 const KITE_SPEED := 25.0
 
+# Sprite root for HG v1 art (Pixellab-generated). CombatUnit._init_sprite
+# walks <root>/<action>/<dir>/N.png; if any directory or frame is missing
+# the sprite falls back to the procedural Unit._draw silhouette, so this
+# is safe to wire before all 32 animations are on disk.
+const SPRITE_ROOT := "res://assets/sprites/units/military/heavy_gunner/"
+# Heavy MG: slower fire rate animation than Rifleman (0.5s cooldown but
+# the muzzle-flash holds longer for the sustained-fire read).
+const ATTACK_ANIM_HOLD := 0.40
+
 # Projectile config: bright yellow bullet, slightly bigger than Rifleman.
 # Speed is 2x move_speed (set at fire time). HG at 64 move_speed -> 128 px/s.
 # AOE damage at impact preserves the previous instant-AOE behavior.
@@ -25,12 +34,24 @@ var _threat_check_timer: float = 0.0
 var _threat_cached = null
 
 
+func _get_sprite_root() -> String:
+	return SPRITE_ROOT
+
+
+func _ready() -> void:
+	super._ready()
+	_init_sprite()
+
+
 func _morale_enabled() -> bool:
 	return true
 
 
 func _physics_process(delta: float) -> void:
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
+	_attack_anim_timer = max(0.0, _attack_anim_timer - delta)
+	if use_sprite:
+		_update_sprite_animation()
 	if current_command == Command.CREMATE:
 		velocity = Vector2.ZERO
 		return
@@ -99,6 +120,10 @@ func _try_shoot_in_range(delta: float) -> void:
 
 
 func _fire_at(target) -> void:
+	# Hold the attack-animation frame for ATTACK_ANIM_HOLD so the muzzle-flash
+	# pose stays visible past the fire-cooldown (HG fires every 0.5s; without
+	# the hold, the sprite would snap back to idle between bursts).
+	_attack_anim_timer = ATTACK_ANIM_HOLD
 	# Noise fires at fire-time (per the projectile design doc). Damage resolves
 	# at projectile-impact (Projectile.gd -> CombatUnit.resolve_damage);
 	# area_radius > 0 routes through the Projectile's AOE handler.

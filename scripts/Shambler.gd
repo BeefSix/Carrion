@@ -341,6 +341,10 @@ func _ready() -> void:
 		body_color = TRIBAL_ALIGNED_COLOR
 		_tribal_alignment_timer = TRIBAL_ALIGNMENT_DURATION
 		queue_redraw()
+	# Wire up the v1 Pixellab sprite art if the asset tree is present. No-ops
+	# gracefully when frames are missing (use_sprite stays false and the
+	# procedural _draw branch above keeps the silhouette visible).
+	_init_shambler_sprite()
 
 
 func _draw() -> void:
@@ -371,26 +375,31 @@ func _draw() -> void:
 		Color(0, 0, 0, 0.42),
 	)
 
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(-bw * 0.55, -bh + 3.0),
-		Vector2(bw * 0.55, -bh + 3.0),
-		Vector2(bw * 0.45, -1.0),
-		Vector2(-bw * 0.45, -1.0),
-	]), body_color)
+	# Procedural body/head/facing-tick are skipped when use_sprite is true
+	# (the AnimatedSprite2D child handles the silhouette + facing read).
+	# Shadow + selection ring + HP bar stay because the sprite art doesn't
+	# carry them.
+	if not use_sprite:
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(-bw * 0.55, -bh + 3.0),
+			Vector2(bw * 0.55, -bh + 3.0),
+			Vector2(bw * 0.45, -1.0),
+			Vector2(-bw * 0.45, -1.0),
+		]), body_color)
 
-	var head_pos := Vector2(head_offset_x, head_y)
-	draw_circle(head_pos, hr, body_color)
+		var head_pos := Vector2(head_offset_x, head_y)
+		draw_circle(head_pos, hr, body_color)
 
-	# Facing tick - small darker line from head in facing direction (projected
-	# to iso so it points where the zombie is looking on screen).
-	var iso_facing: Vector2 = Vector2(
-		facing_dir.x - facing_dir.y,
-		(facing_dir.x + facing_dir.y) * 0.75,
-	)
-	if iso_facing.length_squared() > 0.001:
-		iso_facing = iso_facing.normalized()
-		var tip: Vector2 = head_pos + iso_facing * (hr + 3.0)
-		draw_line(head_pos + iso_facing * hr, tip, body_color.darkened(0.45), 1.6, true)
+		# Facing tick - small darker line from head in facing direction (projected
+		# to iso so it points where the zombie is looking on screen).
+		var iso_facing: Vector2 = Vector2(
+			facing_dir.x - facing_dir.y,
+			(facing_dir.x + facing_dir.y) * 0.75,
+		)
+		if iso_facing.length_squared() > 0.001:
+			iso_facing = iso_facing.normalized()
+			var tip: Vector2 = head_pos + iso_facing * (hr + 3.0)
+			draw_line(head_pos + iso_facing * hr, tip, body_color.darkened(0.45), 1.6, true)
 
 	var max_eff: int = get_effective_max_hp()
 	if max_eff > 0 and current_hp < max_eff:
@@ -698,6 +707,9 @@ func _physics_process(delta: float) -> void:
 
 func _physics_tick(delta: float) -> void:
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
+	_attack_anim_timer = max(0.0, _attack_anim_timer - delta)
+	if use_sprite:
+		_update_shambler_sprite_animation()
 	_tick_facing(delta)
 	# Home pin tracking runs regardless of state - even chasing/investigating
 	# zombies should keep their pin updated when they're near neighbors, so
@@ -863,6 +875,9 @@ func _physics_tick(delta: float) -> void:
 				if _target.has_method("take_damage"):
 					_target.take_damage(get_effective_damage(ATTACK_DAMAGE), self)
 				_attack_cooldown = ATTACK_PERIOD
+				# Hold the lunge/bite pose so the sprite animation finishes the
+				# action even after the cooldown timer is set for the next bite.
+				_attack_anim_timer = ATTACK_ANIM_HOLD
 
 
 func _tick_wander(delta: float) -> void:
@@ -1477,3 +1492,94 @@ func _find_visible_target():
 			best_dist = d
 			best = u
 	return best
+
+
+# ---- Sprite system (DESIGN_MASTER §5; v1 Pixellab art) -----------------
+#
+# Mirrors CombatUnit's sprite loader but lives here because Shambler
+# extends Unit directly (not CombatUnit). v2 may promote this whole
+# block up to Unit.gd so the duplication is removed.
+#
+# RENDER ONLY. The atan2 + rad_to_deg inside _world_facing_to_sprite_dir
+# are sanctioned render-side transcendentals per CLAUDE.md - sim state
+# never reads back from the sprite frame chosen.
+
+const SPRITE_ROOT := "res://assets/sprites/units/zombies/shambler/"
+const SPRITE_DIRECTIONS := ["east", "south-east", "south", "south-west", "west", "north-west", "north", "north-east"]
+
+# Action -> animation-fps. attack is fast and fairly punchy (lunge/bite
+# read in 0.4s); death is slower-fall.
+const SPRITE_ANIM_SPEEDS := {"idle": 4.0, "walk": 10.0, "attack": 14.0, "death": 8.0}
+const SPRITE_ANIM_LOOPS := {"idle": true, "walk": true, "attack": false, "death": false}
+
+# Attack-pose hold so the lunge frames stay visible past the actual
+# 1s attack-cooldown. Decremented in _physics_process.
+const ATTACK_ANIM_HOLD := 0.45
+var _attack_anim_timer: float = 0.0
+
+
+func _build_shambler_sprite_frames() -> SpriteFrames:
+	var sf := SpriteFrames.new()
+	sf.remove_animation(&"default")
+	for action in ["idle", "walk", "attack", "death"]:
+		for dir in SPRITE_DIRECTIONS:
+			var anim_name := "%s_%s" % [action, dir]
+			var added_any := false
+			var i := 0
+			while true:
+				var frame_path := "%s%s/%s/%d.png" % [SPRITE_ROOT, action, dir, i]
+				if not ResourceLoader.exists(frame_path):
+					break
+				if not added_any:
+					sf.add_animation(anim_name)
+					sf.set_animation_speed(anim_name, SPRITE_ANIM_SPEEDS[action])
+					sf.set_animation_loop(anim_name, SPRITE_ANIM_LOOPS[action])
+					added_any = true
+				sf.add_frame(anim_name, load(frame_path))
+				i += 1
+	return sf
+
+
+func _world_facing_to_sprite_dir(world_dir: Vector2) -> String:
+	if world_dir.length_squared() < 0.001:
+		return "south"
+	var iso_dir := Vector2(world_dir.x - world_dir.y, (world_dir.x + world_dir.y) * 0.75)
+	var angle_deg := rad_to_deg(iso_dir.angle())
+	if angle_deg < 0.0:
+		angle_deg += 360.0
+	var idx := int(round(angle_deg / 45.0)) % 8
+	return SPRITE_DIRECTIONS[idx]
+
+
+func _init_shambler_sprite() -> void:
+	var sprite: AnimatedSprite2D = get_node_or_null("AnimatedSprite2D")
+	if sprite == null:
+		return
+	var frames := _build_shambler_sprite_frames()
+	if frames == null or frames.get_animation_names().is_empty():
+		return
+	sprite.sprite_frames = frames
+	use_sprite = true
+	sprite.play(&"idle_south")
+
+
+# Pick action + direction from the zombie state machine. Mirrors the
+# CombatUnit version's structure but reads from _zombie_state /
+# _attack_anim_timer instead of current_command / _attack_cooldown.
+func _update_shambler_sprite_animation() -> void:
+	var sprite: AnimatedSprite2D = get_node_or_null("AnimatedSprite2D")
+	if sprite == null or sprite.sprite_frames == null:
+		return
+	var action: String
+	if current_hp <= 0:
+		action = "death"
+	elif _attack_anim_timer > 0.0 or _zombie_state == ZombieState.ATTACK:
+		action = "attack"
+	elif velocity.length_squared() > 1.0:
+		action = "walk"
+	else:
+		action = "idle"
+	var dir: String = _world_facing_to_sprite_dir(facing_dir)
+	var anim_name := "%s_%s" % [action, dir]
+	if String(sprite.animation) != anim_name:
+		sprite.play(anim_name)
