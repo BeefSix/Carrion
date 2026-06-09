@@ -2,9 +2,9 @@ extends "res://scripts/Unit.gd"
 
 enum Sub { NONE, APPROACH, CHANNEL }
 
-const FORCE_SPAWN_COST := 25
-const FORCE_SPAWN_CHANNEL_TIME := 5.0
-const FORCE_SPAWN_COUNT := 4
+const FORCE_SPAWN_COST := 40         # Tribal slice default 2026-06-09 — was 25 (too cheap; spammable). Lab-tunable.
+const FORCE_SPAWN_CHANNEL_TIME := 7.0 # Tribal slice default — was 5s. Deliberate commit; race-to-interrupt window.
+const FORCE_SPAWN_COUNT := 4         # Iconic "small horde from the floorboards." Kept.
 const INTERACTION_RANGE := 80.0
 const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
 const NoiseFieldScript := preload("res://scripts/NoiseField.gd")
@@ -93,7 +93,8 @@ func _execute_force_spawn() -> void:
 		if zf != null and zf.has_method("get_zombie_count"):
 			if zf.get_zombie_count() >= NoiseFieldScript.MAX_ZOMBIE_POPULATION:
 				break
-		var jitter := Vector2(randf_range(-32, 32), randf_range(-32, 32))
+		# SimRng for spawn jitter — gameplay-affecting positions (CLAUDE.md Rule #1).
+		var jitter := Vector2(SimRng.randf_range(-32, 32), SimRng.randf_range(-32, 32))
 		var s = SHAMBLER_SCENE.instantiate()
 		s.position = center + jitter
 		if "is_tribal_aligned" in s:
