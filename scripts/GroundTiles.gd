@@ -122,7 +122,7 @@ func _load_tile_image(slot: int) -> Image:
 	# file is missing or load fails so the caller can fall back to flat color.
 	if slot < 0 or slot >= TILE_FILES.size():
 		return null
-	var path := TILE_DIR + TILE_FILES[slot]
+	var path: String = TILE_DIR + TILE_FILES[slot]
 	if not ResourceLoader.exists(path):
 		return null
 	var tex: Texture2D = load(path)
