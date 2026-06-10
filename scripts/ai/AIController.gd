@@ -313,6 +313,28 @@ func _spawn_produced(item: String) -> void:
 
 
 const SPAWN_JITTER := 24.0
+# A3: how far from the HQ the AI is willing to stake a Looter onto an
+# infested building. Past this, the courier run home gets too long and the
+# Looter spends its life commuting. Lab placeholder.
+const LOOTER_STAKE_RADIUS_PX := 14.0 * 32.0
+
+
+func _find_looter_stake() -> Vector2:
+	# Nearest infested Lootable to the HQ within stake range. ZERO = none
+	# found (caller leaves the Looter's default home anchor).
+	var hq_pos: Vector2 = get_hq_position()
+	var best: Vector2 = Vector2.ZERO
+	var best_dist: float = LOOTER_STAKE_RADIUS_PX
+	for l in get_tree().get_nodes_in_group("lootable"):
+		if not is_instance_valid(l):
+			continue
+		if not ("is_infested" in l) or not l.is_infested:
+			continue
+		var d: float = hq_pos.distance_to(l.position)
+		if d < best_dist:
+			best_dist = d
+			best = l.position
+	return best
 
 
 func _spawn_unit(scene: PackedScene, pos: Vector2) -> void:
@@ -339,3 +361,12 @@ func _spawn_unit(scene: PackedScene, pos: Vector2) -> void:
 	# controller's pool starves.
 	if "owner_controller" in u:
 		u.owner_controller = self
+	# A3: work-anchor staking — the Military identity play. New Looters get
+	# anchored at the nearest infested Lootable within range of the HQ, so
+	# the AI farms the spawns its own noise feeds instead of leaving every
+	# Looter parked on the doorstep. Deterministic: strict min-distance,
+	# first-seen tie-break.
+	if u.has_method("set_work_anchor"):
+		var stake: Vector2 = _find_looter_stake()
+		if stake != Vector2.ZERO:
+			u.set_work_anchor(stake)

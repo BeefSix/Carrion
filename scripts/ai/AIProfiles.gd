@@ -39,12 +39,23 @@ const MILITARY := {
 		{ "item": "rifleman", "cost": 75,  "time": 25.0, "needs_production_building": true },
 		{ "item": "rifleman", "cost": 75,  "time": 25.0, "needs_production_building": true },
 	],
+	# A3: composition mix, consumed round-robin (3:1 rifle:HG per the plan's
+	# example ratio). The HG is the Military group-clear identity piece; its
+	# AI build time is scaled the same way the rifleman's is vs player times.
 	"sustain": [
 		{ "item": "rifleman", "cost": 75, "time": 25.0, "needs_production_building": true },
+		{ "item": "rifleman", "cost": 75, "time": 25.0, "needs_production_building": true },
+		{ "item": "rifleman", "cost": 75, "time": 25.0, "needs_production_building": true },
+		{ "item": "heavy_gunner", "cost": 225, "time": 35.0, "needs_production_building": true },
 	],
 	"recovery_worker": { "item": "looter", "cost": 50, "time": 18.0, "needs_production_building": false },
 	"recovery_production_building": { "item": "barracks", "cost": 200, "time": 50.0, "needs_production_building": false },
 	"economy_floor": 1,
+	# A3: ECONOMY GROWTH targets — [sim_minute, worker_count] steps, evaluated
+	# as "the latest step whose minute has passed". The build order already
+	# fields 2 workers; this grows the economy to 4 by minute 6 instead of
+	# the old behavior (never builds a third Looter, salvage flatlines).
+	"worker_targets": [[0, 2], [3, 3], [6, 4]],
 	"production_building_step": 3,
 	"worker_script": "res://scripts/Looter.gd",
 	"attack_threshold": 6,

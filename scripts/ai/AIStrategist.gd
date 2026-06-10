@@ -68,7 +68,7 @@ func _advance_production() -> void:
 	# only rotates when a sustain task actually started.
 	if task.get("sustain", false):
 		var sustain: Array = profile["sustain"]
-		_sustain_idx = (_sustain_idx + 1) % sustain.size()
+		_sustain_idx = (int(task.get("sustain_idx", _sustain_idx)) + 1) % sustain.size()
 	elif not task.get("recovery", false) and _step < profile["build_order"].size():
 		_step += 1
 
@@ -88,7 +88,13 @@ func _next_task() -> Dictionary:
 	var worker_count: int = controller.count_units_with_script(_worker_script)
 	if worker_count < int(profile["economy_floor"]):
 		return _recovery(profile["recovery_worker"])
-	# Goal 3 — ECONOMY GROWTH: A3 inserts the worker target curve here.
+	# Goal 3 — ECONOMY GROWTH (A3): grow workers toward the profile's
+	# [sim_minute, count] curve. Tagged like a recovery so the canonical
+	# build-order step doesn't advance — growth workers are EXTRA, the
+	# opening stays intact. Sits above PRODUCTION so a starved economy
+	# gets its worker before the next army row (workers pay for the army).
+	if worker_count < _worker_target_now():
+		return _recovery(profile["recovery_worker"])
 	#
 	# Goal 4 — PRODUCTION/TECH: production-building recovery first ("we've
 	# already moved past the build step but the building is gone" — _step is
@@ -101,10 +107,37 @@ func _next_task() -> Dictionary:
 		return build_order[_step]
 	# Goal 5 — ARMY: sustain composition, round-robin (rotated in
 	# _advance_production only when the task actually starts).
+	#
+	# Affordability fall-through (A3 lab finding): a strict round-robin
+	# head-of-line blocks on the expensive row — the AI parked on the
+	# 225-cost HG while income trickled, army flatlined at 4, never
+	# attacked. Deterministic fix: scan forward from the cursor for the
+	# first AFFORDABLE row; if none, wait on the cursor row (saving is
+	# still sometimes right). Effect: rich = the profile ratio, poor =
+	# cheap units keep flowing. Rotation happens from the row that
+	# actually STARTED (sustain_idx tag), so the mix stays fair.
 	var sustain: Array = profile["sustain"]
-	var task: Dictionary = sustain[_sustain_idx].duplicate()
+	var pick: int = _sustain_idx
+	for offset in range(sustain.size()):
+		var idx: int = (_sustain_idx + offset) % sustain.size()
+		if controller.can_afford(int(sustain[idx]["cost"])):
+			pick = idx
+			break
+	var task: Dictionary = sustain[pick].duplicate()
 	task["sustain"] = true
+	task["sustain_idx"] = pick
 	return task
+
+
+func _worker_target_now() -> int:
+	# Latest [minute, count] step whose minute has passed. The list is
+	# ordered; a linear walk over <=4 entries each strategic eval is free.
+	var minutes: float = GameState.sim_seconds() / 60.0
+	var target: int = 0
+	for step in profile["worker_targets"]:
+		if minutes >= float(step[0]):
+			target = int(step[1])
+	return target
 
 
 func _recovery(template: Dictionary) -> Dictionary:
