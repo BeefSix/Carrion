@@ -107,3 +107,7 @@ func _draw_building_icon() -> void:
 
 func _get_skin_path() -> String:
 	return "res://assets/buildings/ritual_site.png"  # skin pass 2, 2026-06-11
+
+
+func _get_faction_dressing() -> String:
+	return "tribal"  # MapCraft C: spawn carries the faction identity

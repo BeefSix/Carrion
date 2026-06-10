@@ -141,3 +141,7 @@ func _request_nav_rebake() -> void:
 
 func _get_skin_path() -> String:
 	return "res://assets/buildings/command_post.png"  # skin pass 2, 2026-06-11
+
+
+func _get_faction_dressing() -> String:
+	return "military"  # MapCraft C: spawn carries the faction identity

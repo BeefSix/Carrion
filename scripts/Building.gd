@@ -65,6 +65,78 @@ var _skin_flip: bool = false
 var _skin_value: float = 1.0
 
 
+# ---- Faction ground identity (MapCraft C, Matt's directive: every
+# faction's identity present in their spawn). Faction buildings spawn
+# render-only dressing — a ground halo + identity props (totems,
+# sandbags, pallets) — as siblings, freed when the building dies.
+# Applies to RUNTIME construction too, so a forward base claims its
+# ground the moment it stands. Deterministic offsets/picks by position
+# hash; zero sim surface.
+const DRESSING_BY_FACTION := {
+	"military": {
+		"halo": "res://assets/props/decal_military_ground.png",
+		"props": ["res://assets/props/sandbag_wall.png", "res://assets/props/oil_barrel.png", "res://assets/props/traffic_cone.png"],
+	},
+	"tribal": {
+		"halo": "res://assets/props/decal_tribal_ground.png",
+		"props": ["res://assets/props/totem_tribal.png"],
+	},
+	"survivor": {
+		"halo": "res://assets/props/decal_survivor_ground.png",
+		"props": ["res://assets/props/wood_pallet.png", "res://assets/props/oil_barrel.png", "res://assets/props/shopping_cart.png"],
+	},
+}
+# Ring offsets (x half-extent multiples) — fixed table, no transcendentals.
+const DRESSING_OFFSETS := [
+	Vector2(1.45, 0.3), Vector2(-1.4, 0.7), Vector2(0.5, -1.5),
+	Vector2(-0.6, -1.4), Vector2(1.2, 1.15), Vector2(-1.35, -0.5),
+]
+var _dressing_nodes: Array = []
+
+
+func _get_faction_dressing() -> String:
+	return ""  # subclasses return "military"/"tribal"/"survivor"
+
+
+func _spawn_dressing() -> void:
+	var cfg: Dictionary = DRESSING_BY_FACTION.get(_get_faction_dressing(), {})
+	if cfg.is_empty() or get_parent() == null:
+		return
+	var h: int = ((int(position.x) * 2654435761) ^ (int(position.y) * 40503)) & 0x7FFFFFFF
+	# Halo under the building.
+	if ResourceLoader.exists(cfg["halo"]):
+		var halo := Node2D.new()
+		halo.set_script(preload("res://scripts/GroundHalo.gd"))
+		halo.position = position
+		halo.texture = load(cfg["halo"])
+		halo.scale_factor = maxf(size_pixels.x, size_pixels.y) / 64.0 * 2.2
+		get_parent().add_child(halo)
+		_dressing_nodes.append(halo)
+	# Identity props ringed around the footprint.
+	var avail: Array = []
+	for p in cfg["props"]:
+		if ResourceLoader.exists(p):
+			avail.append(load(p))
+	if not avail.is_empty():
+		var count: int = 2 + ((h >> 6) % 2)  # 2-3 props
+		for i in range(count):
+			var off: Vector2 = DRESSING_OFFSETS[((h >> 8) + i * 2) % DRESSING_OFFSETS.size()]
+			var prop := Node2D.new()
+			prop.set_script(preload("res://scripts/Prop.gd"))
+			prop.position = position + off * (size_pixels * 0.5 + Vector2(20, 20))
+			prop.texture = avail[((h >> 10) + i) % avail.size()]
+			get_parent().add_child(prop)
+			_dressing_nodes.append(prop)
+	tree_exiting.connect(_free_dressing)
+
+
+func _free_dressing() -> void:
+	for n in _dressing_nodes:
+		if is_instance_valid(n):
+			n.queue_free()
+	_dressing_nodes.clear()
+
+
 func _get_skin_path() -> String:
 	return ""  # subclasses override; "" = procedural prism
 
@@ -85,6 +157,9 @@ func _ready() -> void:
 		_skin = load(skin_path)
 	if _skin != null:
 		add_to_group("skinned_buildings")  # BuildingFadeSweep polls these
+	if _get_faction_dressing() != "":
+		# Deferred: parent must finish adding us before we add siblings.
+		call_deferred("_spawn_dressing")
 		# Positions sit on a 32px lattice, so a multiplicative hash keeps
 		# its LOW bits zero — pick decision bits from the high half.
 		var h: int = ((int(position.x) * 2654435761) ^ (int(position.y) * 40503)) & 0x7FFFFFFF

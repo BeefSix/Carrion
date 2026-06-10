@@ -107,3 +107,7 @@ func _spawn_item(item: String) -> void:
 func _draw_building_icon() -> void:
 	var inner_size := Vector2(40.0, 26.0)
 	draw_rect(Rect2(-inner_size / 2.0, inner_size), PALETTE_SURVIVOR)
+
+
+func _get_faction_dressing() -> String:
+	return "military"  # MapCraft C: spawn carries the faction identity
