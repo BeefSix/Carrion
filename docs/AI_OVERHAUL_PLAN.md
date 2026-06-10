@@ -118,11 +118,19 @@ worker cluster / Lootable being worked, read via groups with stable min-distance
 pick). Returns home on losses. This is the "player feels pressure" phase — feel-test
 gated, with a lab proxy (enemy worker kills > 0 in AI-vs-AI telemetry).
 
-### A6 — Measurement pass + tuning
+### A6 — Measurement pass + tuning (PROVISIONAL — see caveat)
 Batch lab runs (5-10 seeds × Military-vs-Tribal both ways + mirror matches):
 win-rate split, match length distribution, non-stalemate rate, salvage curves,
 `ai_attack_ordered` cadence. Tune profile numbers only. Deliverable: a short
 `docs/AI_LAB_REPORT.md` with the numbers, and Matt feel-tests "does it pressure me?"
+
+**Caveat (advisor, 2026-06-10): A6's numbers are tuned against a world where
+zombies are still weather.** When the threat pass lands (steering field + horde
+lethality), the map's hazard topology changes under the AI's feet — lanes that
+were free become deadly. The A1-A5 *architecture* is permanent; the A6 *numbers*
+are explicitly provisional. Budget an **A6b re-tune after the threat pass** and
+expect it — when AI win rates shift at that point it is the world changing, not
+a regression.
 
 ---
 
