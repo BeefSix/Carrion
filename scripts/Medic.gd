@@ -27,9 +27,18 @@ const KITE_RANGE := 120.0             # backs away a little earlier than Hunter 
 const KITE_SPEED := 34.0
 const THREAT_CHECK_INTERVAL := 0.2    # 5 Hz threat poll, substrate cadence
 
+const SPRITE_ROOT := "res://assets/sprites/units/military/medic/"
+# Hold the bandage-kneel pose long enough to read as "healing" (the attack
+# slot carries the field-dressing animation; the Medic has no weapon).
+const HEAL_ANIM_HOLD := 0.8
+
 var _heal_timer: float = 0.0
 var _threat_check_timer: float = 0.0
 var _threat_cached = null
+
+
+func _get_sprite_root() -> String:
+	return SPRITE_ROOT
 
 
 # Morale + personality per §5.1 — the Medic is a Military combat-line unit
@@ -43,10 +52,14 @@ func _ready() -> void:
 	super._ready()
 	# CombatUnit._tick_morale scans this group for the recovery aura.
 	add_to_group("medics")
+	_init_sprite()
 
 
 func _physics_process(delta: float) -> void:
 	_sim_upkeep(delta)  # D4 subclass invariant — see Unit._sim_upkeep
+	_attack_anim_timer = max(0.0, _attack_anim_timer - delta)
+	if use_sprite:
+		_update_sprite_animation()
 	var band: int = _tick_morale(delta)
 	# Healing runs in every command state — triage doesn't stop because the
 	# squad is marching. Fixed-interval accumulator on the physics tick.
@@ -102,6 +115,8 @@ func _tick_heal() -> void:
 		healed_any = true
 	if healed_any:
 		queue_redraw()  # pulse our own cross accent (cheap tell that triage is live)
+		# Render-only: play the kneel-bandage animation while actively healing.
+		_attack_anim_timer = HEAL_ANIM_HOLD
 
 
 func _draw() -> void:
