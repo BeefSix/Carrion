@@ -36,6 +36,81 @@ var _construction_timer := 0.0
 var _building_wall := false
 var _wall_target: Vector2 = Vector2.ZERO
 
+# ---- Sprite system (RENDER ONLY — Engineer extends Unit, so it carries
+# its own small loader like Walker/Shaman). The attack slot is the
+# blowtorch swing, doubling as the repair/construct channel visual — the
+# blowtorch IS the Engineer's tool, so one animation covers fight + work.
+const SPRITE_ROOT := "res://assets/sprites/units/military/engineer/"
+const SPRITE_DIRECTIONS := ["east", "south-east", "south", "south-west", "west", "north-west", "north", "north-east"]
+const SPRITE_ANIM_SPEEDS := {"idle": 4.0, "walk": 10.0, "attack": 10.0, "death": 8.0}
+const SPRITE_ANIM_LOOPS := {"idle": true, "walk": true, "attack": true, "death": false}
+const ATTACK_ANIM_HOLD := 0.5
+var _attack_anim_timer: float = 0.0
+
+
+func _ready() -> void:
+	super._ready()
+	_init_engineer_sprite()
+
+
+func _init_engineer_sprite() -> void:
+	var sprite: AnimatedSprite2D = get_node_or_null("AnimatedSprite2D")
+	if sprite == null:
+		return
+	var sf := SpriteFrames.new()
+	sf.remove_animation(&"default")
+	for action in ["idle", "walk", "attack", "death"]:
+		for dir in SPRITE_DIRECTIONS:
+			var anim_name := "%s_%s" % [action, dir]
+			var added_any := false
+			var i := 0
+			while true:
+				var frame_path := "%s%s/%s/%d.png" % [SPRITE_ROOT, action, dir, i]
+				if not ResourceLoader.exists(frame_path):
+					break
+				if not added_any:
+					sf.add_animation(anim_name)
+					sf.set_animation_speed(anim_name, SPRITE_ANIM_SPEEDS[action])
+					sf.set_animation_loop(anim_name, SPRITE_ANIM_LOOPS[action])
+					added_any = true
+				sf.add_frame(anim_name, load(frame_path))
+				i += 1
+	if sf.get_animation_names().is_empty():
+		return
+	sprite.sprite_frames = sf
+	use_sprite = true
+	sprite.play(&"idle_south")
+
+
+# Sanctioned render-side transcendental (same as CombatUnit/Shambler/Walker).
+func _world_facing_to_sprite_dir(world_dir: Vector2) -> String:
+	if world_dir.length_squared() < 0.001:
+		return "south"
+	var iso_dir := Vector2(world_dir.x - world_dir.y, (world_dir.x + world_dir.y) * 0.75)
+	var angle_deg := rad_to_deg(iso_dir.angle())
+	if angle_deg < 0.0:
+		angle_deg += 360.0
+	var idx := int(round(angle_deg / 45.0)) % 8
+	return SPRITE_DIRECTIONS[idx]
+
+
+func _update_engineer_sprite_animation() -> void:
+	var sprite: AnimatedSprite2D = get_node_or_null("AnimatedSprite2D")
+	if sprite == null or sprite.sprite_frames == null:
+		return
+	var action: String
+	if current_hp <= 0:
+		action = "death"
+	elif _attack_anim_timer > 0.0 or _sub == Sub.REPAIR_CHANNEL or _sub == Sub.CONSTRUCTING:
+		action = "attack"  # blowtorch swing covers melee, repair, and construction
+	elif velocity.length_squared() > 1.0:
+		action = "walk"
+	else:
+		action = "idle"
+	var anim_name := "%s_%s" % [action, _world_facing_to_sprite_dir(facing_dir)]
+	if String(sprite.animation) != anim_name:
+		sprite.play(anim_name)
+
 
 func repair_at(building) -> void:
 	if building == null or not is_instance_valid(building):
@@ -163,6 +238,9 @@ func _request_nav_rebake() -> void:
 func _physics_process(delta: float) -> void:
 	_sim_upkeep(delta)  # D4 subclass invariant — see Unit._sim_upkeep
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
+	_attack_anim_timer = max(0.0, _attack_anim_timer - delta)
+	if use_sprite:
+		_update_engineer_sprite_animation()
 
 	var max_eff: int = get_effective_max_hp()
 	var low_hp: bool = max_eff > 0 and float(current_hp) / float(max_eff) < FLEE_HP_FRACTION
@@ -207,6 +285,7 @@ func _tick_combat(delta: float) -> void:
 		if _attack_cooldown <= 0:
 			_target_enemy.take_damage(get_effective_damage(ATTACK_DAMAGE), self)
 			_attack_cooldown = ATTACK_PERIOD
+			_attack_anim_timer = ATTACK_ANIM_HOLD  # render-only swing hold
 	else:
 		_nav.target_position = _target_enemy.global_position
 		_follow_navigation()
