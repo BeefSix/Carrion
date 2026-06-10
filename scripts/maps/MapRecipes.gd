@@ -34,7 +34,7 @@ static func build(map_name: String) -> Dictionary:
 	rng.seed = RECIPE_SEED
 	var grid := PackedByteArray()
 	grid.resize(GRID * GRID)
-	var out := {"tile_grid": grid, "lootables": [], "scenery": [], "props": []}
+	var out := {"tile_grid": grid, "lootables": [], "scenery": [], "props": [], "decals": []}
 	match map_name:
 		"downtown":
 			_build_downtown(out, rng)
@@ -45,6 +45,7 @@ static func build(map_name: String) -> Dictionary:
 		_:
 			return {}
 	_scatter_props(out, rng, map_name)
+	_scatter_decals(out, rng, map_name)
 	return out
 
 
@@ -54,28 +55,71 @@ static func build(map_name: String) -> Dictionary:
 # to textures in Main.PROP_TEXTURES. Spawn clear radius respected.
 const PROP_TABLES := {
 	"downtown": {
-		0: [[0.012, ["car"]]],                                 # main road: wrecks
-		2: [[0.010, ["car"]]],                                 # avenue
-		1: [[0.010, ["lamp", "hydrant", "mailbox", "cone"]]],  # sidewalk furniture
-		4: [[0.020, ["bench", "cart", "dumpster", "barrel"]]], # plazas
-		9: [[0.030, ["brickpile", "pallet"]]],                 # rubble lots
+		0: [[0.022, ["car"]]],                                 # main road: wrecks
+		2: [[0.018, ["car"]]],                                 # avenue
+		1: [[0.018, ["lamp", "hydrant", "mailbox", "cone"]]],  # sidewalk furniture
+		4: [[0.036, ["bench", "cart", "dumpster", "barrel"]]], # plazas
+		9: [[0.054, ["brickpile", "pallet"]]],                 # rubble lots
 	},
 	"terrace": {
-		3: [[0.008, ["car"]]],                                 # lanes: parked wrecks
-		2: [[0.010, ["car", "cone"]]],
-		1: [[0.008, ["lamp", "mailbox", "hydrant"]]],
-		5: [[0.006, ["tree", "pallet"]]],                      # yards
-		8: [[0.020, ["bench", "tree"]]],                       # the park
-		9: [[0.030, ["brickpile", "dumpster"]]],
+		3: [[0.014, ["car"]]],                                 # lanes: parked wrecks
+		2: [[0.018, ["car", "cone"]]],
+		1: [[0.014, ["lamp", "mailbox", "hydrant"]]],
+		5: [[0.011, ["tree", "pallet"]]],                      # yards
+		8: [[0.036, ["bench", "tree"]]],                       # the park
+		9: [[0.054, ["brickpile", "dumpster"]]],
 	},
 	"orchard": {
-		8: [[0.005, ["tree"]]],                                # fields: dead orchard
-		5: [[0.008, ["tree", "barrel"]]],
-		7: [[0.008, ["car", "pallet"]]],                       # dirt drives
-		2: [[0.008, ["car"]]],
-		9: [[0.025, ["brickpile", "barrel"]]],
+		8: [[0.009, ["tree"]]],                                # fields: dead orchard
+		5: [[0.014, ["tree", "barrel"]]],
+		7: [[0.014, ["car", "pallet"]]],                       # dirt drives
+		2: [[0.014, ["car"]]],
+		9: [[0.045, ["brickpile", "barrel"]]],
 	},
 }
+
+
+# Ground wear decals (TerrainKit Phase 3): stains/cracks/litter/blood at
+# reference-image density. Same deterministic post-layout roll as props.
+const DECAL_TABLES := {
+	"downtown": {
+		0: [[0.036, ["oil", "cracks"]], [0.008, ["blood"]]],
+		2: [[0.032, ["oil", "cracks"]], [0.006, ["blood"]]],
+		3: [[0.027, ["cracks", "oil"]]],
+		1: [[0.054, ["cracks", "litter"]]],
+		4: [[0.060, ["litter", "oil"]], [0.006, ["blood"]]],
+	},
+	"terrace": {
+		2: [[0.027, ["cracks", "oil"]]],
+		3: [[0.022, ["cracks"]]],
+		1: [[0.045, ["cracks", "litter"]]],
+		5: [[0.014, ["litter"]]],
+	},
+	"orchard": {
+		2: [[0.022, ["cracks"]]],
+		7: [[0.022, ["litter"]]],
+		6: [[0.014, ["litter"]]],
+	},
+}
+
+
+static func _scatter_decals(out: Dictionary, rng: RandomNumberGenerator, map_name: String) -> void:
+	var table: Dictionary = DECAL_TABLES.get(map_name, {})
+	if table.is_empty():
+		return
+	var g: PackedByteArray = out["tile_grid"]
+	for ty in range(2, GRID - 2):
+		for tx in range(2, GRID - 2):
+			var rules = table.get(g[ty * GRID + tx])
+			if rules == null:
+				continue
+			for rule in rules:
+				if rng.randf() < rule[0]:
+					var kinds: Array = rule[1]
+					var kind: String = kinds[rng.randi_range(0, kinds.size() - 1)]
+					var jitter := Vector2(rng.randf_range(-12.0, 12.0), rng.randf_range(-12.0, 12.0))
+					out["decals"].append({"pos": _world(tx, ty) + jitter, "kind": kind})
+					break
 
 
 static func _scatter_props(out: Dictionary, rng: RandomNumberGenerator, map_name: String) -> void:
@@ -182,7 +226,7 @@ static func _build_downtown(out: Dictionary, rng: RandomNumberGenerator) -> void
 	_rect(g, 56, 116, 14, 14, 4)
 	_rect(g, 122, 62, 14, 14, 4)
 	# Blocks: building ring inside each 16-tile block (3-tile footprints).
-	var mix := [[0.70, 0.95], [0.60, 0.85], [0.40, 0.70]]  # fringe/mid/center
+	var mix := [[0.060, 0.95], [0.60, 0.85], [0.40, 0.70]]  # fringe/mid/center
 	for by in range(0, GRID, 16):
 		for bx in range(0, GRID, 16):
 			# Skip blocks swallowed by plazas/avenues.
@@ -215,7 +259,7 @@ static func _build_terrace(out: Dictionary, rng: RandomNumberGenerator) -> void:
 	_vroad(g, 48, 3, 2)
 	_vroad(g, 140, 3, 2)
 	_rect(g, 86, 86, 20, 20, 8)  # central park (vegetation basin)
-	var mix := [[0.80, 0.95], [0.50, 0.80], [0.35, 0.70]]
+	var mix := [[0.060, 0.95], [0.50, 0.80], [0.35, 0.70]]
 	# Rows: contiguous 2-tile houses between lanes, with gap chokes.
 	for ry in range(4, GRID - 4, 10):
 		var gap_phase: int = rng.randi_range(0, 6)
@@ -257,7 +301,7 @@ static func _build_orchard(out: Dictionary, rng: RandomNumberGenerator) -> void:
 	# Open fields (zombie basins).
 	for f in [[30, 120, 22, 18], [130, 36, 20, 22], [60, 60, 14, 12]]:
 		_rect(g, f[0], f[1], f[2], f[3], 8)
-	var mix := [[0.65, 0.95], [0.55, 0.85], [0.30, 0.70]]
+	var mix := [[0.060, 0.95], [0.55, 0.85], [0.30, 0.70]]
 	# Single homes along streets: one per ~7 tiles, with driveway stubs.
 	for y in range(24, GRID, 28):
 		for x in range(4, GRID - 4, 7):

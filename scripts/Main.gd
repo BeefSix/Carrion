@@ -767,3 +767,12 @@ func _spawn_props() -> void:
 		prop.position = entry["pos"]
 		prop.texture = tex
 		add_child(prop)
+	# Ground wear decals (TerrainKit Phase 3): one render-only node draws
+	# every stain/crack/litter splat between the tiles and the units.
+	var decal_entries: Array = _town_data.get("decals", [])
+	if decal_entries.size() > 0:
+		var decals := Node2D.new()
+		decals.name = "GroundDecals"
+		decals.set_script(preload("res://scripts/GroundDecals.gd"))
+		add_child(decals)
+		decals.set_decals(decal_entries)
