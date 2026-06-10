@@ -133,7 +133,7 @@ func _spawn_item(item: String) -> void:
 
 
 func _spawn_jitter() -> Vector2:
-	return Vector2(randf_range(-SPAWN_JITTER, SPAWN_JITTER), randf_range(-SPAWN_JITTER, SPAWN_JITTER))
+	return Vector2(SimRng.randf_range(-SPAWN_JITTER, SPAWN_JITTER), SimRng.randf_range(-SPAWN_JITTER, SPAWN_JITTER))
 
 
 func _request_nav_rebake() -> void:

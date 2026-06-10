@@ -547,7 +547,7 @@ func hear_noise(noise_pos: Vector2, magnitude: float, distance: float) -> void:
 	if effective < HEARING_RELIABLE:
 		var t: float = (effective - HEARING_MIN_EFFECTIVE) / (HEARING_RELIABLE - HEARING_MIN_EFFECTIVE)
 		var trigger_prob: float = lerp(HEARING_PROB_MIN, HEARING_PROB_MAX, t)
-		if randf() > trigger_prob:
+		if SimRng.randf() > trigger_prob:
 			return
 	investigate(noise_pos)
 
@@ -565,8 +565,8 @@ func _compute_acquisition_delay(target_pos: Vector2) -> float:
 	var angle_offset: float = absf(_angle_diff(_facing_angle, to_target.angle()))
 	var angle_factor: float = clamp(angle_offset / VISION_CONE_HALF_RAD, 0.0, 1.0)
 	var edge_factor: float = maxf(range_factor, angle_factor)
-	var center_time: float = randf_range(ACQUISITION_CENTER_MIN, ACQUISITION_CENTER_MAX)
-	var edge_time: float = randf_range(ACQUISITION_EDGE_MIN, ACQUISITION_EDGE_MAX)
+	var center_time: float = SimRng.randf_range(ACQUISITION_CENTER_MIN, ACQUISITION_CENTER_MAX)
+	var edge_time: float = SimRng.randf_range(ACQUISITION_EDGE_MIN, ACQUISITION_EDGE_MAX)
 	return lerp(center_time, edge_time, edge_factor)
 
 
@@ -586,16 +586,16 @@ func _can_see(target_pos: Vector2) -> bool:
 	# Edge-of-cone fuzziness (Phase 1): targets within VISION_EDGE_FUZZ_RAD
 	# of the cone boundary detect at 50% per tick instead of 100%.
 	if angle_offset > VISION_CONE_HALF_RAD - VISION_EDGE_FUZZ_RAD:
-		if randf() > 0.5:
+		if SimRng.randf() > 0.5:
 			return false
 	# Range fuzziness (Phase 2): probability drops toward the max range
 	# edge. Beyond 75% range partial chance; beyond 90% range slim chance.
 	var range_factor: float = distance / VISION_RANGE_PX
 	if range_factor > RANGE_FUZZ_FAR:
-		if randf() > RANGE_FUZZ_PROB_FAR:
+		if SimRng.randf() > RANGE_FUZZ_PROB_FAR:
 			return false
 	elif range_factor > RANGE_FUZZ_NEAR:
-		if randf() > RANGE_FUZZ_PROB_NEAR:
+		if SimRng.randf() > RANGE_FUZZ_PROB_NEAR:
 			return false
 	# LOS: walk segment against every building/wall rect. Buildings and
 	# walls block; ground, fences, other units do NOT block.
@@ -762,9 +762,9 @@ func _tick_idle_head_turn(delta: float) -> void:
 		return
 	_head_turn_timer -= delta
 	if _head_turn_timer <= 0.0:
-		_head_turn_timer = randf_range(HEAD_TURN_INTERVAL_MIN, HEAD_TURN_INTERVAL_MAX)
+		_head_turn_timer = SimRng.randf_range(HEAD_TURN_INTERVAL_MIN, HEAD_TURN_INTERVAL_MAX)
 		# Pick a new angle within +/- 120 degrees of current facing.
-		_desired_facing_angle = _facing_angle + randf_range(-2.094, 2.094)
+		_desired_facing_angle = _facing_angle + SimRng.randf_range(-2.094, 2.094)
 
 
 # ---- Variant configuration ----------------------------------------------
@@ -934,7 +934,7 @@ func _physics_tick(delta: float) -> void:
 	# deposit residue. Bypasses NoiseField so no horde spawn risk.
 	_ambient_noise_timer -= delta
 	if _ambient_noise_timer <= 0.0:
-		_ambient_noise_timer = randf_range(AMBIENT_NOISE_INTERVAL_MIN, AMBIENT_NOISE_INTERVAL_MAX)
+		_ambient_noise_timer = SimRng.randf_range(AMBIENT_NOISE_INTERVAL_MIN, AMBIENT_NOISE_INTERVAL_MAX)
 		_emit_ambient_noise()
 	# Drop tribal alignment when the timer runs out (force-spawned zombies
 	# revert to standard wild behavior).
@@ -1017,7 +1017,7 @@ func _physics_tick(delta: float) -> void:
 				# Arrived at the noise but no target spotted - enter
 				# investigative wandering for 15-20 sec.
 				_zombie_state = ZombieState.SEARCHING
-				_search_timer = randf_range(SEARCH_DURATION_MIN, SEARCH_DURATION_MAX)
+				_search_timer = SimRng.randf_range(SEARCH_DURATION_MIN, SEARCH_DURATION_MAX)
 				_search_repath_timer = 0.0
 				velocity = Vector2.ZERO
 			else:
@@ -1030,7 +1030,7 @@ func _physics_tick(delta: float) -> void:
 			if global_position.distance_to(_last_known_pos) <= INVESTIGATE_ARRIVE_RANGE:
 				_investigate_target = _last_known_pos
 				_zombie_state = ZombieState.SEARCHING
-				_search_timer = randf_range(SEARCH_DURATION_MIN, SEARCH_DURATION_MAX)
+				_search_timer = SimRng.randf_range(SEARCH_DURATION_MIN, SEARCH_DURATION_MAX)
 				_search_repath_timer = 0.0
 				velocity = Vector2.ZERO
 			else:
@@ -1053,8 +1053,8 @@ func _physics_tick(delta: float) -> void:
 			if _search_repath_timer <= 0.0:
 				_search_repath_timer = SEARCH_REPATH_INTERVAL
 				var offset := Vector2(
-					randf_range(-SEARCH_RADIUS, SEARCH_RADIUS),
-					randf_range(-SEARCH_RADIUS, SEARCH_RADIUS),
+					SimRng.randf_range(-SEARCH_RADIUS, SEARCH_RADIUS),
+					SimRng.randf_range(-SEARCH_RADIUS, SEARCH_RADIUS),
 				)
 				var search_pos: Vector2 = _investigate_target + offset
 				search_pos.x = clamp(search_pos.x, 50.0, 6094.0)
@@ -1101,13 +1101,13 @@ func _tick_wander(delta: float) -> void:
 		if global_position.distance_to(_wander_start_pos) > PASS_BY_CAPTURE_MIN_TRAVEL:
 			if _zombie_field_density_here() >= PASS_BY_CAPTURE_DENSITY:
 				_wandering = false
-				_wander_timer = randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
+				_wander_timer = SimRng.randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
 				velocity = Vector2.ZERO
 				_captain_check_timer = 0.0  # force re-election next idle frame
 				return
 		if global_position.distance_to(_wander_target) <= WANDER_ARRIVE_RANGE or _nav.is_navigation_finished():
 			_wandering = false
-			_wander_timer = randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
+			_wander_timer = SimRng.randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
 			velocity = Vector2.ZERO
 		else:
 			_set_desired_facing(_wander_target)
@@ -1167,12 +1167,12 @@ func _start_wander() -> void:
 	# After picking, push our target to nearby idle neighbors.
 	var target: Vector2 = Vector2.ZERO
 	var local_density: int = _zombie_field_density_here()
-	if local_density >= CLUSTER_SHUFFLE_DENSITY_THRESHOLD and randf() < CLUSTER_SHUFFLE_PROBABILITY:
+	if local_density >= CLUSTER_SHUFFLE_DENSITY_THRESHOLD and SimRng.randf() < CLUSTER_SHUFFLE_PROBABILITY:
 		target = global_position + Vector2(
-			randf_range(-CLUSTER_SHUFFLE_RADIUS_PX, CLUSTER_SHUFFLE_RADIUS_PX),
-			randf_range(-CLUSTER_SHUFFLE_RADIUS_PX, CLUSTER_SHUFFLE_RADIUS_PX),
+			SimRng.randf_range(-CLUSTER_SHUFFLE_RADIUS_PX, CLUSTER_SHUFFLE_RADIUS_PX),
+			SimRng.randf_range(-CLUSTER_SHUFFLE_RADIUS_PX, CLUSTER_SHUFFLE_RADIUS_PX),
 		)
-	if target == Vector2.ZERO and randf() < COHESION_PROBABILITY:
+	if target == Vector2.ZERO and SimRng.randf() < COHESION_PROBABILITY:
 		target = _find_cluster_leader_target()
 	# Magnetic always fires now (no probability gate). All zombies are
 	# attracted to other zombies as a default behavior, not a probabilistic
@@ -1403,8 +1403,8 @@ func follow_leader_wander(leader_target: Vector2) -> void:
 	if _wandering:
 		return
 	var jittered: Vector2 = leader_target + Vector2(
-		randf_range(-COHESION_TARGET_JITTER, COHESION_TARGET_JITTER),
-		randf_range(-COHESION_TARGET_JITTER, COHESION_TARGET_JITTER),
+		SimRng.randf_range(-COHESION_TARGET_JITTER, COHESION_TARGET_JITTER),
+		SimRng.randf_range(-COHESION_TARGET_JITTER, COHESION_TARGET_JITTER),
 	)
 	jittered.x = clamp(jittered.x, 50.0, 6094.0)
 	jittered.y = clamp(jittered.y, 50.0, 6094.0)
@@ -1413,7 +1413,7 @@ func follow_leader_wander(leader_target: Vector2) -> void:
 	_wander_start_pos = global_position
 	_nav.target_position = _wander_target
 	# Reset our timer so we don't immediately repick on next cycle.
-	_wander_timer = randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
+	_wander_timer = SimRng.randf_range(WANDER_INTERVAL_MIN, WANDER_INTERVAL_MAX)
 
 
 # Public accessor so other Shamblers in the same cluster can copy our
@@ -1468,8 +1468,8 @@ func _find_cluster_leader_target() -> Vector2:
 		return Vector2.ZERO
 	var leader_target: Vector2 = leader.get_active_wander_target()
 	return leader_target + Vector2(
-		randf_range(-COHESION_TARGET_JITTER, COHESION_TARGET_JITTER),
-		randf_range(-COHESION_TARGET_JITTER, COHESION_TARGET_JITTER),
+		SimRng.randf_range(-COHESION_TARGET_JITTER, COHESION_TARGET_JITTER),
+		SimRng.randf_range(-COHESION_TARGET_JITTER, COHESION_TARGET_JITTER),
 	)
 
 
@@ -1494,9 +1494,9 @@ func _pick_wander_direction() -> Vector2:
 	# environmental score.
 	var candidates: Array[Vector2] = []
 	var scores: Array[float] = []
-	var base_jitter: float = randf() * TAU  # random rotational offset so we don't always sample the same angles
+	var base_jitter: float = SimRng.randf() * TAU  # random rotational offset so we don't always sample the same angles
 	for i in range(WANDER_CANDIDATES):
-		var angle: float = base_jitter + (float(i) / float(WANDER_CANDIDATES)) * TAU + randf_range(-0.25, 0.25)
+		var angle: float = base_jitter + (float(i) / float(WANDER_CANDIDATES)) * TAU + SimRng.randf_range(-0.25, 0.25)
 		var dir: Vector2 = Vector2.from_angle(angle)
 		candidates.append(dir)
 		scores.append(_score_wander_direction(dir))
@@ -1505,8 +1505,8 @@ func _pick_wander_direction() -> Vector2:
 	for s in scores:
 		total_score += s
 	if total_score <= 0.0:
-		return candidates[randi() % candidates.size()]
-	var roll: float = randf() * total_score
+		return candidates[SimRng.randi() % candidates.size()]
+	var roll: float = SimRng.randf() * total_score
 	var acc: float = 0.0
 	for i in range(candidates.size()):
 		acc += scores[i]

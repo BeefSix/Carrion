@@ -110,7 +110,7 @@ func configure(config: Dictionary) -> void:
 	# accuracy minus the leadership-aura accuracy bonus).
 	var spread_deg: float = config.get("spread_deg", 0.0)
 	if spread_deg > 0.0:
-		var offset_deg: float = randf_range(-spread_deg, spread_deg)
+		var offset_deg: float = SimRng.randf_range(-spread_deg, spread_deg)
 		dir = dir.rotated(deg_to_rad(offset_deg))
 	velocity = dir * speed
 	# IMPORTANT: do NOT set node rotation. The draw helpers use _iso_direction

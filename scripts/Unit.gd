@@ -451,7 +451,7 @@ func _should_leave_corpse(attacker) -> bool:
 		if "veterancy_level" in attacker:
 			var lvl: int = attacker.veterancy_level
 			if lvl >= 0 and lvl < CLEAN_KILL_CHANCE_BY_LEVEL.size():
-				if randf() < CLEAN_KILL_CHANCE_BY_LEVEL[lvl]:
+				if SimRng.randf() < CLEAN_KILL_CHANCE_BY_LEVEL[lvl]:
 					return false
 	# Dead zombies do NOT leave rising corpses (2026-06-08 fix). The
 	# "rising" drama is for the formerly-living - a zombie is already
@@ -465,7 +465,7 @@ func _should_leave_corpse(attacker) -> bool:
 	# combat deaths feed the corpse cycle, at the design's 80% baseline.
 	if faction != GameState.Faction.MILITARY:
 		return false
-	return randf() < corpse_base_chance
+	return SimRng.randf() < corpse_base_chance
 
 
 func _spawn_corpse() -> void:

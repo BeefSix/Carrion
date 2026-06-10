@@ -93,7 +93,7 @@ func _spawn_scout() -> void:
 	var s = scout_scene.instantiate()
 	# Same jitter pattern as other unit producers - prevents stacked spawns
 	# triggering physics-solver separation.
-	var jitter := Vector2(randf_range(-SPAWN_JITTER, SPAWN_JITTER), randf_range(-SPAWN_JITTER, SPAWN_JITTER))
+	var jitter := Vector2(SimRng.randf_range(-SPAWN_JITTER, SPAWN_JITTER), SimRng.randf_range(-SPAWN_JITTER, SPAWN_JITTER))
 	s.position = global_position + SPAWN_OFFSET + jitter
 	get_parent().add_child(s)
 

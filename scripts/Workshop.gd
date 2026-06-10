@@ -99,7 +99,7 @@ func _spawn_item(item: String) -> void:
 	if scene == null:
 		return
 	var u = scene.instantiate()
-	var jitter := Vector2(randf_range(-SPAWN_JITTER, SPAWN_JITTER), randf_range(-SPAWN_JITTER, SPAWN_JITTER))
+	var jitter := Vector2(SimRng.randf_range(-SPAWN_JITTER, SPAWN_JITTER), SimRng.randf_range(-SPAWN_JITTER, SPAWN_JITTER))
 	u.position = global_position + SPAWN_OFFSET + jitter
 	get_parent().add_child(u)
 
