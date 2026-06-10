@@ -20,6 +20,11 @@ extends Node
 const FLUSH_INTERVAL_WALL_SEC := 2.0
 const BUFFER_CAP := 256
 
+# Perf criterion sampler (2026-06-10): one "perf" event per sim-minute so
+# lab reports can carry a perf line (fps vs entity load over the match).
+# Telemetry only - reads render-rate monitors, never feeds sim state.
+const PERF_SAMPLE_INTERVAL_SIM_SEC := 60.0
+
 # Bump when the header layout or event field semantics change. Older logs
 # remain readable but downstream analysis tools key off this.
 const SCHEMA_VERSION := 1
@@ -31,6 +36,7 @@ var _file: FileAccess = null
 var _path: String = ""
 var _buffer: PackedStringArray = PackedStringArray()
 var _flush_timer: float = 0.0
+var _next_perf_sample: float = PERF_SAMPLE_INTERVAL_SIM_SEC
 
 
 func _process(delta: float) -> void:
@@ -40,6 +46,14 @@ func _process(delta: float) -> void:
 	if _flush_timer <= 0.0:
 		_flush_timer = FLUSH_INTERVAL_WALL_SEC
 		_flush()
+	if GameState.sim_seconds() >= _next_perf_sample:
+		_next_perf_sample += PERF_SAMPLE_INTERVAL_SIM_SEC
+		log_event("perf", {
+			"fps": Performance.get_monitor(Performance.TIME_FPS),
+			"units": get_tree().get_nodes_in_group("units").size(),
+			"zombies": get_tree().get_nodes_in_group("zombies").size(),
+			"mem_mb": snappedf(Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0, 0.1),
+		})
 
 
 func match_start() -> void:
@@ -65,6 +79,7 @@ func match_start() -> void:
 	_file.store_line(JSON.stringify(_build_header()))
 	_file.flush()
 	_flush_timer = FLUSH_INTERVAL_WALL_SEC
+	_next_perf_sample = PERF_SAMPLE_INTERVAL_SIM_SEC
 	print("[MatchStats] logging to %s" % _path)
 
 
