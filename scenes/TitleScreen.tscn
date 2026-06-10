@@ -40,6 +40,9 @@ theme_override_colors/font_color = Color(0.65, 0.6, 0.5, 1)
 layout_mode = 2
 text = "vs Military AI opponent"
 
+[node name="MapPicker" type="OptionButton" parent="VBox"]
+layout_mode = 2
+
 [node name="Spacer1" type="Control" parent="VBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(0, 12)

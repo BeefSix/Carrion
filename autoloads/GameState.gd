@@ -27,6 +27,9 @@ var ai_vs_ai_mode: bool = false
 # procedural TownPlanner. Empty string = procedural. Used by the image-to-map
 # PoC pipeline to feed extracted-from-image map data into the gameplay layer.
 var custom_map_path: String = ""
+# Authored map recipe name ("" = procedural TownPlanner). MAP_DESIGN.md:
+# downtown / terrace / orchard. Set by the title-screen picker or --map=X.
+var map_recipe: String = ""
 
 # Match-scoped seed picked in reset_match(). Stored so MatchStats can log it
 # in the JSONL header and so future deterministic replays can reuse it.

@@ -39,6 +39,13 @@ func _ready() -> void:
 		GameState.custom_map_path = ""
 		get_tree().call_deferred("change_scene_to_file", "res://scenes/Main.tscn")
 		return
+	# Map picker (MAP_DESIGN.md): procgen default + the three authored maps.
+	if has_node("VBox/MapPicker"):
+		var mp: OptionButton = $VBox/MapPicker
+		mp.add_item("Map: Procedural Town")
+		mp.add_item("Map: Downtown (city)")
+		mp.add_item("Map: Terrace Row (row homes)")
+		mp.add_item("Map: Orchard Sprawl (loose suburb)")
 	$VBox/MilitaryButton.pressed.connect(_on_military_pressed)
 	$VBox/TribalButton.pressed.connect(_on_tribal_pressed)
 	$VBox/SurvivorButton.pressed.connect(_on_survivor_pressed)
@@ -60,6 +67,8 @@ func _start(faction: int) -> void:
 	GameState.player_faction = faction
 	GameState.ai_enabled = $VBox/AICheck.button_pressed
 	# (Ridley image-to-map PoC removed 2026-06-10 — authored maps come via
-	# TownPlanner recipes instead. custom_map_path stays as dormant plumbing.)
+	# map recipes instead. custom_map_path stays as dormant plumbing.)
 	GameState.custom_map_path = ""
+	if has_node("VBox/MapPicker"):
+		GameState.map_recipe = ["", "downtown", "terrace", "orchard"][$VBox/MapPicker.selected]
 	get_tree().change_scene_to_file("res://scenes/Main.tscn")

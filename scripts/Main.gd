@@ -179,10 +179,24 @@ func _ready() -> void:
 	# Image-to-map PoC: when GameState.custom_map_path is set, load that JSON
 	# instead of running TownPlanner. The image is rendered as an iso-projected
 	# Polygon2D background covering the world's diamond view space.
+	# Authored map recipes (MAP_DESIGN.md): --map=downtown|terrace|orchard
+	# or the title-screen picker. Deterministic authored layouts producing
+	# the same town-data contract TownPlanner does.
+	for arg in user_args:
+		if arg.begins_with("--map="):
+			GameState.map_recipe = arg.get_slice("=", 1)
 	if ReplayRecorder.is_playing:
 		# Replay: rebuild town from the recorded snapshot so playback
 		# doesn't depend on TownPlanner being deterministic across runs.
 		_apply_replay_town(ReplayRecorder.playback_town())
+	elif GameState.map_recipe != "":
+		_town_data = preload("res://scripts/maps/MapRecipes.gd").build(GameState.map_recipe)
+		if _town_data.is_empty():
+			push_warning("Unknown map recipe '%s' — falling back to procgen" % GameState.map_recipe)
+			var planner_fb = TOWN_PLANNER_SCRIPT.new()
+			_town_data = planner_fb.plan_town()
+		$GroundTiles.apply_tile_grid(_town_data["tile_grid"])
+		_spawn_scenery()
 	elif GameState.custom_map_path != "":
 		_load_custom_map(GameState.custom_map_path)
 	else:
@@ -693,7 +707,24 @@ func _spawn_lootables() -> void:
 		var lootable = LOOTABLE_SCENE.instantiate()
 		lootable.position = entry["pos"]
 		lootable.neighborhood_type = entry["type"]
-		var infest_rate: float = INFESTED_RATE_BY_TYPE.get(entry["type"], 0.4)
-		if rng.randf() < infest_rate:
-			lootable.is_infested = true
+		# Authored recipes decide infestation explicitly (the R/L/I mix IS
+		# the map design); procgen entries keep the per-type rate roll.
+		if entry.has("infested"):
+			lootable.is_infested = bool(entry["infested"])
+		else:
+			var infest_rate: float = INFESTED_RATE_BY_TYPE.get(entry["type"], 0.4)
+			if rng.randf() < infest_rate:
+				lootable.is_infested = true
 		add_child(lootable)
+
+
+const SCENERY_SCENE := preload("res://scenes/buildings/SceneryBuilding.tscn")
+
+
+func _spawn_scenery() -> void:
+	# Regular buildings (MAP_DESIGN.md): collision + occlusion, no use.
+	for entry in _town_data.get("scenery", []):
+		var b = SCENERY_SCENE.instantiate()
+		b.position = entry["pos"]
+		b.neighborhood_type = entry["type"]
+		add_child(b)
