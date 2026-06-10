@@ -220,6 +220,13 @@ const BROKEN_MORALE_BASE := 0.25
 # returns" per the spec.
 const MORALE_RECOVERY_PER_SEC := 0.15
 
+# Medic aura (DESIGN_MASTER §7.1 — "the fear ledger"). A same-team Medic
+# within this radius multiplies morale RECOVERY only; it never reduces the
+# drains, so a Medic in a losing fight delays the break rather than
+# preventing it. Read in _tick_morale via the "medics" group.
+const MEDIC_AURA_RADIUS_PX := 96.0
+const MEDIC_MORALE_RECOVERY_MULT := 2.0
+
 # Band hysteresis (amendment 2026-06-09): single-threshold band selection
 # flickers every tick when morale grazes a boundary, painting the yellow/red
 # border in/out as the unit drifts. The fix is sticky exits: once SHAKEN,
@@ -335,7 +342,7 @@ func _tick_morale(delta: float) -> int:
 	if drain_per_sec > 0.0:
 		morale = max(0.0, morale - drain_per_sec * MORALE_TICK_INTERVAL)
 	else:
-		morale = min(1.0, morale + MORALE_RECOVERY_PER_SEC * MORALE_TICK_INTERVAL)
+		morale = min(1.0, morale + MORALE_RECOVERY_PER_SEC * _medic_recovery_mult() * MORALE_TICK_INTERVAL)
 	if _morale_pending_drain > 0.0:
 		morale = max(0.0, morale - _morale_pending_drain)
 		_morale_pending_drain = 0.0
@@ -416,6 +423,23 @@ func _on_morale_band_changed(prev: int, next: int) -> void:
 			"veterancy": veterancy_level,
 			"morale": morale,
 		})
+
+
+# Morale-recovery multiplier from a nearby same-team Medic. Scans the
+# "medics" group (a handful of nodes at most — cheap at the 0.2s cadence).
+# Any-match semantics, so iteration order can't affect the result (Rule #4).
+func _medic_recovery_mult() -> float:
+	var team_group: String = "player_units" if is_in_group("player_units") else "ai_units"
+	for m in get_tree().get_nodes_in_group("medics"):
+		if m == self or not is_instance_valid(m):
+			continue
+		if not m.is_in_group(team_group):
+			continue
+		if "current_hp" in m and m.current_hp <= 0:
+			continue
+		if global_position.distance_to(m.global_position) <= MEDIC_AURA_RADIUS_PX:
+			return MEDIC_MORALE_RECOVERY_MULT
+	return 1.0
 
 
 # Count of ZOMBIE-faction hostile units inside the pressure ring. Iterates

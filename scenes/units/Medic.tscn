@@ -1,0 +1,27 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/Medic.gd" id="1_medic"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_medic"]
+size = Vector2(22, 22)
+
+[node name="Medic" type="CharacterBody2D" groups=["units", "player_units", "combat_units"]]
+script = ExtResource("1_medic")
+max_hp = 60
+move_speed = 85.0
+body_color = Color(0.72, 0.7, 0.66, 1)
+corpse_base_chance = 0.8
+size_px = 22
+
+[node name="CollisionShape" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_medic")
+
+[node name="NavigationAgent" type="NavigationAgent2D" parent="."]
+path_desired_distance = 16.0
+target_desired_distance = 24.0
+radius = 11.0
+max_speed = 85.0
+avoidance_enabled = false
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+sprite_frames = null

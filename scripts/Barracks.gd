@@ -5,10 +5,15 @@ const RIFLEMAN_COST := 75
 const RIFLEMAN_BUILD_TIME := 8.0
 const HEAVY_GUNNER_COST := 225
 const HEAVY_GUNNER_BUILD_TIME := 13.0
+const MEDIC_COST := 100
+const MEDIC_BUILD_TIME := 10.0
 const SPAWN_OFFSET := Vector2(0, 80)
 
 @export var rifleman_scene: PackedScene
 @export var heavy_gunner_scene: PackedScene
+# Preloaded (not @export) so existing placed Barracks scenes don't need
+# editor rewiring to gain the Medic row.
+const MEDIC_SCENE := preload("res://scenes/units/Medic.tscn")
 
 var _producing := false
 var _produce_timer := 0.0
@@ -33,7 +38,7 @@ func get_decay_radius() -> float:
 
 
 func get_action_count() -> int:
-	return 2
+	return 3
 
 
 func get_action_text(idx: int) -> String:
@@ -41,6 +46,8 @@ func get_action_text(idx: int) -> String:
 		return "Build Rifleman (%d Salvage)" % RIFLEMAN_COST
 	if idx == 1:
 		return "Build Heavy Gunner (%d Salvage)" % HEAVY_GUNNER_COST
+	if idx == 2:
+		return "Build Medic (%d Salvage)" % MEDIC_COST
 	return ""
 
 
@@ -49,6 +56,8 @@ func get_action_available(idx: int) -> bool:
 		return GameState.can_spend(RIFLEMAN_COST)
 	if idx == 1:
 		return GameState.can_spend(HEAVY_GUNNER_COST)
+	if idx == 2:
+		return GameState.can_spend(MEDIC_COST)
 	return false
 
 
@@ -57,12 +66,18 @@ func do_action(idx: int) -> void:
 		_queue_item("rifleman", RIFLEMAN_COST)
 	elif idx == 1:
 		_queue_item("heavy_gunner", HEAVY_GUNNER_COST)
+	elif idx == 2:
+		_queue_item("medic", MEDIC_COST)
+
+
+const PRETTY_NAMES := {"rifleman": "Rifleman", "heavy_gunner": "Heavy Gunner", "medic": "Medic"}
+const BUILD_TIMES := {"rifleman": RIFLEMAN_BUILD_TIME, "heavy_gunner": HEAVY_GUNNER_BUILD_TIME, "medic": MEDIC_BUILD_TIME}
 
 
 func get_status_text() -> String:
 	if not _producing:
 		return ""
-	var pretty_name: String = "Rifleman" if _produce_what == "rifleman" else "Heavy Gunner"
+	var pretty_name: String = PRETTY_NAMES.get(_produce_what, _produce_what)
 	var t := "Building %s... %.0fs" % [pretty_name, _produce_timer]
 	if _queue.size() > 0:
 		t += "  •  Queued: %d" % _queue.size()
@@ -82,7 +97,7 @@ func _queue_item(item: String, cost: int) -> void:
 func _start_production(item: String) -> void:
 	_producing = true
 	_produce_what = item
-	_produce_timer = RIFLEMAN_BUILD_TIME if item == "rifleman" else HEAVY_GUNNER_BUILD_TIME
+	_produce_timer = BUILD_TIMES.get(item, RIFLEMAN_BUILD_TIME)
 
 
 func _physics_process(delta: float) -> void:
@@ -112,11 +127,15 @@ func _spawn_item(item: String) -> void:
 		scene = rifleman_scene
 	elif item == "heavy_gunner":
 		scene = heavy_gunner_scene
+	elif item == "medic":
+		scene = MEDIC_SCENE
 	if scene == null:
 		return
 	var u = scene.instantiate()
 	# Jitter so back-to-back spawns don't stack on the same pixel and have the
 	# physics solver separate them in random directions.
-	var jitter := Vector2(randf_range(-SPAWN_JITTER, SPAWN_JITTER), randf_range(-SPAWN_JITTER, SPAWN_JITTER))
+	# SimRng (CI 2026-06-09): spawn position is sim state — bare randf_range
+	# here was the same divergence class the AIController/Lootable fixes hit.
+	var jitter := Vector2(SimRng.randf_range(-SPAWN_JITTER, SPAWN_JITTER), SimRng.randf_range(-SPAWN_JITTER, SPAWN_JITTER))
 	u.position = global_position + SPAWN_OFFSET + jitter
 	get_parent().add_child(u)
