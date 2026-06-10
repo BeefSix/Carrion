@@ -216,6 +216,9 @@ func _ready() -> void:
 			push_warning("Unknown map recipe '%s' — falling back to procgen" % GameState.map_recipe)
 			var planner_fb = TOWN_PLANNER_SCRIPT.new()
 			_town_data = planner_fb.plan_town()
+		# Undead-zone ground darkening (MapCraft B) — render-only gradient.
+		if _town_data.has("undead_zone"):
+			$GroundTiles.set_undead_zone(_town_data["undead_zone"], _town_data.get("undead_zone_radius_px", 1344.0))
 		$GroundTiles.apply_tile_grid(_town_data["tile_grid"])
 		_spawn_scenery()
 	elif GameState.custom_map_path != "":

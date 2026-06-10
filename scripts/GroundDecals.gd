@@ -13,6 +13,7 @@ const DECAL_TEXTURES := {
 	"litter": "res://assets/props/decal_litter.png",
 	"cracks": "res://assets/props/decal_cracks.png",
 	"blood": "res://assets/props/blood_decal.png",
+	"deadground": "res://assets/props/decal_deadground.png",
 }
 
 var _decals: Array = []  # [{pos: Vector2, tex: Texture2D, flip: bool}]
@@ -37,7 +38,7 @@ func set_decals(entries: Array) -> void:
 		if tex == null:
 			continue
 		var h: int = (int(e["pos"].x) * 73856093) ^ (int(e["pos"].y) * 19349663)
-		_decals.append({"pos": e["pos"], "tex": tex, "flip": (h & 1) == 1})
+		_decals.append({"pos": e["pos"], "tex": tex, "flip": (h & 1) == 1, "scale": e.get("scale", 1.0)})
 	queue_redraw()
 
 
@@ -58,8 +59,9 @@ func _draw() -> void:
 		var screen: Vector2 = IsoView.world_to_screen(d["pos"])
 		var tex: Texture2D = d["tex"]
 		var s: Vector2 = tex.get_size()
-		var flip_x: float = -1.0 if d["flip"] else 1.0
+		var sc: float = d["scale"]
+		var flip_x: float = (-1.0 if d["flip"] else 1.0) * sc
 		# Squash the top-down splat onto the 2:1 iso ground plane.
-		draw_set_transform(screen, 0.0, Vector2(flip_x, 0.5))
+		draw_set_transform(screen, 0.0, Vector2(flip_x, 0.5 * sc))
 		draw_texture(tex, -s * 0.5)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

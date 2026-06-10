@@ -46,6 +46,9 @@ static func build(map_name: String) -> Dictionary:
 			return {}
 	_scatter_props(out, rng, map_name)
 	_scatter_decals(out, rng, map_name)
+	var zc: Vector2i = UNDEAD_ZONE_BY_MAP.get(map_name, Vector2i(-999, -999))
+	out["undead_zone"] = _world(zc.x, zc.y)
+	out["undead_zone_radius_px"] = UNDEAD_ZONE_RADIUS * TILE
 	return out
 
 
@@ -192,8 +195,32 @@ static func _center_band(tx: int, ty: int) -> int:
 
 
 # Mix tables per band: [regular, lootable, infested] cumulative weights.
+# The undead zone (MapCraft B, 2026-06-11, per Matt's reference): each
+# map owns ONE district where the infestation concentrates. Infestation
+# probability scales up toward the zone center; the ground darkens there
+# (GroundTiles reads this center), and every infested lot gets dressed
+# (dead-ground splat + debris + gore). Decay becomes a PLACE with a
+# gradient you can read from across the map - the danger map is terrain.
+# Centers in tile coords, away from both spawn corners.
+const UNDEAD_ZONE_BY_MAP := {
+	"downtown": Vector2i(138, 54),   # NE-ish district beyond the avenue
+	"terrace": Vector2i(150, 60),    # east rows past the second arterial
+	"orchard": Vector2i(60, 140),    # SW fields
+}
+const UNDEAD_ZONE_RADIUS := 42.0     # tiles: full effect core -> fade-out rim
+const INFEST_MULT_CORE := 4.0        # infestation odds multiplier at center
+const INFEST_MULT_FAR := 0.5         # and far outside the zone
+
+
+static func _undead_gradient(tx: int, ty: int, map_name: String) -> float:
+	# 1.0 at the zone center -> 0.0 outside the radius.
+	var c: Vector2i = UNDEAD_ZONE_BY_MAP.get(map_name, Vector2i(96, 96))
+	var d: float = Vector2(float(tx - c.x), float(ty - c.y)).length()
+	return clampf(1.0 - d / UNDEAD_ZONE_RADIUS, 0.0, 1.0)
+
+
 static func _place(out: Dictionary, rng: RandomNumberGenerator, tx: int, ty: int,
-		btype: String, mix_by_band: Array) -> void:
+		btype: String, mix_by_band: Array, map_name: String = "") -> void:
 	if _near_spawn(tx, ty):
 		return
 	var band: int = _center_band(tx, ty)
@@ -202,10 +229,29 @@ static func _place(out: Dictionary, rng: RandomNumberGenerator, tx: int, ty: int
 	var pos: Vector2 = _world(tx, ty)
 	if roll < float(mix[0]):
 		out["scenery"].append({"pos": pos, "type": btype})
-	elif roll < float(mix[1]):
-		out["lootables"].append({"pos": pos, "type": btype, "infested": false})
-	else:
-		out["lootables"].append({"pos": pos, "type": btype, "infested": true})
+		return
+	# Infestation gradient: the base I-share of the mix is scaled by the
+	# undead-zone distance, so decay CONCENTRATES instead of sprinkling.
+	var base_infest: float = 1.0 - float(mix[1])
+	var grad: float = _undead_gradient(tx, ty, map_name)
+	var infest_chance: float = clampf(base_infest * lerpf(INFEST_MULT_FAR, INFEST_MULT_CORE, grad), 0.0, 0.9)
+	var infested: bool = rng.randf() < infest_chance
+	out["lootables"].append({"pos": pos, "type": btype, "infested": infested})
+	if infested:
+		_dress_infested_lot(out, rng, pos)
+
+
+static func _dress_infested_lot(out: Dictionary, rng: RandomNumberGenerator, pos: Vector2) -> void:
+	# Composed decay lot: dead-ground splat under the building + gore and
+	# debris scattered around it. All render-only entries.
+	out["decals"].append({"pos": pos, "kind": "deadground", "scale": 3.2})
+	var n: int = 2 + rng.randi_range(0, 2)
+	for i in range(n):
+		var off := Vector2(rng.randf_range(-90.0, 90.0), rng.randf_range(-90.0, 90.0))
+		if rng.randf() < 0.55:
+			out["decals"].append({"pos": pos + off, "kind": "blood"})
+		else:
+			out["props"].append({"pos": pos + off, "kind": "brickpile" if rng.randf() < 0.5 else "barrel"})
 
 
 # ---------------------------------------------------------- MAP 1: DOWNTOWN
@@ -249,7 +295,7 @@ static func _build_downtown(out: Dictionary, rng: RandomNumberGenerator) -> void
 				var btype: String = "commercial" if _center_band(tx, ty) >= 1 else "residential"
 				if rng.randf() < 0.18:
 					btype = "industrial"
-				_place(out, rng, tx, ty, btype, mix)
+				_place(out, rng, tx, ty, btype, mix, "downtown")
 
 
 # -------------------------------------------------------- MAP 2: TERRACE ROW
@@ -283,7 +329,7 @@ static func _build_terrace(out: Dictionary, rng: RandomNumberGenerator) -> void:
 				tx += 2
 				house_i += 1
 				continue
-			_place(out, rng, tx, ry, "residential", mix)
+			_place(out, rng, tx, ry, "residential", mix, "terrace")
 			tx += 2
 			house_i += 1
 	# Center cluster: school + strip mall around the park.
@@ -319,7 +365,7 @@ static func _build_orchard(out: Dictionary, rng: RandomNumberGenerator) -> void:
 				continue
 			# Driveway stub from street to lot.
 			_rect(g, x, y + 2, 1, 2, 7)
-			_place(out, rng, x, ty, "residential", mix)
+			_place(out, rng, x, ty, "residential", mix, "orchard")
 	# Center cluster: gas station + market at the cross.
 	for c in [[88, 100, "industrial"], [100, 88, "commercial"], [100, 100, "commercial"]]:
 		out["lootables"].append({"pos": _world(c[0], c[1]), "type": c[2], "infested": rng.randf() < 0.45})

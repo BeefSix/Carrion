@@ -89,8 +89,23 @@ const RAMP_STEPS := 6
 # value nudges) picked by a deterministic hash of the cell coords, so a
 # 30-cell road doesn't wallpaper one stamp. RENDER-ONLY: gameplay reads
 # atlas coords (get_tile_type_at), which alternates never change.
-const ALT_MODULATES := [Color(1, 1, 1), Color(0.94, 0.94, 0.94), Color(1.05, 1.05, 1.05), Color(0.97, 0.97, 0.97)]
-const ALT_FLIPS := [false, true, false, true]
+# Alternates 0-3: healthy ground variation. Alternates 4-7: BLIGHTED
+# twins (darker, drained toward ash) mixed in by the undead-zone
+# gradient (MapCraft B) — the ground itself darkens as you approach the
+# infested district, so the danger map reads from across the screen.
+const ALT_MODULATES := [
+	Color(1, 1, 1), Color(0.94, 0.94, 0.94), Color(1.05, 1.05, 1.05), Color(0.97, 0.97, 0.97),
+	Color(0.62, 0.58, 0.50), Color(0.55, 0.52, 0.46), Color(0.68, 0.64, 0.55), Color(0.50, 0.48, 0.43),
+]
+const ALT_FLIPS := [false, true, false, true, false, true, false, true]
+
+var _uz_center := Vector2(-1e9, -1e9)  # off-map default: gradient 0 everywhere
+var _uz_radius: float = 1.0
+
+
+func set_undead_zone(center: Vector2, radius_px: float) -> void:
+	_uz_center = center
+	_uz_radius = maxf(radius_px, 1.0)
 
 # ---- Blend fringes (TerrainKit Phase 1, 2026-06-11). Where a HIGHER
 # priority terrain neighbors a lower one, a dither-masked fringe of the
@@ -145,7 +160,18 @@ func apply_tile_grid(grid: PackedByteArray) -> void:
 			var t: int = grid[x + y * MAP_TILES]
 			var h: int = ((x * 73856093) ^ (y * 19349663)) & 0x7FFFFFFF
 			var v: int = (h >> 4) % _variant_counts[t]
-			set_cell(Vector2i(x, y), 0, Vector2i(v, t), h % ALT_MODULATES.size())
+			# Blight gradient: the undead zone's ground darkens COHESIVELY
+			# (gate finding: per-cell rolls read as salt-and-pepper noise,
+			# the reference blight is a solid stain with a ragged rim).
+			# Cluster the roll on 3x3 cell blocks so patches share fate;
+			# threshold 1.6x makes the core solid and only the rim dither.
+			var alt: int = h % 4
+			var grad: float = 1.0 - _uz_center.distance_to(Vector2((float(x) + 0.5) * IsoView.TILE_WORLD_PX, (float(y) + 0.5) * IsoView.TILE_WORLD_PX)) / _uz_radius
+			if grad > 0.0:
+				var hb: int = (((x / 3) * 73856093) ^ ((y / 3) * 19349663)) & 0x7FFFFFFF
+				if float((hb >> 7) % 100) * 0.01 < grad * 1.6:
+					alt = 4 + (h % 4)
+			set_cell(Vector2i(x, y), 0, Vector2i(v, t), alt)
 	_apply_fringes(grid)
 
 

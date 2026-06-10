@@ -215,12 +215,17 @@ static func pick_from_pool(pool_type: String, world_pos: Vector2) -> String:
 
 
 func _get_skin_path() -> String:
-	if is_infested and neighborhood_type == "residential":
-		return "res://assets/buildings/infested_residential.png"
+	if is_infested:
+		# Per-type ruined art (MapCraft B): obviously-infected silhouettes,
+		# not a tint. Types without dedicated art yet fall through to the
+		# normal pool + sickly modulate.
+		var ruined: String = "res://assets/buildings/infested_%s.png" % neighborhood_type
+		if ResourceLoader.exists(ruined):
+			return ruined
 	return pick_from_pool(neighborhood_type, position)
 
 
 func _get_skin_modulate() -> Color:
-	if is_infested and neighborhood_type != "residential":
-		return Color(0.72, 0.88, 0.62)  # sickly infestation tint
+	if is_infested and not ResourceLoader.exists("res://assets/buildings/infested_%s.png" % neighborhood_type):
+		return Color(0.72, 0.88, 0.62)  # sickly fallback when no ruined art
 	return Color.WHITE
