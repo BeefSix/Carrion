@@ -89,19 +89,32 @@ if [[ -z "$ERR_LINES" ]]; then
 fi
 
 # Filter known false positives. Godot's CLI parser sometimes can't resolve
-# autoload identifiers (e.g. "Cannot resolve type 'SimRng'") because autoloads
-# register at runtime but the CLI parser pre-resolves types. The editor and
-# headless RUN both work fine; only --check-only complains. If EVERY error is
-# of this shape, treat as pass with a note.
-TOTAL_ERR_COUNT=$(printf '%s\n' "$ERR_LINES" | wc -l)
-AUTOLOAD_ERR_COUNT=$(printf '%s\n' "$ERR_LINES" \
-    | grep -cE '(Cannot resolve|Identifier ".*" not declared in the current scope|Cannot find member ".*" in base "Node")' \
+# autoload identifiers (e.g. "Cannot resolve type 'SimRng'" or "Compile
+# Error: Identifier not found: ProjectileManager") because autoloads
+# register at runtime but the standalone --script parser never reads
+# project.godot's [autoload] table. The editor and headless RUN both work
+# fine; only --check-only complains.
+#
+# 2026-06-09 fix: the old filter matched error WORDING only, which missed
+# the "Identifier not found: X" variant (it blocked a legitimate Hunter.gd
+# edit whose only sin was referencing the ProjectileManager autoload).
+# Now we forgive an identifier error ONLY when the named identifier is an
+# actual autoload from project.godot — a real typo'd identifier still
+# blocks. The generic "Failed to load script" companion line is dropped
+# alongside; if a real error exists its specific line survives filtering.
+AUTOLOAD_NAMES=$(sed -n '/^\[autoload\]/,/^\[/p' project.godot \
+    | grep -oE '^[A-Za-z_][A-Za-z0-9_]*' | paste -sd'|' -)
+REMAINING=$(printf '%s\n' "$ERR_LINES" \
+    | grep -vE "Identifier not found: (${AUTOLOAD_NAMES})\$" \
+    | grep -vE "(Cannot resolve|Identifier \"(${AUTOLOAD_NAMES})\" not declared in the current scope)" \
+    | grep -vE 'Failed to load script .* "Compilation failed"' \
     || true)
 
-if [[ "$TOTAL_ERR_COUNT" -gt 0 && "$TOTAL_ERR_COUNT" -eq "$AUTOLOAD_ERR_COUNT" ]]; then
-    echo "parse_check_hook: $TOTAL_ERR_COUNT autoload-identifier warning(s) (known false positive), allowing." >&2
+if [[ -z "$REMAINING" ]]; then
+    echo "parse_check_hook: only autoload-identifier warnings (known --check-only false positive), allowing." >&2
     exit 0
 fi
+ERR_LINES="$REMAINING"
 
 # Real errors. Block the turn and feed them back via stderr.
 echo "parse_check_hook: BLOCKED — GDScript parse errors detected:" >&2
