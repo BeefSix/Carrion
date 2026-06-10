@@ -18,18 +18,24 @@ const MAP_TILES := 192
 # If a PNG is missing or fails to load, the corresponding TILE_COLORS entry
 # below is used as a flat-color fallback (defensive at the asset boundary).
 const TILE_DIR := "res://assets/tiles/ground/"
-const TILE_FILES := [
-	"tile_0.png",   # 0 main road
-	"tile_1.png",   # 1 sidewalk
-	"tile_11.png",  # 2 secondary road
-	"tile_2.png",   # 3 side street
-	"tile_4.png",   # 4 parking lot
-	"tile_14.png",  # 5 yard
-	"tile_6.png",   # 6 bare ground
-	"tile_7.png",   # 7 dirt road
-	"tile_8.png",   # 8 vegetation
-	"tile_15.png",  # 9 rubble
-	"tile_10.png",  # 10 fence
+# TerrainKit manifest (Phase 2, 2026-06-11): each terrain is a PACK of
+# variant files, not one tile. Variant 0 is the original; extra variants
+# break the wallpaper. Missing files are skipped at load (the manifest
+# can name art before it lands). Atlas layout: row = terrain id,
+# column = variant. All art enters through this table — the loader
+# ramp-unifies, variant-pools, and fringe-cuts everything automatically.
+const TERRAIN_PACKS := [
+	["tile_0.png", "road_var1.png", "road_var2.png"],          # 0 main road
+	["tile_1.png", "sidewalk_var1.png", "sidewalk_var2.png"],  # 1 sidewalk
+	["tile_11.png", "road_var2.png"],                          # 2 secondary road (shares a road variant)
+	["tile_2.png", "road_var1.png"],                           # 3 side street
+	["tile_4.png", "sidewalk_var2.png"],                       # 4 parking lot
+	["tile_14.png", "yard_var1.png", "yard_var2.png"],         # 5 yard
+	["tile_6.png", "bare_var1.png"],                           # 6 bare ground
+	["tile_7.png", "bare_var1.png"],                           # 7 dirt road (shares bare texture; ramp recolors it)
+	["tile_8.png", "veg_var1.png"],                            # 8 vegetation
+	["tile_15.png"],                                           # 9 rubble
+	["tile_10.png"],                                           # 10 fence
 ]
 
 # Fallback flat colors — used when the matching PNG can't be loaded so the
@@ -125,18 +131,21 @@ func get_tile_type_at(world_pos: Vector2) -> int:
 	if tile_x < 0 or tile_y < 0 or tile_x >= MAP_TILES or tile_y >= MAP_TILES:
 		return -1
 	var atlas := get_cell_atlas_coords(Vector2i(tile_x, tile_y))
-	return atlas.x
+	# Pack atlas layout (Phase 2): ROW is the terrain id, column is the
+	# visual variant — gameplay reads the row.
+	return atlas.y
 
 
 func apply_tile_grid(grid: PackedByteArray) -> void:
 	# Paint the entire 192x192 tile map from a TownPlanner-provided grid.
-	# Alternate choice is a deterministic coordinate hash (same picture on
-	# every client/run) — pure anti-wallpaper variation.
+	# Variant + alternate choice is a deterministic coordinate hash (same
+	# picture on every client/run) — pure anti-wallpaper variation.
 	for x in range(MAP_TILES):
 		for y in range(MAP_TILES):
 			var t: int = grid[x + y * MAP_TILES]
 			var h: int = ((x * 73856093) ^ (y * 19349663)) & 0x7FFFFFFF
-			set_cell(Vector2i(x, y), 0, Vector2i(t, 0), h % ALT_MODULATES.size())
+			var v: int = (h >> 4) % _variant_counts[t]
+			set_cell(Vector2i(x, y), 0, Vector2i(v, t), h % ALT_MODULATES.size())
 	_apply_fringes(grid)
 
 
@@ -156,58 +165,72 @@ func _apply_fringes(grid: PackedByteArray) -> void:
 				if nb == here:
 					continue
 				if BLEND_PRIORITY[nb] >= BLEND_CREEP_FLOOR and BLEND_PRIORITY[nb] > p_here:
+					# Fringe atlas: column = terrain, row = edge dir (built
+					# from each terrain's variant 0).
 					_fringe_layers[d].set_cell(Vector2i(x, y), 0, Vector2i(nb, d))
 
 
+var _variant_counts: Array = []  # per terrain: variants that actually loaded
+
+
 func _build_tileset() -> void:
-	# Diamond-masked atlas. TILE_W x TILE_H per tile, transparent outside the
-	# diamond so adjacent iso tiles tile cleanly without overlap. Each slot
-	# loads its PNG (Pixellab tiles_pro output, 64x64) and is scaled to
-	# TILE_W x TILE_H. The diamond mask is still applied so source artwork
-	# outside the iso shape (corners of the PNG) doesn't bleed into neighbors.
-	# Missing or invalid PNGs fall back to TILE_COLORS[i] flat color.
-	var count: int = TILE_COLORS.size()
-	var img := Image.create(TILE_W * count, TILE_H, false, Image.FORMAT_RGBA8)
+	# Pack atlas (Phase 2): row = terrain id, column = variant. Every
+	# variant is diamond-masked and ramp-remapped exactly like variant 0,
+	# so new art drops in via the manifest with zero extra wiring. Missing
+	# variant files are skipped (the manifest may name art that hasn't
+	# landed); a terrain with no loadable file gets the flat ramp midpoint.
+	var count: int = TERRAIN_PACKS.size()
+	var max_v: int = 1
+	for pack in TERRAIN_PACKS:
+		max_v = maxi(max_v, pack.size())
+	var img := Image.create(TILE_W * max_v, TILE_H * count, false, Image.FORMAT_RGBA8)
 	var cx: float = TILE_W * 0.5
 	var cy: float = TILE_H * 0.5
+	_variant_counts.clear()
 	for i in range(count):
-		var x_offset: int = i * TILE_W
-		var src_img: Image = _load_tile_image(i)
-		# Pre-scan: the source tile's luminance range inside the diamond,
-		# so the ramp remap can stretch whatever texture the tile has
-		# (even near-flat ones) across the full terrain ramp.
-		var lum_min: float = 1.0
-		var lum_max: float = 0.0
-		if src_img != null:
+		var y_offset: int = i * TILE_H
+		var loaded: int = 0
+		for k in range(TERRAIN_PACKS[i].size()):
+			var src_img: Image = _load_tile_image(TILE_DIR + TERRAIN_PACKS[i][k])
+			if src_img == null and k > 0:
+				continue  # missing variant — skip; variant 0 missing still paints fallback
+			var x_offset: int = loaded * TILE_W
+			# Pre-scan: this variant's luminance range inside the diamond, so
+			# the ramp remap stretches its texture across the full ramp.
+			var lum_min: float = 1.0
+			var lum_max: float = 0.0
+			if src_img != null:
+				for px in range(TILE_W):
+					for py in range(TILE_H):
+						if abs(float(px) + 0.5 - cx) / cx + abs(float(py) + 0.5 - cy) / cy <= 1.0:
+							var c: Color = src_img.get_pixel(px, py)
+							if c.a >= 0.01:
+								var l: float = c.get_luminance()
+								lum_min = minf(lum_min, l)
+								lum_max = maxf(lum_max, l)
+			var lum_span: float = maxf(lum_max - lum_min, 0.0001)
 			for px in range(TILE_W):
 				for py in range(TILE_H):
-					if abs(float(px) + 0.5 - cx) / cx + abs(float(py) + 0.5 - cy) / cy <= 1.0:
-						var c: Color = src_img.get_pixel(px, py)
-						if c.a >= 0.01:
-							var l: float = c.get_luminance()
-							lum_min = minf(lum_min, l)
-							lum_max = maxf(lum_max, l)
-		var lum_span: float = maxf(lum_max - lum_min, 0.0001)
-		for px in range(TILE_W):
-			for py in range(TILE_H):
-				var dx: float = abs(float(px) + 0.5 - cx) / cx
-				var dy: float = abs(float(py) + 0.5 - cy) / cy
-				if dx + dy <= 1.0:
-					var pixel: Color
-					if src_img != null:
-						pixel = src_img.get_pixel(px, py)
-						if pixel.a < 0.01:
-							pixel = TILE_RAMPS[i][0].lerp(TILE_RAMPS[i][1], 0.5)
+					var dx: float = abs(float(px) + 0.5 - cx) / cx
+					var dy: float = abs(float(py) + 0.5 - cy) / cy
+					if dx + dy <= 1.0:
+						var pixel: Color
+						if src_img != null:
+							pixel = src_img.get_pixel(px, py)
+							if pixel.a < 0.01:
+								pixel = TILE_RAMPS[i][0].lerp(TILE_RAMPS[i][1], 0.5)
+							else:
+								# Luminance -> posterized ramp position -> terrain color.
+								var t: float = clampf((pixel.get_luminance() - lum_min) / lum_span, 0.0, 1.0)
+								t = floorf(t * float(RAMP_STEPS - 1) + 0.5) / float(RAMP_STEPS - 1)
+								pixel = TILE_RAMPS[i][0].lerp(TILE_RAMPS[i][1], t)
 						else:
-							# Luminance -> posterized ramp position -> terrain color.
-							var t: float = clampf((pixel.get_luminance() - lum_min) / lum_span, 0.0, 1.0)
-							t = floorf(t * float(RAMP_STEPS - 1) + 0.5) / float(RAMP_STEPS - 1)
-							pixel = TILE_RAMPS[i][0].lerp(TILE_RAMPS[i][1], t)
+							pixel = TILE_RAMPS[i][0].lerp(TILE_RAMPS[i][1], 0.5)
+						img.set_pixel(x_offset + px, y_offset + py, pixel)
 					else:
-						pixel = TILE_RAMPS[i][0].lerp(TILE_RAMPS[i][1], 0.5)
-					img.set_pixel(x_offset + px, py, pixel)
-				else:
-					img.set_pixel(x_offset + px, py, Color(0, 0, 0, 0))
+						img.set_pixel(x_offset + px, y_offset + py, Color(0, 0, 0, 0))
+			loaded += 1
+		_variant_counts.append(maxi(loaded, 1))
 	var tex := ImageTexture.create_from_image(img)
 	var ts := TileSet.new()
 	ts.tile_shape = TileSet.TILE_SHAPE_ISOMETRIC
@@ -217,14 +240,15 @@ func _build_tileset() -> void:
 	src.texture = tex
 	src.texture_region_size = Vector2i(TILE_W, TILE_H)
 	for i in range(count):
-		src.create_tile(Vector2i(i, 0))
-		# Alternates 1..N-1 (0 is the base tile): h-flips + value nudges
-		# for per-cell variation. Iso diamonds mirror cleanly.
-		for a in range(1, ALT_MODULATES.size()):
-			var alt_id: int = src.create_alternative_tile(Vector2i(i, 0))
-			var td: TileData = src.get_tile_data(Vector2i(i, 0), alt_id)
-			td.flip_h = ALT_FLIPS[a]
-			td.modulate = ALT_MODULATES[a]
+		for k in range(_variant_counts[i]):
+			src.create_tile(Vector2i(k, i))
+			# Alternates 1..N-1 (0 is the base tile): h-flips + value nudges
+			# for per-cell variation. Iso diamonds mirror cleanly.
+			for a in range(1, ALT_MODULATES.size()):
+				var alt_id: int = src.create_alternative_tile(Vector2i(k, i))
+				var td: TileData = src.get_tile_data(Vector2i(k, i), alt_id)
+				td.flip_h = ALT_FLIPS[a]
+				td.modulate = ALT_MODULATES[a]
 	ts.add_source(src, 0)
 	tile_set = ts
 	_build_fringe_layers(img, count)
@@ -241,6 +265,7 @@ func _build_fringe_layers(base_img: Image, count: int) -> void:
 	var fimg := Image.create(TILE_W * count, TILE_H * 4, false, Image.FORMAT_RGBA8)
 	for i in range(count):
 		var x_off: int = i * TILE_W
+		var src_y: int = i * TILE_H  # variant 0 of terrain i in the pack atlas
 		for d in range(4):
 			var y_off: int = d * TILE_H
 			for px in range(TILE_W):
@@ -260,7 +285,7 @@ func _build_fringe_layers(base_img: Image, count: int) -> void:
 					# Ragged dithered cutoff: Bayer threshold modulates depth.
 					var bayer: float = float(BAYER4[py % 4][px % 4]) / 16.0
 					if s < FRINGE_DEPTH * (0.45 + bayer * 0.9):
-						fimg.set_pixel(x_off + px, y_off + py, base_img.get_pixel(x_off + px, py))
+						fimg.set_pixel(x_off + px, y_off + py, base_img.get_pixel(px, src_y + py))
 					else:
 						fimg.set_pixel(x_off + px, y_off + py, Color(0, 0, 0, 0))
 	var ftex := ImageTexture.create_from_image(fimg)
@@ -284,18 +309,21 @@ func _build_fringe_layers(base_img: Image, count: int) -> void:
 		_fringe_layers.append(layer)
 
 
-func _load_tile_image(slot: int) -> Image:
+func _load_tile_image(path: String) -> Image:
 	# Load a tile PNG and resize to TILE_W x TILE_H. Returns null if the
-	# file is missing or load fails so the caller can fall back to flat color.
-	if slot < 0 or slot >= TILE_FILES.size():
-		return null
-	var path: String = TILE_DIR + TILE_FILES[slot]
-	if not ResourceLoader.exists(path):
-		return null
-	var tex: Texture2D = load(path)
-	if tex == null:
-		return null
-	var src_img: Image = tex.get_image()
+	# file is missing or load fails so the caller can skip/fall back.
+	# Dual path: imported resource when available, raw file read otherwise
+	# (variant PNGs land from the art pipeline before the editor has
+	# imported them — they should still render headless and on first run).
+	var src_img: Image = null
+	if ResourceLoader.exists(path):
+		var tex: Texture2D = load(path)
+		if tex != null:
+			src_img = tex.get_image()
+	elif FileAccess.file_exists(path):
+		var raw := Image.new()
+		if raw.load_png_from_buffer(FileAccess.get_file_as_bytes(path)) == OK:
+			src_img = raw
 	if src_img == null:
 		return null
 	if src_img.is_compressed():
