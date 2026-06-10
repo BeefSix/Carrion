@@ -1,5 +1,7 @@
 # CARRION — Prototype Plan
 
+> **⚠️ HISTORICAL — SUPERSEDED. Do NOT implement from this file.** The original vertical-slice plan, superseded by **DESIGN_MASTER.md** + the live `docs/` plans and the codename change to **The Long Wake**. Its central question ("do Military and Tribal feel like different games?") is still the project thesis, but the specifics here are early. Kept for provenance only.
+
 **The one question this answers:** when I play Military and then play Tribal on the same map, do they feel like fundamentally different games — and is the noise/zombie/decay loop interesting enough that I want to keep playing? Everything below is in service of that question and nothing else.
 
 **Two-faction unit picks** (chosen because each pair maximally exposes the asymmetric thesis):

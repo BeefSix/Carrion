@@ -1,6 +1,8 @@
 # Tribal Vertical Slice — Audit + Phased Plan
 
-*Plan-first deliverable, 2026-06-09. **No gameplay code has been written.** Built per request to audit existing Tribal code against DESIGN_MASTER §7.2 + §3.0 and surface a 5-phase plan + open design decisions for approval before execution.*
+> **📸 SNAPSHOT (2026-06-09) — LARGELY EXECUTED; read as history, not as a to-do list.** The slice shipped: the determinism cleanups, the walkers-group exemption, the all-healthy-Tribal immunity, and the smoke test all landed. **One thing pivoted:** the Hunter's "constant clicking" signature described throughout this doc was **never implemented as designed** — playtesting showed clicking fed NoiseField and gathered ~50 zombies, so on 2026-06-10 it was replaced by the **passive defensive thrall escort** (≤4 zero-DPS bodyguards, no noise). The current Hunter design is **DESIGN_MASTER §7.2**; ignore every "clicking" reference below. Source of truth for anything here = DESIGN_MASTER + the code.*
+
+*Plan-first deliverable, 2026-06-09. Built per request to audit existing Tribal code against DESIGN_MASTER §7.2 + §3.0 and surface a 5-phase plan + open design decisions for approval before execution.*
 
 **Slice goal:** Tribal is playable as a faction for 20 minutes and feels distinctly asymmetric vs Military — NOT "quiet Military." Deliberately defers: Caller, Plague Spreader, Beastmaster, full doctrines, full blood/scent trail system, Marrow creep.
 

@@ -6,11 +6,22 @@ Read this first every session. It is the contract for all code written in this r
 
 THE LONG WAKE (internal codename: Carrion — repo/class/code identifiers keep the codename; all player-facing strings use "The Long Wake"): asymmetric three-faction zombie-ecosystem RTS, Godot 4.x, GDScript. Competitive multiplayer (up to 6-player FFA) is the end goal, which constrains *how* all code is written (see Determinism Rules).
 
-## Canonical documents — in priority order
+## Canonical documents — read these as current truth
 
-1. **DESIGN_MASTER.md** — the design source of truth. Supersedes DESIGN_DOC.md and PROTOTYPE_PLAN.md (historical only; do not implement from them). Items tagged [OPEN] are undecided — ask, don't assume.
-2. **AUDIT.md** — full code audit (2026-06-07) with ~70 findings, severity-ranked, file:line referenced. When you fix a finding, append `FIXED <date>` to its line in AUDIT.md.
-3. This file — conventions.
+1. **DESIGN_MASTER.md** — the design source of truth. Supersedes DESIGN_DOC.md and PROTOTYPE_PLAN.md. Items tagged [OPEN] are undecided — ask, don't assume.
+2. **AUDIT.md** — full code audit (2026-06-07 baseline) with severity-ranked, file:line findings. Read the status banner at its top first: all Critical/High are FIXED; the D-series determinism sweep is done-or-documented-deferred. Fixed lines carry `FIXED <date>`; when you fix a finding, append `FIXED <date>` to its line.
+3. **NETCODE.md** — determinism/netcode decisions + the shipped replay/checksum harness. Canonical for *why* the determinism rules exist.
+4. This file — conventions + determinism rules.
+
+## Doc-status map — know what you're reading (the anti-stale-confusion index)
+
+New sessions get confused when they read a dated planning doc as if it were current state. Classify before you trust:
+
+- **CANONICAL** (trust as current; fix in-session if you find them stale): the four above.
+- **HISTORICAL — do NOT implement from these** (kept for provenance only): `DESIGN_DOC.md`, `PROTOTYPE_PLAN.md`. Superseded by DESIGN_MASTER.md.
+- **SNAPSHOTS — accurate only as of their dateline; later commits may have overtaken them; never treat as current state without checking git/code**: everything in `docs/` (the plan/audit/run-log files), plus `WORKFLOW_PLAYBOOK.md`, `ART_PIPELINE_RESEARCH.md`, `StarCraft_BroodWar_Multiplayer_Reference.md`. These are point-in-time plans, research, and logs. When one conflicts with a CANONICAL doc or the code, the canonical doc and the code win.
+
+Rule of thumb: **staleness in a CANONICAL doc is a bug — fix it the same session. Staleness in a SNAPSHOT is expected — don't act on it, and don't bother rewriting history.**
 
 ## Determinism Rules (mandatory for all new/modified gameplay code)
 
@@ -44,4 +55,4 @@ After any batch of gameplay-code changes (anything touching `scripts/*.gd` or `a
 
 - **Targeted edits only — never rewrite a whole file to change a few lines.** Whole-file rewrites churn line endings (CRLF/LF), destroy diff reviewability, and risk truncation. Preserve each file's existing line endings.
 - Match the existing code style: tabs, typed vars where present, explanatory comments for non-obvious mechanics (this codebase comments *why*, keep doing that).
-- Prototype-era code may be replaced wholesale when a design system supersedes it, but check DESIGN_MASTER.md first — several "weird" mechanics (clicking Hunters, shoot-to-loot, homeward zombies) are intentional design, not bugs.
+- Prototype-era code may be replaced wholesale when a design system supersedes it, but check DESIGN_MASTER.md first — several "weird" mechanics (the Hunter's passive defensive zombie escort, shoot-to-loot, homeward zombies) are intentional design, not bugs. (Note: the Hunter's old *clicking* mechanic was removed 2026-06-10 — it now binds ≤4 zero-DPS defensive thralls; see DESIGN_MASTER §7.2.)

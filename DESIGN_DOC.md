@@ -1,5 +1,7 @@
 # CARRION — Technical Design Document v0.1
 
+> **⚠️ HISTORICAL — SUPERSEDED. Do NOT implement from this file.** This early design doc has been superseded by **DESIGN_MASTER.md** (the design source of truth) and the codename change to **The Long Wake**. Kept only for provenance/early reasoning. Where this conflicts with DESIGN_MASTER.md, DESIGN_MASTER wins, always.
+
 **Author note (in-character):** This is written as a working technical spec, the kind that goes into the doc repo before a vertical slice. It assumes familiarity with RTS systems vocabulary (DPS, supply, build orders, micro/macro split) and uses Blizzard-lineage conventions for stat presentation. Numbers given are *anchor values* — the math is internally consistent but every value is subject to playtest tuning. Where I'm making a design call to fill in a gap that wasn't yet decided in the design conversations, I flag it with **[DESIGN CALL]**.
 
 ---

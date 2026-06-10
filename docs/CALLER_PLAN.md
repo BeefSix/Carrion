@@ -66,9 +66,11 @@ system, and the Caller is the first unit whose entire kit is a field emitter.
   signed weights, Shambler wander samples it) and make the whistle its first emitter;
   migrate groan + homeward bias opportunistically after.
 **Recommendation: (ii) — minimal field now.** The Caller is the natural forcing
-function for §3.2, the field is also the determinism fix for the zombie layer (the
-CI's current tick-420 frontier is zombie wander RNG + physics — field sampling is
-the architecture that retires it), and "do not build bespoke per-unit behaviors" is
+function for §3.2, the field is also the determinism fix for the zombie layer (after
+the D8 RNG sweep the sole remaining divergence is `move_and_slide` physics —
+intermittent onset, per-component hashing confirms zombie-position-only — and field
+sampling is the architecture that retires it), and
+"do not build bespoke per-unit behaviors" is
 already canon. Scope guard: v0 = ONE grid, attractor/repulsor list, sampled as a bias
 on wander direction only (CHASE/ATTACK unchanged). If it balloons, fall back to (i)
 with a field-shaped API.
