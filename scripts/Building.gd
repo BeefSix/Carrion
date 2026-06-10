@@ -57,6 +57,12 @@ const SKIN_MAX_HEIGHT_RATIO := 1.4
 # the occlusion fade keeps units readable behind the overflow.
 const SKIN_OVERSCAN := 1.5
 var _skin_faded: bool = false
+# Per-lot variety (MapCraft A gate finding): the same PNG repeated across
+# a district is the loudest "asset flip" tell. Mirror + small value
+# jitter by position hash — deterministic, render-only, doubles apparent
+# variety for free.
+var _skin_flip: bool = false
+var _skin_value: float = 1.0
 
 
 func _get_skin_path() -> String:
@@ -79,6 +85,17 @@ func _ready() -> void:
 		_skin = load(skin_path)
 	if _skin != null:
 		add_to_group("skinned_buildings")  # BuildingFadeSweep polls these
+		# Positions sit on a 32px lattice, so a multiplicative hash keeps
+		# its LOW bits zero — pick decision bits from the high half.
+		var h: int = ((int(position.x) * 2654435761) ^ (int(position.y) * 40503)) & 0x7FFFFFFF
+		_skin_flip = ((h >> 9) & 1) == 1
+		# Never mirror signage — reversed "DINER" text is a worse tell than
+		# repetition (gate finding, 2026-06-11).
+		for kw in ["diner", "storefront", "commercial", "police", "grocer"]:
+			if kw in skin_path:
+				_skin_flip = false
+				break
+		_skin_value = 0.94 + float((h >> 13) % 11) * 0.01  # 0.94..1.04
 
 
 func update_fade(units: Array) -> void:
@@ -194,7 +211,6 @@ func _draw() -> void:
 	# footprint diamond, width-scaled to the projected diamond, aspect
 	# preserved. The darkened footprint stays as the grounding shadow.
 	if _skin != null:
-		draw_colored_polygon(PackedVector2Array([nw, ne, se, sw]), Color(0.05, 0.05, 0.05, 0.45))
 		var diamond_w: float = ne.x - sw.x
 		var tex_size: Vector2 = _skin.get_size()
 		var draw_w: float = diamond_w * SKIN_OVERSCAN
@@ -202,10 +218,25 @@ func _draw() -> void:
 		# Base sits at the south corner's y, pulled up slightly so the art's
 		# foundation overlaps the shadow instead of floating below it.
 		var base_y: float = se.y + 2.0
+		# Drop shadow (MapCraft A, 2026-06-11): one light source for the
+		# whole world — every standing object casts the same soft SE shadow.
+		# The references ground every sprite this way; it's the single
+		# biggest "sits IN the world" cue. Footprint diamond shifted SE and
+		# widened, drawn before the art.
+		var sh_off := Vector2(diamond_w * 0.10, 3.0)
+		draw_colored_polygon(PackedVector2Array([
+			nw + sh_off, ne + sh_off + Vector2(diamond_w * 0.08, 0),
+			se + sh_off + Vector2(diamond_w * 0.08, 2.0), sw + sh_off,
+		]), Color(0.04, 0.04, 0.05, 0.40))
 		var mod: Color = _get_skin_modulate()
+		mod = Color(mod.r * _skin_value, mod.g * _skin_value, mod.b * _skin_value, mod.a)
 		if _skin_faded:
 			mod.a *= FADE_ALPHA
+		if _skin_flip:
+			draw_set_transform(iso_offset, 0.0, Vector2(-1.0, 1.0))
 		draw_texture_rect(_skin, Rect2(-draw_w * 0.5, base_y - draw_h, draw_w, draw_h), false, mod)
+		if _skin_flip:
+			draw_set_transform(iso_offset, 0.0, Vector2.ONE)
 		if selected:
 			draw_polyline(PackedVector2Array([nw, ne, se, sw, nw]), Color(1, 1, 0.4), 2.0, true)
 		if current_hp < max_hp:
