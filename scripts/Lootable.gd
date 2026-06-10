@@ -186,20 +186,38 @@ func _draw_building_icon() -> void:
 # ---- Building skin (pass 2, 2026-06-11): per-district art; infested
 # residentials get the dedicated infested PNG, every other infested type
 # gets a sickly tint over its normal art (no per-type infested art yet).
-const SKIN_BY_TYPE := {
-	"residential": "res://assets/buildings/residential.png",
-	"commercial": "res://assets/buildings/commercial.png",
-	"industrial": "res://assets/buildings/industrial.png",
-	"medical": "res://assets/buildings/medical.png",
-	"security": "res://assets/buildings/police.png",
-	"civic": "res://assets/buildings/civic.png",
+# Skin POOLS (Phase 4, 2026-06-11, per Matt's downtown reference): each
+# district type owns a pool of skins; the pick is a deterministic
+# position hash, so a lot wears the same building on every client/run
+# and a downtown block mixes storefronts, factories, and garages
+# instead of cloning one PNG. Missing files are skipped (art can land
+# after the manifest names it).
+const SKIN_POOLS := {
+	"residential": ["res://assets/buildings/residential.png", "res://assets/buildings/apartment_block.png"],
+	"commercial": ["res://assets/buildings/commercial.png", "res://assets/buildings/storefront_corner.png", "res://assets/buildings/diner.png"],
+	"industrial": ["res://assets/buildings/industrial.png", "res://assets/buildings/factory_brick.png", "res://assets/buildings/parking_garage.png"],
+	"medical": ["res://assets/buildings/medical.png"],
+	"security": ["res://assets/buildings/police.png"],
+	"civic": ["res://assets/buildings/civic.png"],
 }
+
+
+static func pick_from_pool(pool_type: String, world_pos: Vector2) -> String:
+	var pool: Array = SKIN_POOLS.get(pool_type, [])
+	var avail: Array = []
+	for sp in pool:
+		if ResourceLoader.exists(sp):
+			avail.append(sp)
+	if avail.is_empty():
+		return ""
+	var h: int = ((int(world_pos.x) * 73856093) ^ (int(world_pos.y) * 19349663)) & 0x7FFFFFFF
+	return avail[h % avail.size()]
 
 
 func _get_skin_path() -> String:
 	if is_infested and neighborhood_type == "residential":
 		return "res://assets/buildings/infested_residential.png"
-	return SKIN_BY_TYPE.get(neighborhood_type, "")
+	return pick_from_pool(neighborhood_type, position)
 
 
 func _get_skin_modulate() -> Color:

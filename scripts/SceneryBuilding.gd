@@ -35,7 +35,7 @@ func _draw_building_icon() -> void:
 
 
 func _get_skin_path() -> String:
-	return LootableScript.SKIN_BY_TYPE.get(neighborhood_type, "")
+	return LootableScript.pick_from_pool(neighborhood_type, position)
 
 
 func _get_skin_modulate() -> Color:

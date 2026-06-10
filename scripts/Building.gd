@@ -43,6 +43,17 @@ var owner_controller = null
 # HP bar, infested tint) draw on top in both modes — they're game state,
 # not skin.
 var _skin: Texture2D = null
+# Occlusion fade (Matt's call, 2026-06-11): tall art must never hide
+# units. When a unit stands BEHIND the building (deeper in iso depth and
+# inside the art's screen rect), the skin fades to FADE_ALPHA. Checked at
+# 5 Hz in _process — render-only, no sim reads back.
+const FADE_ALPHA := 0.45
+const FADE_CHECK_SEC := 0.2
+# Height cap: art taller than this multiple of its footprint width gets
+# clamped (mid-rise world; also bounds the occlusion shadow).
+const SKIN_MAX_HEIGHT_RATIO := 1.4
+var _skin_faded: bool = false
+var _fade_timer: float = 0.0
 
 
 func _get_skin_path() -> String:
@@ -63,6 +74,42 @@ func _ready() -> void:
 	var skin_path := _get_skin_path()
 	if skin_path != "" and ResourceLoader.exists(skin_path):
 		_skin = load(skin_path)
+	set_process(_skin != null)  # fade check only exists for skinned buildings
+
+
+func _process(delta: float) -> void:
+	# RENDER-ONLY occlusion fade poll (5 Hz). A unit is "behind" when it is
+	# deeper into the iso depth than our center AND its screen point falls
+	# inside the art's above-ground screen rect.
+	_fade_timer -= delta
+	if _fade_timer > 0.0:
+		return
+	_fade_timer = FADE_CHECK_SEC
+	var was: bool = _skin_faded
+	_skin_faded = _any_unit_behind()
+	if _skin_faded != was:
+		queue_redraw()
+
+
+func _any_unit_behind() -> bool:
+	var hw: float = size_pixels.x * 0.5
+	var hh: float = size_pixels.y * 0.5
+	var c: Vector2 = IsoView.world_to_screen(position)
+	var diamond_w: float = (IsoView.world_to_screen(Vector2(hw, -hh)) - IsoView.world_to_screen(Vector2(-hw, hh))).x
+	var tex_size: Vector2 = _skin.get_size()
+	var draw_h: float = minf(diamond_w * tex_size.y / tex_size.x, diamond_w * SKIN_MAX_HEIGHT_RATIO)
+	var base_y: float = c.y + IsoView.world_to_screen(Vector2(hw, hh)).y
+	var top_y: float = base_y - draw_h
+	var depth: float = position.x + position.y
+	for u in get_tree().get_nodes_in_group("units"):
+		if not is_instance_valid(u):
+			continue
+		if u.global_position.x + u.global_position.y >= depth:
+			continue  # in front of or beside us in iso depth
+		var s: Vector2 = IsoView.world_to_screen(u.global_position)
+		if absf(s.x - c.x) < diamond_w * 0.5 and s.y > top_y and s.y < base_y:
+			return true
+	return false
 
 
 func set_selected(value: bool) -> void:
@@ -151,11 +198,14 @@ func _draw() -> void:
 		var diamond_w: float = ne.x - sw.x
 		var tex_size: Vector2 = _skin.get_size()
 		var draw_w: float = diamond_w
-		var draw_h: float = draw_w * tex_size.y / tex_size.x
+		var draw_h: float = minf(draw_w * tex_size.y / tex_size.x, draw_w * SKIN_MAX_HEIGHT_RATIO)
 		# Base sits at the south corner's y, pulled up slightly so the art's
 		# foundation overlaps the shadow instead of floating below it.
 		var base_y: float = se.y + 2.0
-		draw_texture_rect(_skin, Rect2(-draw_w * 0.5, base_y - draw_h, draw_w, draw_h), false, _get_skin_modulate())
+		var mod: Color = _get_skin_modulate()
+		if _skin_faded:
+			mod.a *= FADE_ALPHA
+		draw_texture_rect(_skin, Rect2(-draw_w * 0.5, base_y - draw_h, draw_w, draw_h), false, mod)
 		if selected:
 			draw_polyline(PackedVector2Array([nw, ne, se, sw, nw]), Color(1, 1, 0.4), 2.0, true)
 		if current_hp < max_hp:
