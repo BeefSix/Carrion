@@ -162,6 +162,19 @@ func _ready() -> void:
 	var grade := CanvasModulate.new()
 	grade.color = Color(0.93, 0.92, 0.89)
 	add_child(grade)
+	# Amortized building occlusion-fade sweep (render-only; see script).
+	var fade_sweep := Node.new()
+	fade_sweep.name = "BuildingFadeSweep"
+	fade_sweep.set_script(preload("res://scripts/BuildingFadeSweep.gd"))
+	add_child(fade_sweep)
+	# Dev screenshot hook: --screenshot[=x,y] waits 2.5s (assets settle),
+	# points the camera at the given world pos (default map center), grabs
+	# the frame to res://screenshot.png and quits. Visual feedback loop for
+	# art passes without a human in the chair. RENDER-ONLY dev tool.
+	for shot_arg in OS.get_cmdline_user_args():
+		if shot_arg.begins_with("--screenshot"):
+			_screenshot_after_settle(shot_arg)
+			break
 	# --replay=<path> overrides everything: load recorded JSONL, seed SimRng
 	# from the header, apply the recorded town snapshot. Done BEFORE
 	# reset_match so the override seed survives, and BEFORE map planning so
@@ -776,3 +789,23 @@ func _spawn_props() -> void:
 		decals.set_script(preload("res://scripts/GroundDecals.gd"))
 		add_child(decals)
 		decals.set_decals(decal_entries)
+
+
+func _screenshot_after_settle(shot_arg: String) -> void:
+	# Dev tool (see _ready hook). Waits for assets/spawns to settle, points
+	# the camera, grabs the frame, quits. RENDER-ONLY.
+	var target := Vector2(3072, 3072)
+	if "=" in shot_arg:
+		var parts: PackedStringArray = shot_arg.get_slice("=", 1).split(",")
+		if parts.size() == 2:
+			target = Vector2(parts[0].to_float(), parts[1].to_float())
+	await get_tree().create_timer(2.5).timeout
+	var cam := get_viewport().get_camera_2d()
+	if cam != null:
+		cam.position = IsoView.world_to_screen(target)
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	var img: Image = get_viewport().get_texture().get_image()
+	img.save_png("res://screenshot.png")
+	print("[Screenshot] saved res://screenshot.png")
+	get_tree().quit()

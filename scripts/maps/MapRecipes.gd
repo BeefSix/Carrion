@@ -55,7 +55,7 @@ static func build(map_name: String) -> Dictionary:
 # to textures in Main.PROP_TEXTURES. Spawn clear radius respected.
 const PROP_TABLES := {
 	"downtown": {
-		0: [[0.022, ["car"]]],                                 # main road: wrecks
+		0: [[0.050, ["car"]], [0.030, ["cone", "barrel", "brickpile"]]],  # avenue: wreck field
 		2: [[0.018, ["car"]]],                                 # avenue
 		1: [[0.018, ["lamp", "hydrant", "mailbox", "cone"]]],  # sidewalk furniture
 		4: [[0.036, ["bench", "cart", "dumpster", "barrel"]]], # plazas
@@ -232,7 +232,9 @@ static func _build_downtown(out: Dictionary, rng: RandomNumberGenerator) -> void
 			# Skip blocks swallowed by plazas/avenues.
 			if (bx >= 88 and bx < 104) or (by >= 88 and by < 104):
 				continue
-			for slot in [[3, 3], [9, 3], [3, 9], [9, 9]]:
+			# 8-slot ring (2026-06-11 screenshot pass): 4 slots left blocks
+			# mostly empty plaza - the reference downtown is built SOLID.
+			for slot in [[3, 3], [7, 3], [11, 3], [3, 7], [11, 7], [3, 11], [7, 11], [11, 11]]:
 				var tx: int = bx + slot[0]
 				var ty: int = by + slot[1]
 				if tx + 3 >= GRID or ty + 3 >= GRID:

@@ -69,11 +69,11 @@ const TILE_COLORS := [
 # organics sit slightly warmer/greener, pavements slightly cooler, and
 # the fringe layer + decals carry the terrain reads.
 const TILE_RAMPS := [
-	[Color("26262a"), Color("44443f")],  # 0 main road — worn asphalt
-	[Color("32312c"), Color("56544c")],  # 1 sidewalk — concrete slabs
-	[Color("28282b"), Color("464641")],  # 2 secondary road
+	[Color("2a2a2e"), Color("4e4e48")],  # 0 main road — worn asphalt
+	[Color("36352f"), Color("5e5c53")],  # 1 sidewalk — concrete slabs
+	[Color("2c2c2f"), Color("4e4e49")],  # 2 secondary road
 	[Color("2b2925"), Color("48443c")],  # 3 side street — worn mix
-	[Color("2c2c2e"), Color("4a4a46")],  # 4 parking lot
+	[Color("303032"), Color("52524e")],  # 4 parking lot
 	[Color("3f3d2c"), Color("64604a")],  # 5 yard — dead-grass khaki
 	[Color("3c362b"), Color("5e5545")],  # 6 bare ground — dirt
 	[Color("383127"), Color("584c3d")],  # 7 dirt road
@@ -330,6 +330,25 @@ func _load_tile_image(path: String) -> Image:
 		src_img.decompress()
 	if src_img.get_format() != Image.FORMAT_RGBA8:
 		src_img.convert(Image.FORMAT_RGBA8)
+	# Face crop (2026-06-11, lattice fix): Pixellab tile art is a 3D tile —
+	# top face + a darker side skirt below it. Squashing the WHOLE image
+	# into the diamond drags the skirt's dark pixels onto the diamond's
+	# lower edges, drawing a grid lattice across the entire map. Crop to
+	# the TOP FACE ONLY: first opaque row downward, face height = width/2.
+	if src_img.get_height() > src_img.get_width() / 2:
+		var top: int = 0
+		var found: bool = false
+		for py in range(src_img.get_height()):
+			for px in range(src_img.get_width()):
+				if src_img.get_pixel(px, py).a >= 0.5:
+					top = py
+					found = true
+					break
+			if found:
+				break
+		var face_h: int = src_img.get_width() / 2
+		top = mini(top, src_img.get_height() - face_h)
+		src_img = src_img.get_region(Rect2i(0, top, src_img.get_width(), face_h))
 	if src_img.get_width() != TILE_W or src_img.get_height() != TILE_H:
 		src_img.resize(TILE_W, TILE_H, Image.INTERPOLATE_BILINEAR)
 	return src_img

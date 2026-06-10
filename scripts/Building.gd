@@ -48,12 +48,15 @@ var _skin: Texture2D = null
 # inside the art's screen rect), the skin fades to FADE_ALPHA. Checked at
 # 5 Hz in _process — render-only, no sim reads back.
 const FADE_ALPHA := 0.45
-const FADE_CHECK_SEC := 0.2
 # Height cap: art taller than this multiple of its footprint width gets
 # clamped (mid-rise world; also bounds the occlusion shadow).
 const SKIN_MAX_HEIGHT_RATIO := 1.4
+# Art overflows its lot (2026-06-11 screenshot pass): width-scaling art
+# exactly to the footprint diamond made buildings read as doll houses.
+# Real iso games draw building art LARGER than its collision footprint;
+# the occlusion fade keeps units readable behind the overflow.
+const SKIN_OVERSCAN := 1.5
 var _skin_faded: bool = false
-var _fade_timer: float = 0.0
 
 
 func _get_skin_path() -> String:
@@ -74,34 +77,31 @@ func _ready() -> void:
 	var skin_path := _get_skin_path()
 	if skin_path != "" and ResourceLoader.exists(skin_path):
 		_skin = load(skin_path)
-	set_process(_skin != null)  # fade check only exists for skinned buildings
+	if _skin != null:
+		add_to_group("skinned_buildings")  # BuildingFadeSweep polls these
 
 
-func _process(delta: float) -> void:
-	# RENDER-ONLY occlusion fade poll (5 Hz). A unit is "behind" when it is
-	# deeper into the iso depth than our center AND its screen point falls
-	# inside the art's above-ground screen rect.
-	_fade_timer -= delta
-	if _fade_timer > 0.0:
-		return
-	_fade_timer = FADE_CHECK_SEC
+func update_fade(units: Array) -> void:
+	# Called by BuildingFadeSweep (amortized — a slice of buildings per
+	# frame; the original per-building 5 Hz self-poll fired every building
+	# on the SAME frame and hitched the game 5x/sec). RENDER-ONLY.
 	var was: bool = _skin_faded
-	_skin_faded = _any_unit_behind()
+	_skin_faded = _any_unit_behind(units)
 	if _skin_faded != was:
 		queue_redraw()
 
 
-func _any_unit_behind() -> bool:
+func _any_unit_behind(units: Array) -> bool:
 	var hw: float = size_pixels.x * 0.5
 	var hh: float = size_pixels.y * 0.5
 	var c: Vector2 = IsoView.world_to_screen(position)
-	var diamond_w: float = (IsoView.world_to_screen(Vector2(hw, -hh)) - IsoView.world_to_screen(Vector2(-hw, hh))).x
+	var diamond_w: float = (IsoView.world_to_screen(Vector2(hw, -hh)) - IsoView.world_to_screen(Vector2(-hw, hh))).x * SKIN_OVERSCAN
 	var tex_size: Vector2 = _skin.get_size()
 	var draw_h: float = minf(diamond_w * tex_size.y / tex_size.x, diamond_w * SKIN_MAX_HEIGHT_RATIO)
 	var base_y: float = c.y + IsoView.world_to_screen(Vector2(hw, hh)).y
 	var top_y: float = base_y - draw_h
 	var depth: float = position.x + position.y
-	for u in get_tree().get_nodes_in_group("units"):
+	for u in units:
 		if not is_instance_valid(u):
 			continue
 		if u.global_position.x + u.global_position.y >= depth:
@@ -197,7 +197,7 @@ func _draw() -> void:
 		draw_colored_polygon(PackedVector2Array([nw, ne, se, sw]), Color(0.05, 0.05, 0.05, 0.45))
 		var diamond_w: float = ne.x - sw.x
 		var tex_size: Vector2 = _skin.get_size()
-		var draw_w: float = diamond_w
+		var draw_w: float = diamond_w * SKIN_OVERSCAN
 		var draw_h: float = minf(draw_w * tex_size.y / tex_size.x, draw_w * SKIN_MAX_HEIGHT_RATIO)
 		# Base sits at the south corner's y, pulled up slightly so the art's
 		# foundation overlaps the shadow instead of floating below it.

@@ -7,6 +7,15 @@ func _ready() -> void:
 	# with the AI-vs-AI flag set on GameState. Defaults: Military vs Military,
 	# AI enabled, procedural map. --seed=N is consumed downstream by
 	# GameState.reset_match for the SimRng seed.
+	# --screenshot dev hook: jump straight into a normal match so Main can
+	# grab the frame (see Main._screenshot_after_settle). Render-only tool.
+	for shot_arg in OS.get_cmdline_user_args():
+		if shot_arg.begins_with("--screenshot"):
+			GameState.player_faction = GameState.Faction.MILITARY
+			GameState.ai_enabled = true
+			GameState.custom_map_path = ""
+			get_tree().call_deferred("change_scene_to_file", "res://scenes/Main.tscn")
+			return
 	if "--ai-vs-ai" in OS.get_cmdline_user_args():
 		GameState.player_faction = GameState.Faction.MILITARY
 		GameState.ai_enabled = true
