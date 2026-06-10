@@ -184,7 +184,21 @@ func _handle_right_click(world_pos: Vector2) -> void:
 # Each unit gets a distinct world target so they don't pile up at one point and
 # the physics solver doesn't need to push overlapping bodies apart (which read
 # as straying-then-teleporting-back).
+#
+# D6 (AUDIT 2026-06-09): formation targets are SIM STATE (they become nav
+# targets), so the old cos/sin ring violated the no-transcendentals rule
+# (CLAUDE.md #5 — sin/cos diverge across CPUs). Replaced with an exact
+# integer hex-ring walk (redblobgames axial rings): ring r holds 6r slots,
+# same capacity as before, and the axial->world conversion uses only
+# +,*,/ and the literal constant sqrt(3)/2 — compile-time constants don't
+# diverge, transcendental CALLS do. Visually a hexagon instead of a circle;
+# at 6/12/18 slots the silhouettes are near-identical.
 const FORMATION_SPACING := 32.0
+const HEX_DIRS := [
+	Vector2i(1, 0), Vector2i(1, -1), Vector2i(0, -1),
+	Vector2i(-1, 0), Vector2i(-1, 1), Vector2i(0, 1),
+]
+const HEX_ROW_Y := 0.8660254  # sqrt(3)/2 as a literal — no runtime transcendental
 
 func _formation_position(center: Vector2, index: int, total: int) -> Vector2:
 	if total <= 1 or index == 0:
@@ -196,9 +210,18 @@ func _formation_position(center: Vector2, index: int, total: int) -> Vector2:
 		positions_before_ring += 6 * ring
 		ring += 1
 	var ring_index: int = index - positions_before_ring
-	var ring_count: int = 6 * ring
-	var angle: float = (float(ring_index) / float(ring_count)) * TAU
-	return center + Vector2(cos(angle), sin(angle)) * (FORMATION_SPACING * float(ring))
+	# Hex ring walk: start at the corner in direction 4, then step along
+	# the six edges. side = which edge, step = distance along it. Integer
+	# axial coords throughout; exact and order-free.
+	var side: int = ring_index / ring
+	var step: int = ring_index % ring
+	var axial: Vector2i = HEX_DIRS[4] * ring
+	for s in range(side):
+		axial += HEX_DIRS[s] * ring
+	axial += HEX_DIRS[side] * step
+	# Axial -> world: x = q + r/2, y = r * sqrt(3)/2.
+	var offset := Vector2(float(axial.x) + float(axial.y) * 0.5, float(axial.y) * HEX_ROW_Y)
+	return center + offset * FORMATION_SPACING
 
 
 func _find_building_at(world_pos: Vector2):
