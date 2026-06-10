@@ -232,9 +232,13 @@ static func _build_downtown(out: Dictionary, rng: RandomNumberGenerator) -> void
 			# Skip blocks swallowed by plazas/avenues.
 			if (bx >= 88 and bx < 104) or (by >= 88 and by < 104):
 				continue
-			# 8-slot ring (2026-06-11 screenshot pass): 4 slots left blocks
-			# mostly empty plaza - the reference downtown is built SOLID.
-			for slot in [[3, 3], [7, 3], [11, 3], [3, 7], [11, 7], [3, 11], [7, 11], [11, 11]]:
+			# 4 slots (REVERTED from 8, 2026-06-11): the 8-slot ring tripled
+			# the building count to ~900, which KILLED the navigation bake
+			# (nav_polys=0 - no unit could path at all; Matt's 'walkers
+			# won't move') and dragged headless fps to 1.5. The dense look
+			# comes from the 1.5x art overscan, not building count. If the
+			# map reads sparse, add slots to CENTER-BAND blocks only.
+			for slot in [[3, 3], [9, 3], [3, 9], [9, 9]]:
 				var tx: int = bx + slot[0]
 				var ty: int = by + slot[1]
 				if tx + 3 >= GRID or ty + 3 >= GRID:

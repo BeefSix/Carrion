@@ -11,6 +11,10 @@ extends Node
 # the spike.
 
 const SLICES := 12
+# Hard cap on buildings processed per frame: at high building counts the
+# slice itself gets big (902 buildings / 12 = 75/frame during the nav
+# incident). Fades just react slower on huge maps - never a frame spike.
+const MAX_PER_FRAME := 12
 
 var _cursor: int = 0
 
@@ -20,7 +24,7 @@ func _process(_delta: float) -> void:
 	if buildings.is_empty():
 		return
 	var units: Array = get_tree().get_nodes_in_group("units")
-	var per_frame: int = maxi(1, int(ceil(float(buildings.size()) / float(SLICES))))
+	var per_frame: int = mini(MAX_PER_FRAME, maxi(1, int(ceil(float(buildings.size()) / float(SLICES)))))
 	for i in range(per_frame):
 		var idx: int = (_cursor + i) % buildings.size()
 		var b = buildings[idx]
