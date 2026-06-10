@@ -24,16 +24,22 @@ const TILE_DIR := "res://assets/tiles/ground/"
 # can name art before it lands). Atlas layout: row = terrain id,
 # column = variant. All art enters through this table — the loader
 # ramp-unifies, variant-pools, and fringe-cuts everything automatically.
+# HARVESTED packs (2026-06-11): "harvest_*" tiles are sliced directly
+# out of Matt's reference images by tools/HarvestTiles.gd — they ARE the
+# target aesthetic, so the loader skips the ramp remap for them (raw).
+# Terrains without harvested sources keep generated tiles + ramps tuned
+# toward the same palette. The fringe/blight/variant systems consume
+# both kinds identically.
 const TERRAIN_PACKS := [
-	["tile_0.png", "road_var1.png", "road_var2.png"],          # 0 main road
-	["tile_1.png", "sidewalk_var1.png", "sidewalk_var2.png"],  # 1 sidewalk
-	["tile_11.png", "road_var2.png"],                          # 2 secondary road (shares a road variant)
-	["tile_2.png", "road_var1.png"],                           # 3 side street
-	["tile_4.png", "sidewalk_var2.png"],                       # 4 parking lot
-	["tile_14.png", "yard_var1.png", "yard_var2.png"],         # 5 yard
+	["harvest_road_9.png", "harvest_road_10.png", "harvest_road_11.png", "harvest_road_12.png", "harvest_road_15.png"],  # 0 main road
+	["harvest_sidewalk_18.png", "harvest_sidewalk_19.png", "harvest_sidewalk_20.png"],  # 1 sidewalk
+	["harvest_road_13.png", "harvest_road_14.png", "harvest_road_16.png"],  # 2 secondary road
+	["harvest_road_17.png", "harvest_road_11.png"],            # 3 side street
+	["harvest_parking_21.png", "harvest_parking_22.png", "harvest_parking_23.png"],  # 4 parking lot
+	["harvest_yard_0.png", "harvest_yard_1.png", "harvest_yard_2.png", "harvest_yard_3.png", "harvest_yard_4.png", "harvest_yard_5.png", "harvest_yard_6.png", "harvest_yard_7.png", "harvest_yard_8.png"],  # 5 yard
 	["tile_6.png", "bare_var1.png"],                           # 6 bare ground
 	["tile_7.png", "bare_var1.png"],                           # 7 dirt road (shares bare texture; ramp recolors it)
-	["tile_8.png", "veg_var1.png"],                            # 8 vegetation
+	["harvest_veg_24.png", "harvest_veg_25.png", "harvest_veg_26.png", "harvest_deadgrass_27.png", "harvest_deadgrass_28.png"],  # 8 vegetation
 	["tile_15.png"],                                           # 9 rubble
 	["tile_10.png"],                                           # 10 fence
 ]
@@ -217,7 +223,9 @@ func _build_tileset() -> void:
 		var y_offset: int = i * TILE_H
 		var loaded: int = 0
 		for k in range(TERRAIN_PACKS[i].size()):
-			var src_img: Image = _load_tile_image(TILE_DIR + TERRAIN_PACKS[i][k])
+			var fname: String = TERRAIN_PACKS[i][k]
+			var raw: bool = fname.begins_with("harvest_")  # reference-true: no remap
+			var src_img: Image = _load_tile_image(TILE_DIR + fname)
 			if src_img == null and k > 0:
 				continue  # missing variant — skip; variant 0 missing still paints fallback
 			var x_offset: int = loaded * TILE_W
@@ -245,8 +253,9 @@ func _build_tileset() -> void:
 							pixel = src_img.get_pixel(px, py)
 							if pixel.a < 0.01:
 								pixel = TILE_RAMPS[i][0].lerp(TILE_RAMPS[i][1], 0.5)
-							else:
+							elif not raw:
 								# Luminance -> posterized ramp position -> terrain color.
+								# (Harvested tiles skip this: they ARE the palette.)
 								var t: float = clampf((pixel.get_luminance() - lum_min) / lum_span, 0.0, 1.0)
 								t = floorf(t * float(RAMP_STEPS - 1) + 0.5) / float(RAMP_STEPS - 1)
 								pixel = TILE_RAMPS[i][0].lerp(TILE_RAMPS[i][1], t)
