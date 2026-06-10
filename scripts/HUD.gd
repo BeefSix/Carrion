@@ -21,26 +21,54 @@ var _toast_label: Label = null
 var _toast_timer: float = 0.0
 
 
+# SC-console era (2026-06-10): the bottom console (minimap + selection +
+# command card) supersedes the old BuildingPanel/SalvagePanel. Those scene
+# nodes stay hidden (scene surgery deferred); HUD keeps the toast, the
+# stance hotkey, and the speed indicator, and hosts the new console +
+# resource bar built in code.
+var _console: Control = null
+var _resource_label: Label = null
+
+
 func _ready() -> void:
 	add_to_group("hud")
 	GameState.salvage_changed.connect(_on_salvage_changed)
-	_on_salvage_changed(GameState.salvage)
 	_actor_panel.hide()
+	$SalvagePanel.hide()
 	_status_label.visible = false
 	_speed_label.visible = false
-	_action_buttons = [
-		$BuildingPanel/VBox/ActionButton,
-		$BuildingPanel/VBox/ActionButton2,
-		$BuildingPanel/VBox/ActionButton3,
-		$BuildingPanel/VBox/ActionButton4,
-		$BuildingPanel/VBox/ActionButton5,
-	]
-	for i in range(_action_buttons.size()):
-		_action_buttons[i].pressed.connect(_on_action_pressed.bind(i))
 	var sel_mgr := get_tree().get_first_node_in_group("selection_manager")
 	if sel_mgr != null:
 		sel_mgr.selection_changed.connect(_on_selection_changed)
 	_init_toast()
+	_console = preload("res://scripts/ui/Console.gd").new()
+	add_child(_console)
+	_build_resource_bar()
+	_on_salvage_changed(GameState.salvage)
+
+
+func _build_resource_bar() -> void:
+	# Top-right resource readout (SC position), styled to match the console.
+	var panel := PanelContainer.new()
+	panel.anchor_left = 1.0
+	panel.anchor_right = 1.0
+	panel.offset_left = -200.0
+	panel.offset_right = -12.0
+	panel.offset_top = 10.0
+	panel.offset_bottom = 44.0
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.085, 0.09, 0.095, 0.97)
+	sb.border_color = Color(0.30, 0.29, 0.25)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(3)
+	sb.set_content_margin_all(6)
+	panel.add_theme_stylebox_override("panel", sb)
+	_resource_label = Label.new()
+	_resource_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_resource_label.add_theme_color_override("font_color", Color(0.85, 0.83, 0.76))
+	_resource_label.add_theme_font_size_override("font_size", 15)
+	panel.add_child(_resource_label)
+	add_child(panel)
 
 
 func _init_toast() -> void:
@@ -73,6 +101,8 @@ func show_toast(msg: String) -> void:
 
 func _on_salvage_changed(value: int) -> void:
 	_salvage_label.text = "Salvage: %d" % value
+	if _resource_label != null:
+		_resource_label.text = "SALVAGE  %d" % value
 
 
 func _on_selection_changed(units: Array, building) -> void:
@@ -82,15 +112,10 @@ func _on_selection_changed(units: Array, building) -> void:
 	# lives here too for defense in depth.
 	if building != null and is_instance_valid(building) and GameState.is_owned_by_player(building):
 		_current_actor = building
-		_actor_title.text = building.name
-		_actor_panel.show()
 	elif units.size() == 1 and is_instance_valid(units[0]) and _has_actions(units[0]):
 		_current_actor = units[0]
-		_actor_title.text = units[0].name
-		_actor_panel.show()
 	else:
 		_current_actor = null
-		_actor_panel.hide()
 
 	_selected_combat_units.clear()
 	for u in units:
@@ -157,25 +182,6 @@ func _process(delta: float) -> void:
 		elif _toast_timer < 1.0:
 			_toast_label.modulate.a = _toast_timer  # last second fades
 
-	if _current_actor == null or not is_instance_valid(_current_actor):
-		return
-
-	var count: int = 0
-	if _current_actor.has_method("get_action_count"):
-		count = _current_actor.get_action_count()
-
-	for i in range(_action_buttons.size()):
-		var btn: Button = _action_buttons[i]
-		if i < count:
-			btn.visible = true
-			btn.text = _current_actor.get_action_text(i)
-			btn.disabled = not _current_actor.get_action_available(i)
-		else:
-			btn.visible = false
-
-	if _current_actor.has_method("get_status_text"):
-		var status: String = _current_actor.get_status_text()
-		_status_label.text = status
-		_status_label.visible = status != ""
-	else:
-		_status_label.visible = false
+	# (Old BuildingPanel refresh removed — the Console owns the command
+	# card and status line now. _current_actor is kept for the stance
+	# hotkey bookkeeping in _on_selection_changed.)
