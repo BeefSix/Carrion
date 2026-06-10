@@ -25,6 +25,76 @@ func _ready() -> void:
 	# horde untouched" (DESIGN_MASTER §7.2). Without this line, Walkers
 	# get eaten on contact and the Tribal economy collapses.
 	add_to_group("walkers")
+	_init_walker_sprite()
+
+
+# ---- Sprite system (RENDER ONLY — Walker extends Unit, not CombatUnit,
+# so it carries its own small loader like Shambler does). The gather slot
+# replaces attack: the Walker's verbs are walk, stoop, carry. ------------
+
+const SPRITE_ROOT := "res://assets/sprites/units/tribal/walker/"
+const SPRITE_DIRECTIONS := ["east", "south-east", "south", "south-west", "west", "north-west", "north", "north-east"]
+const SPRITE_ANIM_SPEEDS := {"idle": 4.0, "walk": 10.0, "gather": 6.0, "death": 8.0}
+const SPRITE_ANIM_LOOPS := {"idle": true, "walk": true, "gather": true, "death": false}
+
+
+func _init_walker_sprite() -> void:
+	var sprite: AnimatedSprite2D = get_node_or_null("AnimatedSprite2D")
+	if sprite == null:
+		return
+	var sf := SpriteFrames.new()
+	sf.remove_animation(&"default")
+	for action in ["idle", "walk", "gather", "death"]:
+		for dir in SPRITE_DIRECTIONS:
+			var anim_name := "%s_%s" % [action, dir]
+			var added_any := false
+			var i := 0
+			while true:
+				var frame_path := "%s%s/%s/%d.png" % [SPRITE_ROOT, action, dir, i]
+				if not ResourceLoader.exists(frame_path):
+					break
+				if not added_any:
+					sf.add_animation(anim_name)
+					sf.set_animation_speed(anim_name, SPRITE_ANIM_SPEEDS[action])
+					sf.set_animation_loop(anim_name, SPRITE_ANIM_LOOPS[action])
+					added_any = true
+				sf.add_frame(anim_name, load(frame_path))
+				i += 1
+	if sf.get_animation_names().is_empty():
+		return
+	sprite.sprite_frames = sf
+	use_sprite = true
+	sprite.play(&"idle_south")
+
+
+# Sanctioned render-side transcendental (same as CombatUnit/Shambler).
+func _world_facing_to_sprite_dir(world_dir: Vector2) -> String:
+	if world_dir.length_squared() < 0.001:
+		return "south"
+	var iso_dir := Vector2(world_dir.x - world_dir.y, (world_dir.x + world_dir.y) * 0.75)
+	var angle_deg := rad_to_deg(iso_dir.angle())
+	if angle_deg < 0.0:
+		angle_deg += 360.0
+	var idx := int(round(angle_deg / 45.0)) % 8
+	return SPRITE_DIRECTIONS[idx]
+
+
+func _update_walker_sprite_animation() -> void:
+	var sprite: AnimatedSprite2D = get_node_or_null("AnimatedSprite2D")
+	if sprite == null or sprite.sprite_frames == null:
+		return
+	var action: String
+	if current_hp <= 0:
+		action = "death"
+	elif _sub == Sub.GATHER_CHANNEL:
+		action = "gather"
+	elif velocity.length_squared() > 1.0:
+		action = "walk"
+	else:
+		action = "idle"
+	var anim_name := "%s_%s" % [action, _world_facing_to_sprite_dir(facing_dir)]
+	if String(sprite.animation) != anim_name:
+		sprite.play(anim_name)
 
 
 func gather_from(lootable) -> void:
@@ -44,6 +114,8 @@ func move_to(world_pos: Vector2) -> void:
 
 func _physics_process(delta: float) -> void:
 	_sim_upkeep(delta)  # D4 subclass invariant — see Unit._sim_upkeep
+	if use_sprite:
+		_update_walker_sprite_animation()
 	if current_command == Command.MOVE:
 		if not _follow_navigation():
 			current_command = Command.IDLE

@@ -23,3 +23,6 @@ target_desired_distance = 24.0
 radius = 9.0
 max_speed = 80.0
 avoidance_enabled = false
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+sprite_frames = null
