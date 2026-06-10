@@ -22,7 +22,7 @@ extends RefCounted
 # decision sequence of the pre-profile code (verified by identical seed-42
 # hash streams).
 
-enum State { BUILD, ATTACK, RETREAT }
+enum State { BUILD, ATTACK, RETREAT, DEFEND }
 
 # Preloaded (not class_name lookup) so headless runs don't depend on the
 # editor's global-class cache being fresh.
@@ -119,6 +119,24 @@ func _update_posture() -> void:
 	if combat_count > _peak_combat:
 		_peak_combat = combat_count
 
+	# A2 — SURVIVE preempts everything (goal 1 of the stack, posture form).
+	# "Base under attack" = a building took damage within defend_cooldown
+	# sim-seconds. While threatened: hold/refresh the DEFEND order toward
+	# the latest threat position. Once quiet for the cooldown: stand down
+	# to BUILD and let the thresholds below re-trigger ATTACK naturally —
+	# an army that was mid-commit resumes the commit on the next eval.
+	var base_threatened: bool = controller.sim_since_base_damage() <= float(profile["defend_cooldown"])
+	if base_threatened:
+		if _state != State.DEFEND:
+			_enter_defend()
+		else:
+			# Refresh: a moving attacker drags the rally point with it.
+			controller.tactician.set_defend_order(controller.get_base_threat_pos())
+		return
+	elif _state == State.DEFEND:
+		_exit_defend()
+		# fall through — thresholds may immediately re-enter ATTACK below
+
 	var attack_threshold: int = int(profile["attack_threshold"])
 	var retreat_fraction: float = float(profile["retreat_fraction"])
 	match _state:
@@ -133,6 +151,34 @@ func _update_posture() -> void:
 		State.RETREAT:
 			if combat_count >= attack_threshold:
 				_enter_attack()
+
+
+func _enter_defend() -> void:
+	var prev: String = get_state_name()
+	_state = State.DEFEND
+	var threat: Vector2 = controller.get_base_threat_pos()
+	controller.tactician.set_defend_order(threat)
+	MatchStats.log_event(&"ai_posture_changed", {
+		"controller": controller.get_controller_id(),
+		"from": prev,
+		"to": get_state_name(),
+	})
+	MatchStats.log_event(&"ai_defend_ordered", {
+		"controller": controller.get_controller_id(),
+		"threat_pos": [threat.x, threat.y],
+		"army_size": controller.get_combat_count(),
+	})
+
+
+func _exit_defend() -> void:
+	var prev: String = get_state_name()
+	_state = State.BUILD
+	controller.tactician.set_hold_order()
+	MatchStats.log_event(&"ai_posture_changed", {
+		"controller": controller.get_controller_id(),
+		"from": prev,
+		"to": get_state_name(),
+	})
 
 
 func _enter_attack() -> void:
@@ -181,4 +227,5 @@ func get_state_name() -> String:
 	match _state:
 		State.ATTACK: return "ATTACK"
 		State.RETREAT: return "RETREAT"
+		State.DEFEND: return "DEFEND"
 		_: return "BUILD"

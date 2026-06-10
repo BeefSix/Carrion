@@ -29,6 +29,10 @@ const PALETTE_ICON_NEUTRAL := Color("8a857a")
 
 var current_hp: int
 var selected: bool = false
+# A2: set by AIController on the buildings it spawns so damage events reach
+# the controller's SURVIVE posture. Null for player buildings (HUD/GameState
+# own those flows). Untyped to avoid a cyclic class reference.
+var owner_controller = null
 
 
 func _ready() -> void:
@@ -58,6 +62,12 @@ func take_damage(amount: int, attacker = null) -> void:
 		attacker.damage_dealt += float(actual)
 	current_hp = max(0, current_hp - amount)
 	queue_redraw()
+	# A2 (AI_OVERHAUL_PLAN): AI-owned buildings report damage to their
+	# controller so the SURVIVE posture can preempt. The attacker's position
+	# (when known) becomes the defend rally point.
+	if owner_controller != null and is_instance_valid(owner_controller):
+		if owner_controller.has_method("notify_building_damaged"):
+			owner_controller.notify_building_damaged(self, attacker)
 	if current_hp == 0:
 		if attacker != null and is_instance_valid(attacker) and "kills_count" in attacker:
 			attacker.kills_count += 1

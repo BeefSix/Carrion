@@ -53,6 +53,12 @@ var _producing: bool = false
 var _producing_what: String = ""
 var _production_timer: float = 0.0
 
+# A2 base-threat memory. Updated by notify_building_damaged (called from
+# Building.take_damage on owner-tagged buildings); read by the strategist's
+# SURVIVE posture check. Sim-time anchored, no polling.
+var _last_base_damage_sim: float = -1000.0
+var _base_threat_pos: Vector2 = Vector2.ZERO
+
 # Group names cached at _ready from as_player_slot so the rest of the file
 # doesn't have to branch at every tag site.
 var _unit_group: String = "ai_units"
@@ -133,6 +139,28 @@ func _emit_phase_snapshot() -> void:
 		"combat": get_combat_count(),
 		"has_barracks": has_barracks(),
 	})
+
+
+# ---------- Strategist-facing API (defense, A2) ----------
+
+
+func notify_building_damaged(building, attacker) -> void:
+	# Called from Building.take_damage (physics tick — sim-state safe).
+	# The rally point is the ATTACKER's position when known (defenders go
+	# to the threat, not to the wound); falls back to the building.
+	_last_base_damage_sim = GameState.sim_seconds()
+	if attacker != null and is_instance_valid(attacker) and attacker is Node2D:
+		_base_threat_pos = attacker.global_position
+	elif building != null and is_instance_valid(building):
+		_base_threat_pos = building.position
+
+
+func sim_since_base_damage() -> float:
+	return GameState.sim_seconds() - _last_base_damage_sim
+
+
+func get_base_threat_pos() -> Vector2:
+	return _base_threat_pos
 
 
 # ---------- Strategist-facing API (production) ----------
@@ -228,6 +256,9 @@ func _spawn_hq() -> void:
 	_hq.position = spawn_position
 	get_parent().add_child(_hq)
 	_hq.add_to_group(_building_group)
+	# A2: route damage events to this controller's SURVIVE posture.
+	if "owner_controller" in _hq:
+		_hq.owner_controller = self
 	# Register with Main so its win-condition scan tracks our HQ. In AI-vs-AI
 	# mode the "player slot" AI registers as the player HQ; the other side
 	# registers as the opposing HQ - same plumbing the human-vs-AI mode uses.
@@ -275,6 +306,8 @@ func _spawn_produced(item: String) -> void:
 			_barracks.position = _hq.position + BARRACKS_SPAWN_OFFSET
 			get_parent().add_child(_barracks)
 			_barracks.add_to_group(_building_group)
+			if "owner_controller" in _barracks:
+				_barracks.owner_controller = self  # A2 damage routing
 			if get_parent().has_method("rebake_navigation"):
 				get_parent().call_deferred("rebake_navigation")
 

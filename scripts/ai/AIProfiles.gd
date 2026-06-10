@@ -49,6 +49,10 @@ const MILITARY := {
 	"worker_script": "res://scripts/Looter.gd",
 	"attack_threshold": 6,
 	"retreat_fraction": 0.6,
+	# A2: sim-seconds of base quiet before standing down from DEFEND. Long
+	# enough to not flicker between waves of one assault; short enough that
+	# a feint doesn't pin the army home forever.
+	"defend_cooldown": 15.0,
 }
 
 # A4 fills this in (Walkers -> Hunting Lodge -> Hunters -> Ritual Site ->

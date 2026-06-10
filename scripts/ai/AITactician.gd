@@ -20,7 +20,7 @@ extends RefCounted
 #     dispatch to the attack target together. Fresh spawns join the rally; they
 #     don't trickle out solo. RETREAT bypasses the rally (fall back NOW).
 
-enum Order { HOLD, ATTACK, RETREAT }
+enum Order { HOLD, ATTACK, RETREAT, DEFEND }
 
 # Default dispatch threshold when no CLI override is in play. Live value is
 # read from GameState.dispatch_group_size at evaluate time so balance sweeps
@@ -61,6 +61,19 @@ func set_hold_order() -> void:
 	_order = Order.HOLD
 
 
+func set_defend_order(pos: Vector2) -> void:
+	# A2. Called every strategic eval while the base is threatened, so it
+	# must be cheap to repeat: same-target refreshes are a no-op (the
+	# per-unit epsilon in _issue_if_changed handles micro-jitter); only a
+	# meaningfully moved threat invalidates the caches.
+	if _order == Order.DEFEND and _target_pos.distance_to(pos) < TARGET_REISSUE_EPSILON_PX:
+		return
+	_order = Order.DEFEND
+	_target_pos = pos
+	_dispatched.clear()
+	_last_target_by_unit.clear()
+
+
 func evaluate() -> void:
 	if controller == null:
 		return
@@ -68,10 +81,13 @@ func evaluate() -> void:
 		return
 	var units: Array = controller.get_combat_units()
 	_prune_dead(units)
-	if _order == Order.RETREAT:
-		_evaluate_retreat(units)
-	else:
-		_evaluate_attack(units)
+	match _order:
+		Order.RETREAT:
+			_evaluate_retreat(units)
+		Order.DEFEND:
+			_evaluate_defend(units)
+		_:
+			_evaluate_attack(units)
 
 
 func _evaluate_attack(units: Array) -> void:
@@ -115,6 +131,21 @@ func _evaluate_attack(units: Array) -> void:
 				"controller": controller.get_controller_id(),
 				"count": dispatched_count,
 			})
+
+
+func _evaluate_defend(units: Array) -> void:
+	# A2: "come home NOW" — no rally staging (the threat doesn't wait for
+	# critical mass), but unlike RETREAT we skip ENGAGED units: a defender
+	# already fighting at the threat is doing its job; yanking it into MOVE
+	# would reset its combat tick (the H3 lesson).
+	for u in units:
+		if not is_instance_valid(u) or not u.has_method("move_to"):
+			continue
+		if u.is_engaged():
+			continue
+		if u.global_position.distance_to(_target_pos) <= ARRIVED_THRESHOLD_PX:
+			continue
+		_issue_if_changed(u, _target_pos)
 
 
 func _evaluate_retreat(units: Array) -> void:
@@ -163,4 +194,5 @@ func get_order_name() -> String:
 	match _order:
 		Order.ATTACK: return "ATTACK"
 		Order.RETREAT: return "RETREAT"
+		Order.DEFEND: return "DEFEND"
 		_: return "HOLD"
