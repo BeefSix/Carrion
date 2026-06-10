@@ -124,9 +124,51 @@ const TRIBAL := {
 }
 
 
+# Survivor AI (2026-06-11, Matt's "every faction wired in"). Identity:
+# few-and-precious — the SettlementHub produces everything (no production
+# building gate), the economy grows through STRUCTURES (farm -> radio
+# attached to it = the broadcast income arm), and the army is bolt-line
+# (2 bolter : 1 brawler : 1 chemist sustain). attack_threshold 5 sits
+# between Military's mass-and-push 6 and Tribal's strike-and-fade 4.
+# Saboteur excluded from AI v1: its verb needs target selection the
+# tactician doesn't have yet. All numbers lab placeholders.
+const SURVIVOR := {
+	"build_order": [
+		{ "item": "runner", "cost": 50, "time": 20.0, "needs_production_building": false },
+		{ "item": "runner", "cost": 50, "time": 20.0, "needs_production_building": false },
+		{ "item": "farm", "cost": 150, "time": 40.0, "needs_production_building": false },
+		{ "item": "bolter", "cost": 75, "time": 28.0, "needs_production_building": false },
+		{ "item": "bolter", "cost": 75, "time": 28.0, "needs_production_building": false },
+		{ "item": "radio_station", "cost": 200, "time": 50.0, "needs_production_building": false },
+		{ "item": "brawler", "cost": 50, "time": 20.0, "needs_production_building": false },
+		{ "item": "bolter", "cost": 75, "time": 28.0, "needs_production_building": false },
+	],
+	"sustain": [
+		{ "item": "bolter", "cost": 75, "time": 28.0, "needs_production_building": false },
+		{ "item": "bolter", "cost": 75, "time": 28.0, "needs_production_building": false },
+		{ "item": "brawler", "cost": 50, "time": 20.0, "needs_production_building": false },
+		{ "item": "chemist", "cost": 90, "time": 30.0, "needs_production_building": false },
+	],
+	"recovery_worker": { "item": "runner", "cost": 50, "time": 20.0, "needs_production_building": false },
+	"recovery_production_building": { "item": "farm", "cost": 150, "time": 40.0, "needs_production_building": false },
+	"economy_floor": 1,
+	"worker_targets": [[0, 2], [3, 3], [6, 4]],
+	"production_building_step": 99,  # HQ produces everything — gate never fires
+	"worker_script": "res://scripts/SurvivorRunner.gd",
+	"attack_threshold": 5,
+	"retreat_fraction": 0.6,
+	"defend_cooldown": 15.0,
+	"harass_start": 240.0,
+	"harass_squad": 2,
+	"harass_interval": 90.0,
+}
+
+
 static func profile_for(faction: int) -> Dictionary:
 	# GameState.Faction.TRIBAL == 1; everything else falls back to the
 	# Military profile until A4 lands the Tribal one.
+	if faction == 4 and not SURVIVOR.is_empty():
+		return SURVIVOR
 	if faction == 1 and not TRIBAL.is_empty():
 		return TRIBAL
 	return MILITARY

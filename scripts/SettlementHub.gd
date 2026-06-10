@@ -70,7 +70,13 @@ func get_action_available(idx: int) -> bool:
 func _runner_count() -> int:
 	# SurvivorRunner extends Scout, so it inherits the "scouts" group —
 	# the safehouse-scaled economy cap carries over to the Runner intact.
-	return get_tree().get_nodes_in_group("scouts").size()
+	# PLAYER-owned only: with the Survivor AI wired in (2026-06-11), AI
+	# runners share the group and must not eat the player's cap.
+	var n: int = 0
+	for sc in get_tree().get_nodes_in_group("scouts"):
+		if is_instance_valid(sc) and sc.is_in_group("player_units"):
+			n += 1
+	return n
 
 
 func _runner_cap() -> int:

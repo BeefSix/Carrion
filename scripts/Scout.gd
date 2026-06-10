@@ -7,7 +7,11 @@ const SALVAGE_PER_CHANNEL := 25
 const CARRY_CAP := 100
 const CHANNEL_TIME := 3.0
 const INTERACTION_RANGE := 80.0
-const SEARCH_RADIUS := 1500.0
+# 1500 -> 800 (2026-06-11, Survivor AI wiring): the greedy nearest-
+# lootable walk marched runners 1300px through zombie streets to die in
+# pairs (SvM lab, both dead t=12.5). 800 keeps the loop inside the spawn
+# district - true for player runners too: roam less, die less.
+const SEARCH_RADIUS := 800.0
 const LOOT_NOISE := 1.0
 
 const BURST_DURATION := 5.0

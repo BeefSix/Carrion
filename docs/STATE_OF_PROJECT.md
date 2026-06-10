@@ -104,9 +104,12 @@ play-confirmed by a human — plus the blind spots listed at the bottom.
    and CONNECTED on Matt's go — the SettlementHub recruits the new roster,
    the Builder places Farms/Radio Stations, the Saboteur's sound grenade
    routes from ground right-clicks. The Caller also got gold sprites.
-   Remaining Survivor gap: **AIProfiles SURVIVOR** (the AI cannot play the
-   faction yet; deferred per the AI-extension-before-external-playtest
-   ruling — Survivor mirrors and SvM/SvT lab data don't exist).
+   **AI gap CLOSED 2026-06-11**: AIProfiles SURVIVOR shipped (runner
+   economy, farm->radio income arm, bolt-line sustain); the title screen
+   gained an Opponent picker (Military/Tribal/Survivors) and the lab
+   speaks --matchup=S. SvM + MvS validated (economy loops, build order
+   completes, army grows). Balance numbers are placeholders pending a
+   full A6-style lab pass.
 3. **Workshop is a Military building** (not Survivor) — the summary
    misattributed it.
 4. **Contamination nuance**: the zombie checksum (zh) is noisy on identical

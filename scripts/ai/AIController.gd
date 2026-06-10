@@ -17,6 +17,13 @@ const RIFLEMAN_SCENE := preload("res://scenes/units/Rifleman.tscn")
 const HEAVY_GUNNER_SCENE := preload("res://scenes/units/HeavyGunner.tscn")
 # A4: Tribal roster + structures.
 const TC_SCENE := preload("res://scenes/buildings/TribalCamp.tscn")
+const SH_SCENE := preload("res://scenes/buildings/SettlementHub.tscn")
+const SURVIVOR_RUNNER_SCENE := preload("res://scenes/units/SurvivorRunner.tscn")
+const BOLTER_SCENE := preload("res://scenes/units/Bolter.tscn")
+const BRAWLER_SCENE := preload("res://scenes/units/Brawler.tscn")
+const CHEMIST_SCENE := preload("res://scenes/units/Chemist.tscn")
+const FARM_SCENE := preload("res://scenes/buildings/Farm.tscn")
+const RADIO_SCENE := preload("res://scenes/buildings/RadioStation.tscn")
 const HUNTING_LODGE_SCENE := preload("res://scenes/buildings/HuntingLodge.tscn")
 const RITUAL_SITE_SCENE := preload("res://scenes/buildings/RitualSite.tscn")
 const WALKER_SCENE := preload("res://scenes/units/Walker.tscn")
@@ -223,6 +230,7 @@ func find_idle_shaman():
 # the loneliest. Strict min-distance, first-seen tie-break.
 const LOOTER_SCRIPT_REF := preload("res://scripts/Looter.gd")
 const WALKER_SCRIPT_REF := preload("res://scripts/Walker.gd")
+const RUNNER_SCRIPT_REF := preload("res://scripts/SurvivorRunner.gd")
 
 
 func find_exposed_enemy_worker():
@@ -234,7 +242,7 @@ func find_exposed_enemy_worker():
 		if not is_instance_valid(u):
 			continue
 		var s = u.get_script()
-		if s != LOOTER_SCRIPT_REF and s != WALKER_SCRIPT_REF:
+		if s != LOOTER_SCRIPT_REF and s != WALKER_SCRIPT_REF and s != RUNNER_SCRIPT_REF:
 			continue
 		if "current_hp" in u and u.current_hp <= 0:
 			continue
@@ -339,7 +347,11 @@ func _spawn_hq() -> void:
 	# A4: HQ routes by faction — same pattern Main._spawn_hq uses. The
 	# TribalCamp doubles as the Tribal elimination condition (PLACEHOLDER
 	# ruling — DESIGN_MASTER §12 #6 is still [OPEN]; Matt rules later).
-	var scene: PackedScene = TC_SCENE if faction == GameState.Faction.TRIBAL else CP_SCENE
+	var scene: PackedScene = CP_SCENE
+	if faction == GameState.Faction.TRIBAL:
+		scene = TC_SCENE
+	elif faction == GameState.Faction.SURVIVOR:
+		scene = SH_SCENE
 	_hq = scene.instantiate()
 	_hq.position = spawn_position
 	get_parent().add_child(_hq)
@@ -403,6 +415,22 @@ func _spawn_produced(item: String) -> void:
 			_barracks = _spawn_structure(HUNTING_LODGE_SCENE, _hq.position + BARRACKS_SPAWN_OFFSET)
 		"ritual_site":
 			_tech_building = _spawn_structure(RITUAL_SITE_SCENE, _hq.position + TECH_SPAWN_OFFSET)
+		# Survivor roster (2026-06-11): the HQ produces every unit, so all
+		# spawn at the HQ. Farm east, radio west — 280px apart, inside the
+		# radio's 320px farm-attach radius, so the broadcast income arm
+		# comes online the moment both stand.
+		"runner":
+			_spawn_unit(SURVIVOR_RUNNER_SCENE, _hq.position + LOOTER_SPAWN_OFFSET)
+		"bolter":
+			_spawn_unit(BOLTER_SCENE, _hq.position + RIFLEMAN_SPAWN_OFFSET)
+		"brawler":
+			_spawn_unit(BRAWLER_SCENE, _hq.position + RIFLEMAN_SPAWN_OFFSET)
+		"chemist":
+			_spawn_unit(CHEMIST_SCENE, _hq.position + RIFLEMAN_SPAWN_OFFSET)
+		"farm":
+			_spawn_structure(FARM_SCENE, _hq.position + BARRACKS_SPAWN_OFFSET)
+		"radio_station":
+			_spawn_structure(RADIO_SCENE, _hq.position + TECH_SPAWN_OFFSET)
 
 
 # A4: shared structure spawn — ownership tag, A2 damage routing, nav rebake.

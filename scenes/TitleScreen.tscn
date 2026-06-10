@@ -43,6 +43,9 @@ text = "vs Military AI opponent"
 [node name="MapPicker" type="OptionButton" parent="VBox"]
 layout_mode = 2
 
+[node name="OpponentPicker" type="OptionButton" parent="VBox"]
+layout_mode = 2
+
 [node name="Spacer1" type="Control" parent="VBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(0, 12)

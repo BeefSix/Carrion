@@ -58,10 +58,13 @@ func _attached_to_farm() -> bool:
 func _broadcast() -> void:
 	if not _attached_to_farm():
 		return  # dead air: no farm, no arrivals, no noise worth making
-	if is_in_group("player_buildings"):
-		GameState.add_salvage(BROADCAST_INCOME)
-	elif owner_controller != null and is_instance_valid(owner_controller) and owner_controller.has_method("add_salvage"):
+	# Owner-first routing (2026-06-11): the lab's player-slot AI tags its
+	# buildings player_buildings, so group-first routing leaked its income
+	# into the human pool. Controller when bound, GameState otherwise.
+	if owner_controller != null and is_instance_valid(owner_controller) and owner_controller.has_method("add_salvage"):
 		owner_controller.add_salvage(BROADCAST_INCOME)
+	elif is_in_group("player_buildings"):
+		GameState.add_salvage(BROADCAST_INCOME)
 	# The broadcast is HEARD. This emission is the faction's economic
 	# noise signature (CLAUDE.md: profile changes are balance changes).
 	NoiseBus.emit(global_position, BROADCAST_NOISE)

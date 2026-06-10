@@ -384,12 +384,22 @@ func _install_image_background(image_path: String) -> void:
 		$GroundTiles.modulate = Color(1, 1, 1, 0.0)  # invisible but still queryable for get_tile_type_at
 
 
+func _matchup_faction(letter: String) -> int:
+	# M = Military, T = Tribal, S = Survivor (lab matchup codes).
+	match letter:
+		"T": return GameState.Faction.TRIBAL
+		"S": return GameState.Faction.SURVIVOR
+		_: return GameState.Faction.MILITARY
+
+
 func _spawn_ai_opponent() -> void:
 	var ai_scene := load("res://scripts/ai/AIController.gd") as Script
 	if ai_scene == null:
 		return
 	var ai = ai_scene.new()
-	ai.faction = GameState.Faction.MILITARY
+	# Opponent faction from the title-screen picker (every faction wired
+	# in, 2026-06-11). Default stays Military.
+	ai.faction = GameState.ai_faction
 	ai.spawn_position = _get_ai_spawn_position()
 	ai.enemy_hq_position = _get_spawn_position()
 	add_child(ai)
@@ -412,13 +422,13 @@ func _spawn_ai_vs_ai_opponents() -> void:
 		if arg.begins_with("--matchup="):
 			matchup = arg.get_slice("=", 1).to_upper()
 	var player_ai = ai_script.new()
-	player_ai.faction = GameState.Faction.TRIBAL if matchup.substr(0, 1) == "T" else GameState.Faction.MILITARY
+	player_ai.faction = _matchup_faction(matchup.substr(0, 1))
 	player_ai.spawn_position = player_pos
 	player_ai.enemy_hq_position = ai_pos
 	player_ai.as_player_slot = true
 	add_child(player_ai)
 	var opposing_ai = ai_script.new()
-	opposing_ai.faction = GameState.Faction.TRIBAL if matchup.substr(1, 1) == "T" else GameState.Faction.MILITARY
+	opposing_ai.faction = _matchup_faction(matchup.substr(1, 1))
 	opposing_ai.spawn_position = ai_pos
 	opposing_ai.enemy_hq_position = player_pos
 	opposing_ai.as_player_slot = false

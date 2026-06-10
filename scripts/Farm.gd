@@ -33,10 +33,13 @@ func _physics_process(delta: float) -> void:
 func _grant_trickle() -> void:
 	# Ownership-routed income: player farms feed GameState, AI farms feed
 	# their controller (same split every income source uses).
-	if is_in_group("player_buildings"):
-		GameState.add_salvage(TRICKLE_AMOUNT)
-	elif owner_controller != null and is_instance_valid(owner_controller) and owner_controller.has_method("add_salvage"):
+	# Owner-first routing (2026-06-11): the lab's player-slot AI tags its
+	# buildings player_buildings, so group-first routing leaked its income
+	# into the human pool. Controller when bound, GameState otherwise.
+	if owner_controller != null and is_instance_valid(owner_controller) and owner_controller.has_method("add_salvage"):
 		owner_controller.add_salvage(TRICKLE_AMOUNT)
+	elif is_in_group("player_buildings"):
+		GameState.add_salvage(TRICKLE_AMOUNT)
 	# TELEMETRY: farm_trickle (cheap + frequent — log only if balance work needs it)
 
 

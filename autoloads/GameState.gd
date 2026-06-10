@@ -30,6 +30,9 @@ var custom_map_path: String = ""
 # Authored map recipe name ("" = procedural TownPlanner). MAP_DESIGN.md:
 # downtown / terrace / orchard. Set by the title-screen picker or --map=X.
 var map_recipe: String = ""
+# AI opponent faction for normal play (title-screen Opponent picker,
+# 2026-06-11). Lab --matchup overrides per-controller and ignores this.
+var ai_faction: int = Faction.MILITARY
 
 # Match-scoped seed picked in reset_match(). Stored so MatchStats can log it
 # in the JSONL header and so future deterministic replays can reuse it.
