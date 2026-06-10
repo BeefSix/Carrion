@@ -88,12 +88,11 @@ const WANDER_INTERVAL_MAX := 20.0
 # generates a handful of candidates, scores each by the env at its sample
 # point, and weighted-random-selects.
 const WANDER_CANDIDATES := 6
-const WANDER_DECAY_TIER1_BONUS := 0.5  # decay > 50 within sample area
-const WANDER_DECAY_TIER2_BONUS := 0.5  # decay > 100 stacks on top of tier 1
+# (WANDER_DECAY_* consts removed 2026-06-09 — decay demoted to visual-only
+# per DESIGN_MASTER §2; zombies no longer read the decay grid.)
 const WANDER_BUILDING_BONUS := 0.3     # 2+ buildings within ~6 tiles of sample
 const WANDER_OPEN_PENALTY := 0.7       # multiplier when sample is open terrain
 const WANDER_BUILDING_QUERY_RADIUS := 200.0  # ~6 tiles
-const WANDER_DECAY_QUERY_TILES := 8
 
 # Cluster drift. Idle zombies bias wanders toward nearby idle-zombie
 # centroids. Tuning prioritizes visible tight clods - higher bias rate,
@@ -1521,13 +1520,11 @@ func _score_wander_direction(dir: Vector2) -> float:
 	# Decay attraction - sample tile's value via the field's
 	# get_value_at(world_pos). Stacked tiers so heavily decayed areas pull
 	# harder.
-	var df = get_tree().get_first_node_in_group("decay_field")
-	if df != null and df.has_method("get_value_at"):
-		var d_val: float = df.get_value_at(sample_pos)
-		if d_val > 50.0:
-			score += WANDER_DECAY_TIER1_BONUS
-		if d_val > 100.0:
-			score += WANDER_DECAY_TIER2_BONUS
+	# (Decay scoring removed 2026-06-09: DESIGN_MASTER §2 demoted decay to
+	# visual-only land-state imagery — "its gameplay jobs dissolved." The
+	# grid also mutates on _process frames, so reading it here was a sim-
+	# reads-render leak on top of the dead design. Building attraction
+	# below carries the toward-civilization pull on its own.)
 	# Building cluster attraction - count buildings within query radius,
 	# short-circuit at 2 because we just need to know "is there a cluster
 	# here" not exact density.

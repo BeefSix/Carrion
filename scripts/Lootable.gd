@@ -55,19 +55,16 @@ const LOOTABLE_SPAWN_POPULATION_CAP := 250
 
 var remaining_salvage: int = 0
 var _spawn_timer := 0.0
-# Cached at _ready - DecayField is created once at scene start and never moves.
-# Previously _decay_multiplier did a get_first_node_in_group lookup every frame
-# from every infested Lootable. With ~30-50 infested at any time, that's
-# 30-50 redundant group lookups per frame.
-var _decay_field_cached: Node = null
+# Cached at _ready - ZombieField is created once at scene start and never
+# moves. (DecayField cache removed 2026-06-09 — decay is visual-only per
+# DESIGN_MASTER §2; nothing gameplay-side reads it anymore.)
 var _zombie_field_cached: Node = null
 
 
 func _ready() -> void:
 	super._ready()
-	# Cache field references once. Both autoload-managed singletons that exist
-	# for the duration of the match.
-	_decay_field_cached = get_tree().get_first_node_in_group("decay_field")
+	# Cache the field reference once - an autoload-managed singleton that
+	# exists for the duration of the match.
 	_zombie_field_cached = get_tree().get_first_node_in_group("zombie_field")
 	# Per-type salvage overrides the @export default. Map-placed Lootables
 	# inherit from their neighborhood_type; only Lootables created with an
@@ -104,22 +101,15 @@ func _physics_process(delta: float) -> void:
 	# D5 (AUDIT 2026-06-09): infested spawn timer is sim state — physics tick.
 	if not is_infested:
 		return
-	# Spawn rate scales with local decay: 2x at 50+, 3x at 100+ (item 33).
-	_spawn_timer -= delta * _decay_multiplier()
+	# Decay spawn-rate hook SEVERED 2026-06-09 per DESIGN_MASTER §2 (decay
+	# demoted to visual-only land-state imagery; "sever the Lootable
+	# spawn-rate hook; keep the DecayField rendering"). Flat interval now —
+	# the old 2x/3x decay multiplier also read a grid that mutates on
+	# _process frames (sim-reads-render, D12).
+	_spawn_timer -= delta
 	if _spawn_timer <= 0:
 		_spawn_timer = SHAMBLER_SPAWN_INTERVAL
 		_spawn_shambler()
-
-
-func _decay_multiplier() -> float:
-	if _decay_field_cached == null or not _decay_field_cached.has_method("get_value_at"):
-		return 1.0
-	var v: float = _decay_field_cached.get_value_at(global_position)
-	if v >= 100.0:
-		return 3.0
-	if v >= 50.0:
-		return 2.0
-	return 1.0
 
 
 func _spawn_shambler() -> void:
