@@ -15,7 +15,17 @@ enum Sub {
 	HUNT_FIRE,
 	RETURN_HOME,
 	PATROL,
+	CONSTRUCT_APPROACH,
+	CONSTRUCT_CHANNEL,
 }
+
+# Worker construction (SC model, 2026-06-10). Canon §7.1: the Looter IS
+# the Military builder. Build options surface as HUD actions; placement
+# runs through SelectionManager's ghost; the Looter walks to the
+# ConstructionSite and channels until it completes.
+const BuildCatalogRef := preload("res://scripts/BuildCatalog.gd")
+const CONSTRUCT_RANGE := 80.0
+var _construct_site = null
 
 # Magnum tuning (2026-06-08 feel pass, PLACEHOLDERS for the balance lab).
 # Damage = 42 one-shots a base 40-HP Shambler (clean_kill = no corpse,
@@ -148,6 +158,69 @@ func _ready() -> void:
 	_work_anchor = cp.position if cp != null else global_position
 
 
+func construct_at(site) -> void:
+	if site == null or not is_instance_valid(site):
+		return
+	_construct_site = site
+	_sub = Sub.CONSTRUCT_APPROACH
+	_nav.target_position = site.position
+
+
+func _tick_construct_approach() -> void:
+	if _construct_site == null or not is_instance_valid(_construct_site):
+		_construct_site = null
+		_sub = Sub.NONE
+		return
+	var reach: float = CONSTRUCT_RANGE + maxf(_construct_site.size_pixels.x, _construct_site.size_pixels.y) * 0.5
+	if global_position.distance_to(_construct_site.position) <= reach:
+		_sub = Sub.CONSTRUCT_CHANNEL
+		velocity = Vector2.ZERO
+	else:
+		_follow_navigation()
+
+
+func _tick_construct_channel(delta: float) -> void:
+	velocity = Vector2.ZERO
+	if _construct_site == null or not is_instance_valid(_construct_site):
+		_construct_site = null
+		_sub = Sub.NONE
+		return
+	if _construct_site.advance_construction(delta):
+		_construct_site = null
+		_sub = Sub.NONE
+
+
+# ---- HUD build actions (worker-as-builder) ----
+
+func get_action_count() -> int:
+	return BuildCatalogRef.catalog_for(faction).size()
+
+
+func get_action_text(idx: int) -> String:
+	var keys: Array = BuildCatalogRef.catalog_for(faction).keys()
+	if idx < 0 or idx >= keys.size():
+		return ""
+	var e: Dictionary = BuildCatalogRef.catalog_for(faction)[keys[idx]]
+	return "Build %s (%d Salvage)" % [e["name"], int(e["cost"])]
+
+
+func get_action_available(idx: int) -> bool:
+	var keys: Array = BuildCatalogRef.catalog_for(faction).keys()
+	if idx < 0 or idx >= keys.size():
+		return false
+	return GameState.can_spend(int(BuildCatalogRef.catalog_for(faction)[keys[idx]]["cost"]))
+
+
+func do_action(idx: int) -> void:
+	var keys: Array = BuildCatalogRef.catalog_for(faction).keys()
+	if idx < 0 or idx >= keys.size():
+		return
+	var key: String = keys[idx]
+	var sel = get_tree().get_first_node_in_group("selection_manager")
+	if sel != null and sel.has_method("start_building_placement"):
+		sel.start_building_placement(self, key, BuildCatalogRef.catalog_for(faction)[key])
+
+
 func move_to(world_pos: Vector2) -> void:
 	# Right-clicking ground with a Looter selected re-stakes the work
 	# anchor at that spot instead of issuing a raw move order. The
@@ -159,6 +232,9 @@ func move_to(world_pos: Vector2) -> void:
 	super.move_to(world_pos)
 	_sub = Sub.NONE
 	_target_zombie = null
+	_construct_site = null
+	if _sub == Sub.CONSTRUCT_APPROACH or _sub == Sub.CONSTRUCT_CHANNEL:
+		_sub = Sub.NONE
 
 
 func set_work_anchor(world_pos: Vector2) -> void:
@@ -212,6 +288,12 @@ func _physics_process(delta: float) -> void:
 		_pick_next_action()
 
 	match _sub:
+		Sub.CONSTRUCT_APPROACH:
+			_tick_construct_approach()
+			return
+		Sub.CONSTRUCT_CHANNEL:
+			_tick_construct_channel(delta)
+			return
 		Sub.HUNT_APPROACH:
 			_tick_hunt_approach()
 		Sub.HUNT_FIRE:

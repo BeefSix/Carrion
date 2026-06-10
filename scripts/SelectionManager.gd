@@ -17,9 +17,81 @@ var _selected_building = null
 var _placing_wall := false
 var _wall_builder = null
 
+# SC-style building placement (2026-06-10): a worker's build action puts
+# the manager in placement mode; the ghost follows the mouse with validity
+# coloring; LMB pays + spawns a ConstructionSite + orders the worker to
+# build it; RMB cancels.
+const SITE_SCENE := preload("res://scenes/buildings/ConstructionSite.tscn")
+const BuildCatalogRef := preload("res://scripts/BuildCatalog.gd")
+var _placing_building := false
+var _building_builder = null
+var _building_key: String = ""
+var _building_entry: Dictionary = {}
+
 
 func _ready() -> void:
 	add_to_group("selection_manager")
+
+
+func start_building_placement(builder, key: String, entry: Dictionary) -> void:
+	_placing_building = true
+	_building_builder = builder
+	_building_key = key
+	_building_entry = entry
+	queue_redraw()
+
+
+func _cancel_building_placement() -> void:
+	_placing_building = false
+	_building_builder = null
+	_building_key = ""
+	_building_entry = {}
+	queue_redraw()
+
+
+func _confirm_building_placement(world_pos: Vector2) -> void:
+	if _building_builder == null or not is_instance_valid(_building_builder) or not _building_builder.has_method("construct_at"):
+		_cancel_building_placement()
+		return
+	var fp: Vector2 = _building_entry["footprint"]
+	var snapped := _snap_to_grid(world_pos)
+	if not _is_footprint_valid(snapped, fp):
+		return  # keep placement mode active — pick another spot
+	var cost: int = int(_building_entry["cost"])
+	if not GameState.can_spend(cost):
+		_cancel_building_placement()
+		return
+	GameState.spend(cost)
+	# Spawn the scaffold NOW (blocks the spot, attackable — SC rule: sunk
+	# cost, no refund) and send the worker to it via CommandBus.
+	var site = SITE_SCENE.instantiate()
+	site.setup(_building_key, _building_entry)
+	site.position = snapped
+	get_tree().current_scene.add_child(site)
+	site.add_to_group("player_buildings")
+	CommandBus.issue("construct", _building_builder, {"target": site}, CommandBus.SRC_PLAYER)
+	_cancel_building_placement()
+
+
+# Footprint validity: same checks as walls, sized to the building.
+func _is_footprint_valid(center: Vector2, footprint: Vector2) -> bool:
+	var ground := get_tree().get_first_node_in_group("ground_tiles")
+	if ground != null and ground.has_method("get_tile_type_at"):
+		# Probe center + the four footprint corners (cheap coverage).
+		for off in [Vector2.ZERO, Vector2(-0.5, -0.5), Vector2(0.5, -0.5), Vector2(-0.5, 0.5), Vector2(0.5, 0.5)]:
+			var t: int = ground.get_tile_type_at(center + off * footprint)
+			if t == -1 or t == RUBBLE_TILE:
+				return false
+	var rect := Rect2(center - footprint * 0.5, footprint)
+	for b in get_tree().get_nodes_in_group("buildings"):
+		if not is_instance_valid(b):
+			continue
+		if not ("size_pixels" in b):
+			continue
+		var brect := Rect2(b.position - b.size_pixels * 0.5, b.size_pixels)
+		if rect.intersects(brect):
+			return false
+	return true
 
 
 func start_wall_placement(builder) -> void:
@@ -99,6 +171,16 @@ func _unhandled_input(event: InputEvent) -> void:
 				_confirm_wall_placement(_mouse_world())
 			elif event.button_index == MOUSE_BUTTON_RIGHT:
 				_cancel_wall_placement()
+		elif event is InputEventMouseMotion:
+			queue_redraw()
+		return
+
+	if _placing_building:
+		if event is InputEventMouseButton and event.pressed:
+			if event.button_index == MOUSE_BUTTON_LEFT:
+				_confirm_building_placement(_mouse_world())
+			elif event.button_index == MOUSE_BUTTON_RIGHT:
+				_cancel_building_placement()
 		elif event is InputEventMouseMotion:
 			queue_redraw()
 		return
@@ -432,6 +514,15 @@ func _draw() -> void:
 		var border: Color = Color(0.6, 1.0, 0.6, 0.85) if valid else Color(1.0, 0.45, 0.4, 0.85)
 		draw_rect(Rect2(iso_center - half, Vector2(WALL_GRID, WALL_GRID)), fill, true)
 		draw_rect(Rect2(iso_center - half, Vector2(WALL_GRID, WALL_GRID)), border, false, 2.0)
+	if _placing_building:
+		var snapped_b: Vector2 = _snap_to_grid(_mouse_world())
+		var iso_c: Vector2 = IsoView.world_to_screen(snapped_b)
+		var fp: Vector2 = _building_entry["footprint"]
+		var ok: bool = _is_footprint_valid(snapped_b, fp) and GameState.can_spend(int(_building_entry["cost"]))
+		var fill_b: Color = Color(0.4, 0.8, 0.4, 0.3) if ok else Color(0.9, 0.35, 0.3, 0.3)
+		var border_b: Color = Color(0.6, 1.0, 0.6, 0.85) if ok else Color(1.0, 0.45, 0.4, 0.85)
+		draw_rect(Rect2(iso_c - fp * 0.5, fp), fill_b, true)
+		draw_rect(Rect2(iso_c - fp * 0.5, fp), border_b, false, 2.0)
 	if _dragging:
 		# Drag rect is purely iso - it matches the screen-space box the user
 		# is sweeping across the visible game.

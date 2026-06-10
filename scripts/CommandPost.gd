@@ -36,31 +36,28 @@ func get_decay_radius() -> float:
 	return clamp(grown, DECAY_RADIUS_BASE, DECAY_RADIUS_CAP)
 
 
+# Worker-built construction (2026-06-10): the Barracks row moved onto the
+# Looter (SC model — select a Looter, place a ghost, it builds). The CP
+# produces UNITS only now.
 func get_action_count() -> int:
-	return 2
+	return 1
 
 
 func get_action_text(idx: int) -> String:
 	if idx == 0:
 		return "Build Looter (%d Salvage)" % LOOTER_COST
-	if idx == 1:
-		return "Build Barracks (%d Salvage)" % BARRACKS_COST
 	return ""
 
 
 func get_action_available(idx: int) -> bool:
 	if idx == 0:
 		return GameState.can_spend(LOOTER_COST)
-	if idx == 1:
-		return GameState.can_spend(BARRACKS_COST)
 	return false
 
 
 func do_action(idx: int) -> void:
 	if idx == 0:
 		_queue_item("looter", LOOTER_COST)
-	elif idx == 1:
-		_queue_item("barracks", BARRACKS_COST)
 
 
 func get_status_text() -> String:

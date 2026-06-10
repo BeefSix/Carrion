@@ -82,6 +82,10 @@ func _dispatch(kind: String, actor, args: Dictionary) -> void:
 			# B3: the Walker's remains-harvest verb (CALLER_PLAN).
 			if actor.has_method("harvest_remains"):
 				actor.harvest_remains(args.get("target", null))
+		"construct":
+			# Worker-built construction (SC model, 2026-06-10).
+			if actor.has_method("construct_at"):
+				actor.construct_at(args.get("target", null))
 		"gather":
 			if actor.has_method("gather_from"):
 				actor.gather_from(args.get("target", null))

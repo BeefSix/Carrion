@@ -27,37 +27,27 @@ func _ready() -> void:
 	add_to_group("hq")
 
 
+# Worker-built construction (2026-06-10): lodge + ritual site rows moved
+# onto the Walker (SC model). The camp produces UNITS only now.
 func get_action_count() -> int:
-	return 3
+	return 1
 
 
 func get_action_text(idx: int) -> String:
 	if idx == 0:
 		return "Build Walker (%d Salvage)" % WALKER_COST
-	if idx == 1:
-		return "Build Hunting Lodge (%d Salvage)" % HUNTING_LODGE_COST
-	if idx == 2:
-		return "Build Ritual Site (%d Salvage)" % RITUAL_SITE_COST
 	return ""
 
 
 func get_action_available(idx: int) -> bool:
 	if idx == 0:
 		return GameState.can_spend(WALKER_COST)
-	if idx == 1:
-		return GameState.can_spend(HUNTING_LODGE_COST)
-	if idx == 2:
-		return GameState.can_spend(RITUAL_SITE_COST)
 	return false
 
 
 func do_action(idx: int) -> void:
 	if idx == 0:
 		_queue_item("walker", WALKER_COST)
-	elif idx == 1:
-		_queue_item("hunting_lodge", HUNTING_LODGE_COST)
-	elif idx == 2:
-		_queue_item("ritual_site", RITUAL_SITE_COST)
 
 
 func get_status_text() -> String:
