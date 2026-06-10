@@ -93,6 +93,12 @@ const WANDER_CANDIDATES := 6
 const WANDER_BUILDING_BONUS := 0.3     # 2+ buildings within ~6 tiles of sample
 const WANDER_OPEN_PENALTY := 0.7       # multiplier when sample is open terrain
 const WANDER_BUILDING_QUERY_RADIUS := 200.0  # ~6 tiles
+# SteeringField bias (B1, 2026-06-10): candidates aligned with the field's
+# net pull score higher. CAP bounds a stacked-emitter pull so the field
+# biases wander rather than scripting it (§3.4's grammar: "a bias, not a
+# script"). With zero emitters the term is exactly 0 — behavior identical.
+const FIELD_BIAS_SCALE := 1.5
+const FIELD_BIAS_CAP := 2.0
 
 # Cluster drift. Idle zombies bias wanders toward nearby idle-zombie
 # centroids. Tuning prioritizes visible tight clods - higher bias rate,
@@ -1556,6 +1562,15 @@ func _score_wander_direction(dir: Vector2) -> float:
 		# Noise residue - persistent attraction to recent-activity areas.
 		if zf.has_method("residue_score"):
 			score += zf.residue_score(sample_pos)
+	# SteeringField bias (B1): candidates pointing along the field's net
+	# pull at our position score higher. Capped so a stack of emitters
+	# biases rather than scripts. Zero emitters -> exactly zero term.
+	var fb: Vector2 = SteeringField.sample_bias(global_position)
+	var fb_len: float = fb.length()
+	if fb_len > 0.001:
+		var align: float = dir.dot(fb / fb_len)  # -1..1
+		if align > 0.0:
+			score += align * minf(fb_len, FIELD_BIAS_CAP) * FIELD_BIAS_SCALE
 	return max(0.1, score)
 
 
