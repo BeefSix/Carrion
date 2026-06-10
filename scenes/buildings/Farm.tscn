@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/Farm.gd" id="1_farm"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_farm"]
+size = Vector2(96, 96)
+
+[node name="Farm" type="StaticBody2D" groups=["buildings"]]
+script = ExtResource("1_farm")
+max_hp = 800
+body_color = Color(0.42, 0.40, 0.26, 1)
+size_pixels = Vector2(96, 96)
+
+[node name="CollisionShape" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_farm")

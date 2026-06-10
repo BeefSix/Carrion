@@ -1,0 +1,28 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/SurvivorRunner.gd" id="1_run"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_run"]
+size = Vector2(20, 20)
+
+[node name="Runner" type="CharacterBody2D" groups=["units", "player_units"]]
+script = ExtResource("1_run")
+faction = 4
+max_hp = 45
+move_speed = 110.0
+body_color = Color(0.55, 0.48, 0.36, 1)
+corpse_base_chance = 0.6
+size_px = 20
+
+[node name="CollisionShape" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_run")
+
+[node name="NavigationAgent" type="NavigationAgent2D" parent="."]
+path_desired_distance = 16.0
+target_desired_distance = 24.0
+radius = 10.0
+max_speed = 110.0
+avoidance_enabled = false
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+sprite_frames = null

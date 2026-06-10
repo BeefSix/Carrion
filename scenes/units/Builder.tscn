@@ -1,0 +1,28 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/Builder.gd" id="1_bld"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_bld"]
+size = Vector2(24, 24)
+
+[node name="Builder" type="CharacterBody2D" groups=["units", "player_units", "combat_units"]]
+script = ExtResource("1_bld")
+faction = 4
+max_hp = 70
+move_speed = 72.0
+body_color = Color(0.50, 0.45, 0.34, 1)
+corpse_base_chance = 0.6
+size_px = 24
+
+[node name="CollisionShape" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_bld")
+
+[node name="NavigationAgent" type="NavigationAgent2D" parent="."]
+path_desired_distance = 16.0
+target_desired_distance = 24.0
+radius = 12.0
+max_speed = 72.0
+avoidance_enabled = false
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+sprite_frames = null

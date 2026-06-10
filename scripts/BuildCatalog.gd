@@ -31,9 +31,29 @@ const TRIBAL := {
 }
 
 
+const SURVIVOR := {
+	# DESIGN_MASTER §7.3: farms are the pylons; radios attach to farms and
+	# carry the economy. Costs/times are balance-lab placeholders sized
+	# against the Military barracks row. NOT CONNECTED (2026-06-10): only
+	# the unconnected Builder unit reads this table.
+	"farm": {
+		"name": "Farm", "scene": "res://scenes/buildings/Farm.tscn",
+		"cost": 150, "build_time": 40.0, "footprint": Vector2(96, 96),
+	},
+	"radio_station": {
+		"name": "Radio Station", "scene": "res://scenes/buildings/RadioStation.tscn",
+		"cost": 200, "build_time": 50.0, "footprint": Vector2(64, 64),
+	},
+}
+
+
 static func catalog_for(faction: int) -> Dictionary:
-	# GameState.Faction.TRIBAL == 1.
-	return TRIBAL if faction == 1 else MILITARY
+	# GameState.Faction: TRIBAL == 1, SURVIVOR == 4.
+	if faction == 1:
+		return TRIBAL
+	if faction == 4:
+		return SURVIVOR
+	return MILITARY
 
 
 static func entry(faction: int, key: String) -> Dictionary:

@@ -1,0 +1,28 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/Bolter.gd" id="1_bolt"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_bolt"]
+size = Vector2(22, 22)
+
+[node name="Bolter" type="CharacterBody2D" groups=["units", "player_units", "combat_units"]]
+script = ExtResource("1_bolt")
+faction = 4
+max_hp = 65
+move_speed = 80.0
+body_color = Color(0.45, 0.42, 0.32, 1)
+corpse_base_chance = 0.6
+size_px = 22
+
+[node name="CollisionShape" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_bolt")
+
+[node name="NavigationAgent" type="NavigationAgent2D" parent="."]
+path_desired_distance = 16.0
+target_desired_distance = 24.0
+radius = 11.0
+max_speed = 80.0
+avoidance_enabled = false
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+sprite_frames = null

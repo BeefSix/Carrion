@@ -11,10 +11,29 @@ var _target = null
 var _attack_cooldown := 0.0
 var _retarget_timer := 0.0
 
+# ---- Sprite system (gold family, 2026-06-10). Survivor faction tree —
+# the Brawler is the Survivor melee unit per DESIGN_MASTER §7.3. (The old
+# Pixellab "Brawler v1" asset under zombies/brawler is the BRUTE per the
+# naming-reconcile note; this root is the actual Brawler's.)
+const SPRITE_ROOT := "res://assets/sprites/units/survivor/brawler/"
+const ATTACK_ANIM_HOLD := 0.4
+
+
+func _get_sprite_root() -> String:
+	return SPRITE_ROOT
+
+
+func _ready() -> void:
+	super._ready()
+	_init_sprite()
+
 
 func _physics_process(delta: float) -> void:
 	_sim_upkeep(delta)  # D4 subclass invariant — see Unit._sim_upkeep
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
+	_attack_anim_timer = max(0.0, _attack_anim_timer - delta)
+	if use_sprite:
+		_update_sprite_animation()
 	if current_command == Command.CREMATE:
 		velocity = Vector2.ZERO
 		return
@@ -50,6 +69,7 @@ func _physics_process(delta: float) -> void:
 			var raw: float = float(get_effective_damage(ATTACK_DAMAGE))
 			_target.take_damage(resolve_damage(raw, self, _target), self)
 			_attack_cooldown = ATTACK_PERIOD
+			_attack_anim_timer = ATTACK_ANIM_HOLD  # render-only swing hold
 	else:
 		_nav.target_position = _target.global_position
 		_follow_navigation()
@@ -71,3 +91,4 @@ func _try_strike_in_range(delta: float) -> void:
 		var raw: float = float(get_effective_damage(ATTACK_DAMAGE))
 		_target.take_damage(resolve_damage(raw, self, _target), self)
 		_attack_cooldown = ATTACK_PERIOD
+		_attack_anim_timer = ATTACK_ANIM_HOLD  # render-only swing hold
