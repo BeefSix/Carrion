@@ -43,6 +43,7 @@ var _sustain_idx: int = 0  # round-robin cursor over profile.sustain
 var _state: int = State.BUILD
 var _peak_combat: int = 0
 var _last_forcespawn_sim: float = -1000.0  # A4 ritual cadence anchor
+var _last_harass_sim: float = -1000.0      # A5 harass cadence anchor
 
 
 func evaluate() -> void:
@@ -51,6 +52,36 @@ func evaluate() -> void:
 	_advance_production()
 	_update_posture()
 	_direct_shaman()
+	_direct_harass()
+
+
+func _direct_harass() -> void:
+	# A5 (approved defaults). Every harass_interval once harass_start has
+	# passed, peel harass_squad units at the most exposed enemy worker.
+	# Conditions: never while DEFENDing (home first), and only when the
+	# army is at/above the attack threshold so harassment is a tax on
+	# strength, not a suicide of the last defenders.
+	if _state == State.DEFEND:
+		return
+	var now: float = GameState.sim_seconds()
+	if now < float(profile.get("harass_start", 1e12)):
+		return
+	if now - _last_harass_sim < float(profile.get("harass_interval", 90.0)):
+		return
+	if controller.get_combat_count() < int(profile["attack_threshold"]):
+		return
+	var target = controller.find_exposed_enemy_worker()
+	if target == null:
+		return
+	var sent: int = controller.tactician.dispatch_harass(target.global_position, int(profile.get("harass_squad", 2)))
+	if sent == 0:
+		return
+	_last_harass_sim = now
+	MatchStats.log_event(&"ai_harass_ordered", {
+		"controller": controller.get_controller_id(),
+		"target_pos": [target.global_position.x, target.global_position.y],
+		"squad": sent,
+	})
 
 
 func _direct_shaman() -> void:

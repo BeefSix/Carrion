@@ -218,6 +218,33 @@ func find_idle_shaman():
 	return null
 
 
+# A5: the most exposed enemy WORKER — the opposing economy unit nearest
+# OUR HQ. Workers stake out at infested buildings, so the nearest one is
+# the loneliest. Strict min-distance, first-seen tie-break.
+const LOOTER_SCRIPT_REF := preload("res://scripts/Looter.gd")
+const WALKER_SCRIPT_REF := preload("res://scripts/Walker.gd")
+
+
+func find_exposed_enemy_worker():
+	var enemy_group: String = "ai_units" if as_player_slot else "player_units"
+	var hq_pos: Vector2 = get_hq_position()
+	var best = null
+	var best_dist: float = INF
+	for u in get_tree().get_nodes_in_group(enemy_group):
+		if not is_instance_valid(u):
+			continue
+		var s = u.get_script()
+		if s != LOOTER_SCRIPT_REF and s != WALKER_SCRIPT_REF:
+			continue
+		if "current_hp" in u and u.current_hp <= 0:
+			continue
+		var d: float = hq_pos.distance_to(u.global_position)
+		if d < best_dist:
+			best_dist = d
+			best = u
+	return best
+
+
 # A4: force-spawn target — the infested Lootable nearest the ENEMY HQ
 # (approved Decision C default). Strict min-distance, first-seen tie-break.
 func find_forcespawn_target():

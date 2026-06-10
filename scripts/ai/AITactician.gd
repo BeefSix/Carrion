@@ -39,6 +39,11 @@ var _target_pos: Vector2 = Vector2.ZERO
 # units so the dictionaries don't bloat across a long match.
 var _last_target_by_unit: Dictionary = {}  # int -> Vector2
 var _dispatched: Dictionary = {}           # int -> true
+# A5: harassers are EXEMPT from the main attack/defend re-issue loops for
+# a window, or every tactical eval would yank them back to the rally one
+# second after they were peeled. id -> expiry sim-second.
+var _harass_exempt: Dictionary = {}
+const HARASS_EXEMPT_SEC := 60.0
 
 
 func set_attack_order(pos: Vector2) -> void:
@@ -102,6 +107,8 @@ func _evaluate_attack(units: Array) -> void:
 		if u.is_engaged():
 			continue
 		var id: int = u.get_instance_id()
+		if _is_harass_exempt(id):
+			continue
 		if _dispatched.has(id):
 			if u.global_position.distance_to(_target_pos) <= ARRIVED_THRESHOLD_PX:
 				continue
@@ -133,11 +140,52 @@ func _evaluate_attack(units: Array) -> void:
 			})
 
 
+func dispatch_harass(target_pos: Vector2, squad_size: int) -> int:
+	# A5: peel the squad_size nearest non-engaged, non-exempt units to the
+	# TARGET (closest = cheapest peel) and send them. They become exempt
+	# from the main loops for HARASS_EXEMPT_SEC; their own combat AI does
+	# the fighting on arrival, and they fold back into the army when the
+	# exemption lapses. Deterministic: sorted by (distance, x, y).
+	var candidates: Array = []
+	for u in controller.get_combat_units():
+		if not is_instance_valid(u) or not u.has_method("move_to"):
+			continue
+		if u.is_engaged():
+			continue
+		if _is_harass_exempt(u.get_instance_id()):
+			continue
+		var p: Vector2 = u.global_position
+		candidates.append([p.distance_to(target_pos), p.x, p.y, u])
+	candidates.sort()
+	var sent: int = 0
+	var expiry: float = GameState.sim_seconds() + HARASS_EXEMPT_SEC
+	for row in candidates:
+		if sent >= squad_size:
+			break
+		var u = row[3]
+		_harass_exempt[u.get_instance_id()] = expiry
+		var src: String = CommandBus.SRC_AI_PLAYER_SLOT if controller.as_player_slot else CommandBus.SRC_AI_OPPOSING
+		CommandBus.issue("move", u, {"target": target_pos}, src)
+		_last_target_by_unit[u.get_instance_id()] = target_pos
+		sent += 1
+	return sent
+
+
+func _is_harass_exempt(id: int) -> bool:
+	if not _harass_exempt.has(id):
+		return false
+	if GameState.sim_seconds() >= float(_harass_exempt[id]):
+		_harass_exempt.erase(id)
+		return false
+	return true
+
+
 func _evaluate_defend(units: Array) -> void:
 	# A2: "come home NOW" — no rally staging (the threat doesn't wait for
 	# critical mass), but unlike RETREAT we skip ENGAGED units: a defender
 	# already fighting at the threat is doing its job; yanking it into MOVE
-	# would reset its combat tick (the H3 lesson).
+	# would reset its combat tick (the H3 lesson). Harassers are NOT exempt
+	# from defense — home outranks the raid.
 	for u in units:
 		if not is_instance_valid(u) or not u.has_method("move_to"):
 			continue
@@ -188,6 +236,7 @@ func _prune_dead(live_units: Array) -> void:
 		if not alive_ids.has(id):
 			_last_target_by_unit.erase(id)
 			_dispatched.erase(id)
+			_harass_exempt.erase(id)
 
 
 func get_order_name() -> String:

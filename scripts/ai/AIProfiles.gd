@@ -64,6 +64,12 @@ const MILITARY := {
 	# enough to not flicker between waves of one assault; short enough that
 	# a feint doesn't pin the army home forever.
 	"defend_cooldown": 15.0,
+	# A5 (approved defaults): harassment starts at minute 4, peels 2 units
+	# every 90s at the most exposed enemy worker, only while the army is at
+	# or above the attack threshold (never strips a small defense).
+	"harass_start": 240.0,
+	"harass_squad": 2,
+	"harass_interval": 90.0,
 }
 
 # A4 (2026-06-10): the Tribal strategy. Costs mirror the player buildings
@@ -110,6 +116,11 @@ const TRIBAL := {
 	# by minute 2 even at the 45s cadence — no opening can answer it. 150s
 	# lets both factions' openings mature before zombies become a weapon.
 	"forcespawn_start": 150.0,
+	# A5: Tribal harasses too — slightly earlier and in the same small
+	# packs as its Strike identity.
+	"harass_start": 210.0,
+	"harass_squad": 2,
+	"harass_interval": 90.0,
 }
 
 
