@@ -103,3 +103,7 @@ func _draw_building_icon() -> void:
 	draw_circle(Vector2(0, -8), r, PALETTE_TRIBAL)
 	draw_circle(Vector2(-8, 6), r, PALETTE_TRIBAL)
 	draw_circle(Vector2(8, 6), r, PALETTE_TRIBAL)
+
+
+func _get_skin_path() -> String:
+	return "res://assets/buildings/ritual_site.png"  # skin pass 2, 2026-06-11

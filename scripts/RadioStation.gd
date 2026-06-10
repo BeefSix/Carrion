@@ -87,3 +87,7 @@ func _draw_building_icon() -> void:
 	if _attached_to_farm():
 		draw_arc(Vector2(0, -12), 5.0, -2.2, -0.9, 6, col, 1.0)
 		draw_arc(Vector2(0, -12), 8.0, -2.2, -0.9, 6, col, 1.0)
+
+
+func _get_skin_path() -> String:
+	return "res://assets/buildings/radio_station.png"  # skin pass 2, 2026-06-11

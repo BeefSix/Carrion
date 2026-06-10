@@ -87,3 +87,7 @@ func _spawn_hunter() -> void:
 func _draw_building_icon() -> void:
 	var inner_size := Vector2(40.0, 26.0)
 	draw_rect(Rect2(-inner_size / 2.0, inner_size), PALETTE_TRIBAL)
+
+
+func _get_skin_path() -> String:
+	return "res://assets/buildings/hunting_lodge.png"  # skin pass 2, 2026-06-11

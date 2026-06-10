@@ -46,3 +46,7 @@ func _draw_building_icon() -> void:
 	draw_line(Vector2(-5, 8), Vector2(-3, -8), col, 1.5)
 	draw_line(Vector2(0, 8), Vector2(0, -10), col, 1.5)
 	draw_line(Vector2(5, 8), Vector2(3, -8), col, 1.5)
+
+
+func _get_skin_path() -> String:
+	return "res://assets/buildings/farm.png"  # skin pass 2, 2026-06-11

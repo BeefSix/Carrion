@@ -142,3 +142,7 @@ func _request_nav_rebake() -> void:
 
 func _draw_building_icon() -> void:
 	draw_circle(Vector2.ZERO, 14.0, PALETTE_TRIBAL)
+
+
+func _get_skin_path() -> String:
+	return "res://assets/buildings/tribal_camp.png"  # skin pass 2, 2026-06-11

@@ -139,3 +139,7 @@ func _spawn_item(item: String) -> void:
 	var jitter := Vector2(SimRng.randf_range(-SPAWN_JITTER, SPAWN_JITTER), SimRng.randf_range(-SPAWN_JITTER, SPAWN_JITTER))
 	u.position = global_position + SPAWN_OFFSET + jitter
 	get_parent().add_child(u)
+
+
+func _get_skin_path() -> String:
+	return "res://assets/buildings/barracks.png"  # skin pass 2, 2026-06-11

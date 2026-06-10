@@ -32,3 +32,12 @@ func _ready() -> void:
 
 func _draw_building_icon() -> void:
 	pass  # no icon — no use, nothing to advertise
+
+
+func _get_skin_path() -> String:
+	return LootableScript.SKIN_BY_TYPE.get(neighborhood_type, "")
+
+
+func _get_skin_modulate() -> Color:
+	# Slightly darker than lootables so scenery reads as background.
+	return Color(0.82, 0.82, 0.82)

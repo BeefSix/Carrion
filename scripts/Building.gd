@@ -35,6 +35,24 @@ var selected: bool = false
 var owner_controller = null
 
 
+# ---- Building skin ("skin the maps" pass 2, 2026-06-11). RENDER-ONLY.
+# Subclasses name their PNG via _get_skin_path(); when it loads, _draw
+# renders the art bottom-anchored on the footprint diamond instead of the
+# procedural prism. Missing/failed art falls back to the prism (the same
+# defensive boundary GroundTiles uses). State overlays (selection ring,
+# HP bar, infested tint) draw on top in both modes — they're game state,
+# not skin.
+var _skin: Texture2D = null
+
+
+func _get_skin_path() -> String:
+	return ""  # subclasses override; "" = procedural prism
+
+
+func _get_skin_modulate() -> Color:
+	return Color.WHITE  # subclasses tint (infested, scenery darkening)
+
+
 func _ready() -> void:
 	current_hp = max_hp
 	add_to_group("buildings")
@@ -42,6 +60,9 @@ func _ready() -> void:
 	# render after it. Set once; buildings don't move.
 	var back_corner: Vector2 = global_position - size_pixels * 0.5
 	z_index = IsoView.z_for(back_corner)
+	var skin_path := _get_skin_path()
+	if skin_path != "" and ResourceLoader.exists(skin_path):
+		_skin = load(skin_path)
 
 
 func set_selected(value: bool) -> void:
@@ -121,6 +142,29 @@ func _draw() -> void:
 	var ne_top: Vector2 = ne + Vector2(0.0, -wall_height)
 	var se_top: Vector2 = se + Vector2(0.0, -wall_height)
 	var sw_top: Vector2 = sw + Vector2(0.0, -wall_height)
+
+	# ---- Skinned path: art instead of the prism. Bottom-anchored on the
+	# footprint diamond, width-scaled to the projected diamond, aspect
+	# preserved. The darkened footprint stays as the grounding shadow.
+	if _skin != null:
+		draw_colored_polygon(PackedVector2Array([nw, ne, se, sw]), Color(0.05, 0.05, 0.05, 0.45))
+		var diamond_w: float = ne.x - sw.x
+		var tex_size: Vector2 = _skin.get_size()
+		var draw_w: float = diamond_w
+		var draw_h: float = draw_w * tex_size.y / tex_size.x
+		# Base sits at the south corner's y, pulled up slightly so the art's
+		# foundation overlaps the shadow instead of floating below it.
+		var base_y: float = se.y + 2.0
+		draw_texture_rect(_skin, Rect2(-draw_w * 0.5, base_y - draw_h, draw_w, draw_h), false, _get_skin_modulate())
+		if selected:
+			draw_polyline(PackedVector2Array([nw, ne, se, sw, nw]), Color(1, 1, 0.4), 2.0, true)
+		if current_hp < max_hp:
+			var sbar_w: float = max(size_pixels.x * 0.7, 32.0)
+			var sbar_y: float = base_y - draw_h - 10.0
+			draw_rect(Rect2(-sbar_w * 0.5, sbar_y, sbar_w, 3.0), Color(0.12, 0.05, 0.05))
+			var sfill: float = float(current_hp) / float(max_hp) if max_hp > 0 else 0.0
+			draw_rect(Rect2(-sbar_w * 0.5, sbar_y, sbar_w * sfill, 3.0), Color(0.35, 0.65, 0.3))
+		return
 
 	# Ground footprint - reads as the building's shadow/base ring.
 	draw_colored_polygon(PackedVector2Array([nw, ne, se, sw]), body_color.darkened(0.55))

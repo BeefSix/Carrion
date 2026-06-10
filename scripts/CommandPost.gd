@@ -137,3 +137,7 @@ func _request_nav_rebake() -> void:
 	var main = get_tree().current_scene
 	if main != null and main.has_method("rebake_navigation"):
 		main.call_deferred("rebake_navigation")
+
+
+func _get_skin_path() -> String:
+	return "res://assets/buildings/command_post.png"  # skin pass 2, 2026-06-11

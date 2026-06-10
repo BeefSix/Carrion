@@ -137,3 +137,7 @@ func _spawn_item(item: String) -> void:
 
 func _draw_building_icon() -> void:
 	draw_circle(Vector2.ZERO, 14.0, PALETTE_SURVIVOR)
+
+
+func _get_skin_path() -> String:
+	return "res://assets/buildings/settlement_hub.png"  # skin pass 2, 2026-06-11

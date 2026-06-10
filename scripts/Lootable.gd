@@ -181,3 +181,28 @@ func _draw_building_icon() -> void:
 		_:
 			# residential — filled circle
 			draw_circle(Vector2.ZERO, 5.0, icon_color)
+
+
+# ---- Building skin (pass 2, 2026-06-11): per-district art; infested
+# residentials get the dedicated infested PNG, every other infested type
+# gets a sickly tint over its normal art (no per-type infested art yet).
+const SKIN_BY_TYPE := {
+	"residential": "res://assets/buildings/residential.png",
+	"commercial": "res://assets/buildings/commercial.png",
+	"industrial": "res://assets/buildings/industrial.png",
+	"medical": "res://assets/buildings/medical.png",
+	"security": "res://assets/buildings/police.png",
+	"civic": "res://assets/buildings/civic.png",
+}
+
+
+func _get_skin_path() -> String:
+	if is_infested and neighborhood_type == "residential":
+		return "res://assets/buildings/infested_residential.png"
+	return SKIN_BY_TYPE.get(neighborhood_type, "")
+
+
+func _get_skin_modulate() -> Color:
+	if is_infested and neighborhood_type != "residential":
+		return Color(0.72, 0.88, 0.62)  # sickly infestation tint
+	return Color.WHITE
