@@ -32,8 +32,10 @@
 - assets/props/: corpse_fresh, corpse_rising, blood_decal
 
 ## Budget
-- Start of art phase: 1368 generations. After Phase 2: 985. Map objects cost ~1 each.
-  Final balance logged below the commit in git. Floor (100) never approached.
+- Start of art phase: 1368 generations. After Phase 2: 985. **Final: 969 remaining**
+  (399 used tonight; 16 buildings/props at ~1 gen each). Floor (100) never approached.
+- ritual_site landed on retry (first attempt hit a server-side CUDA OOM) — full
+  13-building set complete; zero misses.
 
 ## Morning play-check list
 1. **Hunter**: walks near wild zombies -> collects up to 4 thralls that body-block; NO hordes
