@@ -30,7 +30,11 @@ func _ready() -> void:
 func _available_items() -> Array:
 	var items = ["scout"]
 	if get_tree().get_nodes_in_group("workshop").is_empty():
-		items.append("engineer")
+		# "builder" is the Survivor-facing title (DESIGN_MASTER §7.3 — the
+		# Survivor build unit is the Builder; "Engineer" is Military's, via
+		# Workshop). Same Engineer scene under the hood until the dedicated
+		# Builder unit connects.
+		items.append("builder")
 		items.append("brawler")
 	return items
 
@@ -44,13 +48,15 @@ func get_action_text(idx: int) -> String:
 	if idx < 0 or idx >= items.size():
 		return ""
 	var item: String = items[idx]
-	return "Build %s (%d Salvage)" % [item.capitalize(), _cost_for(item)]
+	# "Recruit", not "Build" — Survivors recruit people (and it reads better
+	# than "Build Builder"). DESIGN_MASTER §7.3: units are civilians who join.
+	return "Recruit %s (%d Salvage)" % [item.capitalize(), _cost_for(item)]
 
 
 func _cost_for(item: String) -> int:
 	match item:
 		"scout": return SCOUT_COST
-		"engineer": return ENGINEER_COST
+		"builder": return ENGINEER_COST
 		"brawler": return BRAWLER_COST
 		_: return 0
 
@@ -105,7 +111,7 @@ func _start_production(item: String) -> void:
 	_produce_what = item
 	match item:
 		"scout": _produce_timer = SCOUT_BUILD_TIME
-		"engineer": _produce_timer = ENGINEER_BUILD_TIME
+		"builder": _produce_timer = ENGINEER_BUILD_TIME
 		"brawler": _produce_timer = BRAWLER_BUILD_TIME
 		_: _produce_timer = SCOUT_BUILD_TIME
 
@@ -129,7 +135,7 @@ func _spawn_item(item: String) -> void:
 	var scene: PackedScene = null
 	match item:
 		"scout": scene = scout_scene
-		"engineer": scene = engineer_scene
+		"builder": scene = engineer_scene
 		"brawler": scene = brawler_scene
 	if scene == null:
 		return
