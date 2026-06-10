@@ -12,6 +12,7 @@ const SCENES := [
 	"res://scenes/units/SurvivorRunner.tscn",
 	"res://scenes/buildings/Farm.tscn",
 	"res://scenes/buildings/RadioStation.tscn",
+	"res://scenes/buildings/SettlementHub.tscn",
 ]
 
 

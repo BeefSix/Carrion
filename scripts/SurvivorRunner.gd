@@ -12,8 +12,9 @@ extends "res://scripts/Scout.gd"
 # that word in the asset tree (assets/.../zombies/runner) — same reconcile-
 # at-integration rule as the Brawler/Brute naming note in memory.
 #
-# NOT CONNECTED YET (2026-06-10): no producer references SurvivorRunner.tscn.
-# Connection point: the SettlementHub "scout" row becomes "runner".
+# CONNECTED 2026-06-10 (Matt's go): the SettlementHub "runner" row
+# replaced the old "scout" row (this class extends Scout, so the
+# safehouse-scaled cap carries over via the "scouts" group).
 
 # ---- Sprite system (RENDER ONLY — same pattern as Walker.gd; Scout has no
 # sprite substrate of its own, it predates the gold family). The Runner's

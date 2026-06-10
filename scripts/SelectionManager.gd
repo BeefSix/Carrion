@@ -291,7 +291,11 @@ func _handle_right_click(world_pos: Vector2) -> void:
 		var has_whistle_action: bool = target_building == null and target_corpse == null and u.has_method("whistle_at")
 		# B3: Walker right-click on a remains pile = harvest order.
 		var has_harvest_action: bool = target_remains != null and u.has_method("harvest_remains")
-		if has_corpse_action or has_repair_action or has_force_spawn_action or has_gather_action or has_whistle_action or has_harvest_action:
+		# Survivor Saboteur ground clicks route to the sound grenade (which
+		# itself walks into range, and falls back to a plain move while the
+		# grenade is rearming) — same one-verb vocab as the Caller's whistle.
+		var has_grenade_action: bool = target_building == null and target_corpse == null and u.has_method("throw_sound_grenade")
+		if has_corpse_action or has_repair_action or has_force_spawn_action or has_gather_action or has_whistle_action or has_harvest_action or has_grenade_action:
 			continue
 		if u.has_method("move_to"):
 			move_unit_count += 1
@@ -315,6 +319,8 @@ func _handle_right_click(world_pos: Vector2) -> void:
 			CommandBus.issue("harvest", u, {"target": target_remains}, CommandBus.SRC_PLAYER)
 		elif target_building == null and target_corpse == null and u.has_method("whistle_at"):
 			CommandBus.issue("whistle", u, {"target": world_pos}, CommandBus.SRC_PLAYER)
+		elif target_building == null and target_corpse == null and u.has_method("throw_sound_grenade"):
+			CommandBus.issue("sound_grenade", u, {"target": world_pos}, CommandBus.SRC_PLAYER)
 		elif u.has_method("move_to"):
 			var per_unit_target: Vector2 = _formation_position(world_pos, move_index, move_unit_count)
 			CommandBus.issue("move", u, {"target": per_unit_target}, CommandBus.SRC_PLAYER)

@@ -7,11 +7,10 @@ extends "res://scripts/CombatUnit.gd"
 # the horde, the inverse of the Caller (he pulls zombies toward himself;
 # the Saboteur throws their attention away). Unarmed otherwise.
 #
-# NOT CONNECTED YET (2026-06-10): no producer references Saboteur.tscn,
-# and the ground-target routing (select Saboteur → click ground → CommandBus
-# "sound_grenade") is left to the connection pass in SelectionManager —
-# throw_sound_grenade(world_pos) below is the complete sim-side verb.
-# Car-alarm traps + doctrines (Demolitionist / Whisperer) are [PROPOSED].
+# CONNECTED 2026-06-10 (Matt's go): produced by the SettlementHub; ground
+# right-clicks route to throw_sound_grenade via CommandBus "sound_grenade"
+# (rearming degrades to a plain move). Car-alarm traps + doctrines
+# (Demolitionist / Whisperer) are [PROPOSED] — deferred.
 
 const THROW_RANGE_PX := 224.0       # 7 tiles
 const FLIGHT_TIME := 1.2            # sim seconds in the air
@@ -56,8 +55,10 @@ func _ready() -> void:
 
 
 func throw_sound_grenade(world_pos: Vector2) -> void:
-	# The unit's verb. Connection pass routes ground clicks here (see header).
+	# The unit's verb — ground right-clicks route here (connected 2026-06-10).
 	if _grenade_cooldown > 0.0 or _grenade_in_flight:
+		# Rearming: degrade to a plain move so right-click never goes dead.
+		move_to(world_pos)
 		return
 	if global_position.distance_to(world_pos) > THROW_RANGE_PX:
 		# Walk into range first, throw on arrival.

@@ -7,10 +7,9 @@ extends "res://scripts/CombatUnit.gd"
 # CLAUDE.md noise-profile rule — Survivor is the silent faction; do not
 # add an emission here casually). The price is tempo: long reload.
 #
-# NOT CONNECTED YET (2026-06-10): no producer references Bolter.tscn and
-# the Survivor faction picker is unchanged. Connection point: a
-# SettlementHub/garrison production row + AIProfiles SURVIVOR entry.
-# Doctrines (Longbolt / Pinbolt) are [PROPOSED] — deferred.
+# CONNECTED 2026-06-10 (Matt's go): produced by the SettlementHub.
+# AI-side (AIProfiles SURVIVOR) still deferred. Doctrines (Longbolt /
+# Pinbolt) are [PROPOSED] — deferred.
 
 const ATTACK_RANGE := 220.0       # a touch past Rifleman: deliberate shots
 const ATTACK_DAMAGE := 14

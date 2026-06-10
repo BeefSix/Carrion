@@ -1,18 +1,23 @@
 class_name SettlementHub
 extends "res://scripts/Building.gd"
 
-const SCOUT_COST := 50
-const ENGINEER_COST := 50
-const BRAWLER_COST := 50
-const SCOUT_BUILD_TIME := 8.0
-const ENGINEER_BUILD_TIME := 8.0
-const BRAWLER_BUILD_TIME := 8.0
 const SPAWN_OFFSET := Vector2(0, 80)
-const ABSOLUTE_SCOUT_CAP := 4
+const ABSOLUTE_RUNNER_CAP := 4
 
-@export var scout_scene: PackedScene
-@export var engineer_scene: PackedScene
-@export var brawler_scene: PackedScene
+# Survivor roster (DESIGN_MASTER §7.3, connected 2026-06-10 on Matt's
+# go). Data-driven rows like RitualSite's queue. Costs/times are balance-
+# lab placeholders sized against the other factions' HQs; "few and
+# precious" carried by the higher specialist prices, not unit scarcity.
+# Old Scout/Engineer rows are superseded: Runner IS the Scout skeleton
+# (SurvivorRunner extends Scout), Builder replaces the borrowed Engineer.
+const CATALOG := {
+	"runner": {"scene": preload("res://scenes/units/SurvivorRunner.tscn"), "cost": 50, "time": 8.0},
+	"builder": {"scene": preload("res://scenes/units/Builder.tscn"), "cost": 50, "time": 8.0},
+	"brawler": {"scene": preload("res://scenes/units/Brawler.tscn"), "cost": 50, "time": 8.0},
+	"bolter": {"scene": preload("res://scenes/units/Bolter.tscn"), "cost": 75, "time": 10.0},
+	"chemist": {"scene": preload("res://scenes/units/Chemist.tscn"), "cost": 90, "time": 12.0},
+	"saboteur": {"scene": preload("res://scenes/units/Saboteur.tscn"), "cost": 100, "time": 12.0},
+}
 
 var _producing := false
 var _produce_timer := 0.0
@@ -28,15 +33,10 @@ func _ready() -> void:
 
 
 func _available_items() -> Array:
-	var items = ["scout"]
-	if get_tree().get_nodes_in_group("workshop").is_empty():
-		# "builder" is the Survivor-facing title (DESIGN_MASTER §7.3 — the
-		# Survivor build unit is the Builder; "Engineer" is Military's, via
-		# Workshop). Same Engineer scene under the hood until the dedicated
-		# Builder unit connects.
-		items.append("builder")
-		items.append("brawler")
-	return items
+	# Full roster, no tech gating in v1. Future gating candidates: bolter
+	# behind a garrison, chemist behind the [OPEN] civilian system. The old
+	# workshop gate was a Military cross-faction artifact — dropped.
+	return CATALOG.keys()
 
 
 func get_action_count() -> int:
@@ -54,11 +54,7 @@ func get_action_text(idx: int) -> String:
 
 
 func _cost_for(item: String) -> int:
-	match item:
-		"scout": return SCOUT_COST
-		"builder": return ENGINEER_COST
-		"brawler": return BRAWLER_COST
-		_: return 0
+	return int(CATALOG.get(item, {}).get("cost", 0))
 
 
 func get_action_available(idx: int) -> bool:
@@ -66,16 +62,20 @@ func get_action_available(idx: int) -> bool:
 	if idx < 0 or idx >= items.size():
 		return false
 	var item: String = items[idx]
-	if item == "scout":
-		var scout_count: int = get_tree().get_nodes_in_group("scouts").size()
-		if scout_count >= _scout_cap():
-			return false
+	if item == "runner" and _runner_count() >= _runner_cap():
+		return false
 	return GameState.can_spend(_cost_for(item))
 
 
-func _scout_cap() -> int:
+func _runner_count() -> int:
+	# SurvivorRunner extends Scout, so it inherits the "scouts" group —
+	# the safehouse-scaled economy cap carries over to the Runner intact.
+	return get_tree().get_nodes_in_group("scouts").size()
+
+
+func _runner_cap() -> int:
 	var safehouses: int = get_tree().get_nodes_in_group("safehouse").size()
-	return min(2 + 2 * safehouses, ABSOLUTE_SCOUT_CAP)
+	return min(2 + 2 * safehouses, ABSOLUTE_RUNNER_CAP)
 
 
 func do_action(idx: int) -> void:
@@ -83,10 +83,8 @@ func do_action(idx: int) -> void:
 	if idx < 0 or idx >= items.size():
 		return
 	var item: String = items[idx]
-	if item == "scout":
-		var scout_count: int = get_tree().get_nodes_in_group("scouts").size()
-		if scout_count >= _scout_cap():
-			return
+	if item == "runner" and _runner_count() >= _runner_cap():
+		return
 	var cost: int = _cost_for(item)
 	if not GameState.can_spend(cost):
 		return
@@ -109,11 +107,7 @@ func get_status_text() -> String:
 func _start_production(item: String) -> void:
 	_producing = true
 	_produce_what = item
-	match item:
-		"scout": _produce_timer = SCOUT_BUILD_TIME
-		"builder": _produce_timer = ENGINEER_BUILD_TIME
-		"brawler": _produce_timer = BRAWLER_BUILD_TIME
-		_: _produce_timer = SCOUT_BUILD_TIME
+	_produce_timer = float(CATALOG.get(item, {}).get("time", 8.0))
 
 
 func _physics_process(delta: float) -> void:
@@ -132,11 +126,7 @@ const SPAWN_JITTER := 24.0
 
 
 func _spawn_item(item: String) -> void:
-	var scene: PackedScene = null
-	match item:
-		"scout": scene = scout_scene
-		"builder": scene = engineer_scene
-		"brawler": scene = brawler_scene
+	var scene: PackedScene = CATALOG.get(item, {}).get("scene")
 	if scene == null:
 		return
 	var u = scene.instantiate()

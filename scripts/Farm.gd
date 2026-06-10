@@ -5,9 +5,8 @@ extends "res://scripts/Building.gd"
 # friendly Farm (RadioStation checks the "farms" group in radius), and the
 # future civilian/recruitment economy hangs off farm count.
 #
-# NOT CONNECTED YET (2026-06-10): only reachable via BuildCatalog SURVIVOR
-# entries, which no live worker exposes yet (Builder.tscn is also
-# unconnected). v1 mechanics: a small supply trickle (subsistence — the
+# CONNECTED 2026-06-10 (Matt's go): the Builder places this via the
+# BuildCatalog SURVIVOR table. v1 mechanics: a small supply trickle (subsistence — the
 # farm feeds people, people scavenge) so an early farm isn't dead weight.
 # The real payoffs (civilian pop cap, recruitment) are the connection
 # pass's job. [OPEN per §7.3: civilians as a true second resource.]

@@ -1,9 +1,6 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=2 format=3]
 
 [ext_resource type="Script" path="res://scripts/SettlementHub.gd" id="1_sh"]
-[ext_resource type="PackedScene" path="res://scenes/units/Scout.tscn" id="2_scout"]
-[ext_resource type="PackedScene" path="res://scenes/units/Engineer.tscn" id="3_eng"]
-[ext_resource type="PackedScene" path="res://scenes/units/Brawler.tscn" id="4_brawler"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_sh"]
 size = Vector2(96, 96)
@@ -14,9 +11,6 @@ max_hp = 600
 body_color = Color(0.478, 0.361, 0.235, 1)
 size_pixels = Vector2(96, 96)
 wall_height = 48.0
-scout_scene = ExtResource("2_scout")
-engineer_scene = ExtResource("3_eng")
-brawler_scene = ExtResource("4_brawler")
 
 [node name="CollisionShape" type="CollisionShape2D" parent="."]
 shape = SubResource("RectangleShape2D_sh")

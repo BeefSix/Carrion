@@ -78,6 +78,10 @@ func _dispatch(kind: String, actor, args: Dictionary) -> void:
 			# B2: the Caller's herd verb (CALLER_PLAN).
 			if actor.has_method("whistle_at"):
 				actor.whistle_at(args.get("target", Vector2.ZERO))
+		"sound_grenade":
+			# Survivor Saboteur's horde-redirect verb (§7.3, connected 2026-06-10).
+			if actor.has_method("throw_sound_grenade"):
+				actor.throw_sound_grenade(args.get("target", Vector2.ZERO))
 		"harvest":
 			# B3: the Walker's remains-harvest verb (CALLER_PLAN).
 			if actor.has_method("harvest_remains"):

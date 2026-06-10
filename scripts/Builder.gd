@@ -5,12 +5,10 @@ extends "res://scripts/CombatUnit.gd"
 # placement flow (BuildCatalog → SelectionManager ghost → ConstructionSite
 # channel). Unarmed; renovation is the weapon.
 #
-# NOT CONNECTED YET (2026-06-10): no producer references Builder.tscn.
-# Connection points: a SettlementHub "builder" row pointing here instead
-# of the Engineer scene, and CommandBus "construct" routing (already
-# generic — SelectionManager calls construct_at on whatever builder it
-# ghosts for). Palisades + garrison conversion (the §7.3 endgame of this
-# unit) are deferred — garrisons are a system, not a unit feature.
+# CONNECTED 2026-06-10 (Matt's go): the SettlementHub "builder" row
+# produces this scene (replacing the borrowed Engineer); construct routing
+# was already generic. Palisades + garrison conversion (the §7.3 endgame
+# of this unit) are deferred — garrisons are a system, not a unit feature.
 
 const BuildCatalogRef := preload("res://scripts/BuildCatalog.gd")
 

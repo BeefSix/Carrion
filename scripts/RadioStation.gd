@@ -13,8 +13,8 @@ extends "res://scripts/Building.gd"
 # audible to the ecosystem from day one, just at the cautious end of the
 # dial. The player-facing volume control is [PROPOSED] → connection pass.
 #
-# NOT CONNECTED YET (2026-06-10): only reachable via BuildCatalog SURVIVOR
-# entries (Builder.tscn, also unconnected).
+# CONNECTED 2026-06-10 (Matt's go): the Builder places this via the
+# BuildCatalog SURVIVOR table.
 
 const ATTACH_RADIUS_PX := 320.0     # 10 tiles to a friendly farm
 const BROADCAST_INTERVAL := 20.0    # sim seconds per cycle

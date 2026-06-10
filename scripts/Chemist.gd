@@ -5,7 +5,7 @@ extends "res://scripts/CombatUnit.gd"
 # radius healing + the morale-recovery aura (CombatUnit._tick_morale reads
 # the "medics" group — the aura is profession-agnostic). Unarmed.
 #
-# NOT CONNECTED YET (2026-06-10): no producer references Chemist.tscn.
+# CONNECTED 2026-06-10 (Matt's go): produced by the SettlementHub.
 # Doctrines (Apothecary / Caustic corpse-dissolving acid — the silent
 # corpse-denial answer, §4 "Caustic denial") are [PROPOSED] — deferred.
 # The Caustic hook is the interesting one: it lands where Corpse.gd rise
