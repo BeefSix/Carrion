@@ -154,10 +154,18 @@ func _physics_process(delta: float) -> void:
 		if hit.is_empty():
 			break
 		var collider = hit.get("collider", null)
+		# H4 follow-up (2026-06-10): friendliness is team-based, not faction-
+		# based. Faction equality made mirror-match bullets hop past ENEMY
+		# units of the same faction (MM lab stalemate contributor). Fall back
+		# to faction equality only when the firer died mid-flight.
+		var pass_through: bool = false
 		if (not FRIENDLY_FIRE_ENABLED) and collider != null \
-				and collider.is_in_group("units") \
-				and "faction" in collider \
-				and collider.faction == faction:
+				and collider.is_in_group("units"):
+			if firer != null and is_instance_valid(firer):
+				pass_through = not GameState.is_hostile(firer, collider)
+			else:
+				pass_through = "faction" in collider and collider.faction == faction
+		if pass_through:
 			var hit_pos: Vector2 = hit.get("position", current_start)
 			current_start = hit_pos + velocity.normalized() * 2.0
 			excludes_arr.append(collider.get_rid())
@@ -218,11 +226,19 @@ func _resolve_collision(collider) -> void:
 
 
 func _resolve_impact_on_unit(target_unit) -> void:
-	if not FRIENDLY_FIRE_ENABLED and target_unit.faction == faction:
-		# Same-faction hit, friendly fire off -> pass through. Despawn to avoid
-		# the projectile re-triggering on adjacent allies in formation.
-		_despawn()
-		return
+	if not FRIENDLY_FIRE_ENABLED:
+		# H4 follow-up (2026-06-10): team-based friendliness via is_hostile so
+		# mirror matches damage opposing-team same-faction units. Faction
+		# equality only as the dead-firer fallback. Despawn on friendly hit to
+		# avoid re-triggering on adjacent allies in formation.
+		var is_friendly: bool
+		if firer != null and is_instance_valid(firer):
+			is_friendly = not GameState.is_hostile(firer, target_unit)
+		else:
+			is_friendly = target_unit.faction == faction
+		if is_friendly:
+			_despawn()
+			return
 	if area_radius > 0.0:
 		_apply_area_damage(position)
 	elif target_unit.has_method("take_damage"):
