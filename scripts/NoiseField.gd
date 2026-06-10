@@ -43,6 +43,11 @@ const TIER_CAT := 3
 const HORDE_COOLDOWN := 30.0
 const WAVE_SIZE_MULTIPLIER := 0.5
 const MAX_WAVE := 4
+
+# Zombie variant mix for horde spawns (§3.3 — "Runner: less common"; Brute
+# rarer still so each one reads as an event). Placeholders for the lab.
+const HORDE_BRUTE_CHANCE := 0.04
+const HORDE_RUNNER_CHANCE := 0.10
 const MAX_ZOMBIE_POPULATION := 300  # refuse horde spawns when total zombies reach this (bumped from 220 after Shambler perception perf fixes)
 
 
@@ -356,6 +361,13 @@ func _trigger_horde(target: Vector2, size: int) -> void:
 		# replay/lockstep matches stage the same hordes deterministically.
 		var jitter := Vector2(SimRng.randf_range(-60, 60), SimRng.randf_range(-60, 60))
 		var s = SHAMBLER_SCENE.instantiate()
+		# §3.3 horde texture: one variant roll per body, fixed thresholds so
+		# the SimRng call count per spawn is constant (one randf each).
+		var roll: float = SimRng.randf()
+		if roll < HORDE_BRUTE_CHANCE:
+			s.set_variant(s.VARIANT_BRUTE)
+		elif roll < HORDE_BRUTE_CHANCE + HORDE_RUNNER_CHANCE:
+			s.set_variant(s.VARIANT_RUNNER)
 		s.position = spawn_pos + jitter
 		get_parent().add_child(s)
 		if s.has_method("investigate"):

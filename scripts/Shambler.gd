@@ -264,6 +264,45 @@ var _thrall_scan_timer: float = 0.0
 var _thrall_threat: Node2D = null        # cached nearest threat to the owner
 var _baseline_body_color: Color = Color.WHITE
 
+# ---- Zombie variants (Track C, 2026-06-09) ------------------------------
+# DESIGN_MASTER §3.3: Runner and Brute are CONFIGURATIONS of the Shambler
+# chassis, not subclasses (per the chassis-parameterization plan and the
+# per-type-perception comment at the top of this file). Spawn sites call
+# set_variant() BEFORE add_child so Unit._ready snapshots max_hp correctly
+# — same contract as Lootable._configure_variant.
+const VARIANT_SHAMBLER := "shambler"
+const VARIANT_RUNNER := "runner"
+const VARIANT_BRUTE := "brute"
+
+# Runner: "faster than humans, individually deadly, less common." Rifleman
+# move_speed is 96 — the Runner's 120 is the §3.05 "can't just walk away"
+# pressure. Fragile so concentrated fire still answers it. All placeholders
+# for the lab.
+const RUNNER_SPEED := 120.0
+const RUNNER_HP := 30
+const RUNNER_DAMAGE_MULT := 1.3
+const RUNNER_SIZE_PX := 18
+const RUNNER_COLOR := Color("6a4a3a")   # raw sinew red-brown — reads "fresh"
+
+# Brute: "slow, extremely tough, devastating up close. Immune to noise-
+# attraction; loud; wanders far — zombies follow it." A walking horde-
+# nucleus: the louder moan reliably converts neighbors to investigate (it
+# clears HEARING_RELIABLE), so a cluster trails the Brute as it wanders;
+# killing it orphans the cluster. Players track Brutes to predict horde
+# drift (§9 information warfare).
+const BRUTE_SPEED := 36.0
+const BRUTE_HP := 320
+const BRUTE_DAMAGE_MULT := 2.5
+const BRUTE_SIZE_PX := 32
+const BRUTE_COLOR := Color("3a3328")    # massive dark earth-brown silhouette
+const BRUTE_MOAN_MAGNITUDE := 18.0      # > HEARING_RELIABLE (15) — followers commit
+const BRUTE_WANDER_RADIUS_MULT := 3.0   # wanders far, dragging its cluster across the map
+
+var variant: String = VARIANT_SHAMBLER
+# Effective wander leg length; Brute overrides via set_variant. Reading a
+# var instead of WANDER_RADIUS directly keeps the two wander sites in sync.
+var _wander_radius_px: float = WANDER_RADIUS
+
 var _zombie_state: int = ZombieState.IDLE
 var _target = null
 var _investigate_target: Vector2 = Vector2.ZERO
@@ -489,6 +528,11 @@ func investigate(world_pos: Vector2) -> void:
 func hear_noise(noise_pos: Vector2, magnitude: float, distance: float) -> void:
 	# Thralls are deaf to noise — escort slot only (see investigate()).
 	if _is_thralled():
+		return
+	# Brutes are immune to noise-attraction (§3.3) — too rage-blind to be
+	# led. Vision + proximity sense still work; you can't kite a Brute with
+	# gunfire, you have to be seen.
+	if variant == VARIANT_BRUTE:
 		return
 	if distance > HEARING_RANGE_PX:
 		return
@@ -723,11 +767,43 @@ func _tick_idle_head_turn(delta: float) -> void:
 		_desired_facing_angle = _facing_angle + randf_range(-2.094, 2.094)
 
 
+# ---- Variant configuration ----------------------------------------------
+
+
+func set_variant(kind: String) -> void:
+	# Must run BEFORE add_child — Unit._ready snapshots current_hp = max_hp
+	# and the perception/sprite setup reads size_px/body_color. Same contract
+	# as Lootable._configure_variant (which keeps its own bespoke themed
+	# tweaks; this is the §3.3 type system proper).
+	variant = kind
+	match kind:
+		VARIANT_RUNNER:
+			move_speed = RUNNER_SPEED
+			max_hp = RUNNER_HP
+			damage_mult = RUNNER_DAMAGE_MULT
+			size_px = RUNNER_SIZE_PX
+			body_color = RUNNER_COLOR
+		VARIANT_BRUTE:
+			move_speed = BRUTE_SPEED
+			max_hp = BRUTE_HP
+			damage_mult = BRUTE_DAMAGE_MULT
+			size_px = BRUTE_SIZE_PX
+			body_color = BRUTE_COLOR
+			_wander_radius_px = WANDER_RADIUS * BRUTE_WANDER_RADIUS_MULT
+		_:
+			pass  # baseline Shambler keeps scene defaults
+
+
 # ---- Thrall behavior ----------------------------------------------------
 
 
 func make_thrall(owner: Node2D) -> bool:
 	# Called by the recruiting Hunter. Returns false if already owned.
+	# Variants refuse thralldom: a Brute escort would be a 320 HP wall (and
+	# §3.3 says Brutes are rage-blind); Runners are too feral. Only baseline
+	# Shamblers answer the Hunter.
+	if variant != VARIANT_SHAMBLER:
+		return false
 	if thrall_owner != null or owner == null or not is_instance_valid(owner):
 		return false
 	thrall_owner = owner
@@ -1107,7 +1183,7 @@ func _start_wander() -> void:
 		target = _find_magnetic_target()
 	if target == Vector2.ZERO:
 		var direction: Vector2 = _pick_wander_direction()
-		target = global_position + direction * WANDER_RADIUS
+		target = global_position + direction * _wander_radius_px
 	target.x = clamp(target.x, 50.0, 6094.0)
 	target.y = clamp(target.y, 50.0, 6094.0)
 	_wander_target = target
@@ -1163,12 +1239,16 @@ func _emit_ambient_noise() -> void:
 		zf.deposit_residue(global_position, AMBIENT_NOISE_RESIDUE)
 	# Direct hear_noise to nearby zombies via the spatial index. Bypasses
 	# NoiseField so cumulative cluster moans can't false-trigger hordes.
+	# Brute moans clear HEARING_RELIABLE where a normal ambient moan sits in
+	# the stochastic band — neighbors reliably investigate the Brute's
+	# position, which is the whole "zombies follow it" §3.3 mechanic.
+	var moan_mag: float = BRUTE_MOAN_MAGNITUDE if variant == VARIANT_BRUTE else AMBIENT_NOISE_MAGNITUDE
 	if zf != null and zf.has_method("get_zombies_within_radius"):
 		for other in zf.get_zombies_within_radius(global_position, AMBIENT_NOISE_HEARING_RANGE_PX):
 			if other == self or not other.has_method("hear_noise"):
 				continue
 			var d: float = global_position.distance_to(other.global_position)
-			other.hear_noise(global_position, AMBIENT_NOISE_MAGNITUDE, d)
+			other.hear_noise(global_position, moan_mag, d)
 		return
 	# Fallback - rare, ZombieField always present in normal scenes.
 	for other in get_tree().get_nodes_in_group("units"):
@@ -1181,7 +1261,7 @@ func _emit_ambient_noise() -> void:
 		var d: float = global_position.distance_to(other.global_position)
 		if d > AMBIENT_NOISE_HEARING_RANGE_PX:
 			continue
-		other.hear_noise(global_position, AMBIENT_NOISE_MAGNITUDE, d)
+		other.hear_noise(global_position, moan_mag, d)
 
 
 func _update_home_pin() -> void:
@@ -1436,7 +1516,7 @@ func _pick_wander_direction() -> Vector2:
 
 
 func _score_wander_direction(dir: Vector2) -> float:
-	var sample_pos: Vector2 = global_position + dir * WANDER_RADIUS
+	var sample_pos: Vector2 = global_position + dir * _wander_radius_px
 	var score: float = 1.0
 	# Decay attraction - sample tile's value via the field's
 	# get_value_at(world_pos). Stacked tiers so heavily decayed areas pull

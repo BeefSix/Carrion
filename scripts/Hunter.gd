@@ -167,6 +167,10 @@ func _try_recruit_thrall() -> void:
 			continue
 		if "is_tribal_aligned" in z and z.is_tribal_aligned:
 			continue
+		# Variants refuse thralldom (make_thrall also guards) — skip them in
+		# the scan so a nearby Brute can't shadow a recruitable Shambler.
+		if "variant" in z and z.variant != z.VARIANT_SHAMBLER:
+			continue
 		var d: float = global_position.distance_to(z.global_position)
 		if d < best_dist:
 			best_dist = d

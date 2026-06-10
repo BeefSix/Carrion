@@ -16,6 +16,9 @@ const DEV_NOISE_INJECT := 100.0
 const EDGE_SPAWN_INTERVAL := 90.0
 const EDGE_INSET := 60.0
 const EDGE_SPAWN_KEEPOUT := 1200.0  # avoid dumping wanderers on top of the player corner
+# Ambient zombie variant mix for edge wanderers (§3.3). See _spawn_edge_wanderer.
+const EDGE_BRUTE_CHANCE := 0.06
+const EDGE_RUNNER_CHANCE := 0.04
 
 # AI-vs-AI hard cap on match duration (sim seconds). If neither HQ falls by
 # then we force a "timeout" result so headless batches don't hang forever.
@@ -563,6 +566,15 @@ func _spawn_edge_wanderer() -> void:
 		if pos.distance_to(spawn_pos) >= EDGE_SPAWN_KEEPOUT:
 			break
 	var s = SHAMBLER_SCENE.instantiate()
+	# Ambient variant texture (§3.3). Brutes lean toward the edge-wanderer
+	# path because their identity is the far-wandering horde-nucleus that
+	# drags a cluster across the map; Runners stay rarer ambiently than in
+	# hordes (a surprise Runner with no warning is unfair pressure).
+	var roll: float = SimRng.randf()
+	if roll < EDGE_BRUTE_CHANCE:
+		s.set_variant(s.VARIANT_BRUTE)
+	elif roll < EDGE_BRUTE_CHANCE + EDGE_RUNNER_CHANCE:
+		s.set_variant(s.VARIANT_RUNNER)
 	s.position = pos
 	add_child(s)
 
