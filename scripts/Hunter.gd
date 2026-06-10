@@ -31,9 +31,22 @@ const MAX_THRALLS := 4                    # placeholder — lab-tunable
 const THRALL_RECRUIT_RADIUS_PX := 128.0   # ~4 tiles; local pull only
 const THRALL_RECRUIT_INTERVAL := 1.0      # sim seconds between recruit attempts
 
+# Sprite wiring (render-only, CombatUnit substrate helpers).
+const SPRITE_ROOT := "res://assets/sprites/units/tribal/hunter/"
+const ATTACK_ANIM_HOLD := 0.5
+
 var _target = null
 var _attack_cooldown := 0.0
 var _retarget_timer := 0.0
+
+
+func _get_sprite_root() -> String:
+	return SPRITE_ROOT
+
+
+func _ready() -> void:
+	super._ready()
+	_init_sprite()
 var _thralls: Array = []                  # owned Shamblers; pruned each attempt
 var _recruit_timer: float = 0.0
 # Threat-scan cache - 5Hz polling instead of per-frame.
@@ -54,6 +67,9 @@ func _morale_enabled() -> bool:
 func _physics_process(delta: float) -> void:
 	_sim_upkeep(delta)  # D4 subclass invariant — see Unit._sim_upkeep
 	_attack_cooldown = max(0.0, _attack_cooldown - delta)
+	_attack_anim_timer = max(0.0, _attack_anim_timer - delta)
+	if use_sprite:
+		_update_sprite_animation()
 	# Thrall recruiting — fixed-interval accumulator on the physics tick.
 	# Runs in every command state (recruiting is passive identity), but
 	# only attempts while below the cap. No RNG, no NoiseField.
@@ -118,6 +134,7 @@ func _try_shoot_in_range(delta: float) -> void:
 func _fire_at(target) -> void:
 	# Damage resolves at impact via CombatUnit.resolve_damage in Projectile.gd.
 	# Suppression widens the cone at the shooter's position (DESIGN_MASTER §7.1).
+	_attack_anim_timer = ATTACK_ANIM_HOLD  # render-only: hold the bow-draw pose
 	var spread: float = BASE_ACCURACY_DEG * (1.0 - squad_accuracy_bonus) * _suppression_spread_multiplier()
 	ProjectileManager.spawn_projectile({
 		"origin": global_position,
