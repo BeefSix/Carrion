@@ -1,3 +1,37 @@
+# AFTERNOON SESSION 2026-06-10 — Survivor faction + Caller (art + connection)
+
+## What landed (all pushed)
+- **Survivor roster, 6 units, gold pro-48, COMMITTED**: Runner 035d62c ·
+  Bolter 9353842 · Brawler c8715e1 · Chemist a41795e · Builder 1660287 ·
+  Saboteur bfacc5f (v2 — v1 create hung at 95% for 25+ min, deleted, ~28
+  gens lost; the ONE miss of the session).
+- **Tribal Caller sprites** 0b6dd18 — the whistle channel is a LOOPING
+  horn-blow anim (Caller.gd wiring 16569e5). Live immediately.
+- **Survivor buildings**: farm.png / radio_station.png / settlement_hub.png
+  (map-objects, downloaded before the 8h expiry).
+- **Prop scatter** 2f57859 — the orphaned props library (cars, dead trees,
+  dumpsters, lamps...) now deterministically dresses all 3 authored maps.
+- **FACTION CONNECTED** c174fd9 (Matt's go): SettlementHub recruits the
+  full roster; Saboteur ground-click = sound grenade; Builder places
+  Farm/Radio Station. AI-side (AIProfiles SURVIVOR) deferred.
+
+## Budget
+Start of afternoon ~654 → **268 remaining** (floor 100). Spend: 7 pro
+creates (6 Survivor + Caller, one duplicated for the hang) + 28 anim
+batches + 3 map objects. STOP ART until Matt reviews.
+
+## Feel-test additions for tonight
+- Pick Survivors: the Hub offers six Recruit rows. Recruit a Builder,
+  place a Farm, then a Radio Station within 10 tiles (status flips to
+  Broadcasting; +15 salvage / 20s; the broadcast makes REAL noise).
+- Saboteur: right-click ground = throw the sound grenade (7-tile range,
+  walks in if beyond, plain move while rearming). Watch the minimap rust
+  tide turn toward the detonation.
+- Caller now has a face — channel the whistle and check the horn loop.
+- Sprite scale check: all six Survivor units against the Engineer anchor.
+
+---
+
 # WORKDAY SUMMARY 2026-06-10 (Matt at work — read this + ROADMAP.md + AI_LAB_REPORT.md)
 
 ## Track A — COMPLETE (code; your feel-test is the exit bar)

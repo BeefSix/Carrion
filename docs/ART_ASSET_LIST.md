@@ -92,7 +92,7 @@
 32. **Hunting Lodge** (Tribal) — "tribal hunting lodge, hide-and-bone structure draped with antlers, skulls, and drying racks, isometric structure."
 33. **Ritual Site** (Tribal) — "tribal ritual site, circle of bone totems and skulls around a stone altar, dark ominous ceremonial ground, isometric structure."
 34. **Wall** (defensive) — "makeshift defensive barricade wall, scrap metal, wood, sandbags, razor wire, post-apocalyptic fortification, isometric tile-segment."
-35. *(if budget — Survivor, future)* **Settlement Hub, Farm, Radio Station** — defer; Survivor isn't built.
+35. ~~*(if budget — Survivor, future)* **Settlement Hub, Farm, Radio Station** — defer; Survivor isn't built.~~ **DONE 2026-06-10** — Survivor faction built + connected; all three buildings generated (`assets/buildings/{farm,radio_station,settlement_hub}.png`), plus the full six-unit Survivor roster at gold pro-48 (`assets/sprites/units/survivor/{runner,bolter,brawler,saboteur,chemist,builder}`) and the Tribal **Caller** (`tribal/caller`).
 
 ## PRIORITY TIER 5 — Props & decor (sell the world)
 

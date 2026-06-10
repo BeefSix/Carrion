@@ -40,6 +40,11 @@ play-confirmed by a human — plus the blind spots listed at the bottom.
 ### Track B — The Field (Phase 2)
 - **SteeringField autoload**: signed-weight emitters, order-free summed
   sampling, the single home for zombie movement influence going forward.
+  ⚠️ **Gameplay-only so far** — it feeds a *bias* into zombie wander direction
+  (which is what gives the Caller something to herd with), but zombie
+  *locomotion* still runs through `move_and_slide`. The
+  physics→deterministic-integration migration — the determinism payoff — is
+  **NOT done yet**; NETCODE irreducible #1 remains OPEN (see determinism bullet).
 - **Caller** (Tribal, RitualSite, 90 salvage): channels a permanent whistle
   anchor — aims the dead without owning them.
 - **Harvest**: Brute/Shambler remains (45s TTL), Walker harvest channel +
@@ -50,9 +55,12 @@ play-confirmed by a human — plus the blind spots listed at the bottom.
 ### Determinism / netcode substrate
 - Record-vs-record CI with **per-component checksums** (units/buildings/
   zombies/salvage/RNG-count) — divergence localizes to a subsystem.
-- Known irreducible: intermittent zombie `move_and_slide` physics divergence
-  (~tick 600-720, same build, asset-load sensitive). Documented in NETCODE.md;
-  retired by the SteeringField migration when zombie movement leaves physics.
+- Known irreducible (**STILL OPEN**): intermittent zombie `move_and_slide`
+  physics divergence (~tick 600-720, same build, asset-load sensitive).
+  Documented in NETCODE.md. The SteeringField autoload now exists but zombie
+  locomotion has NOT migrated onto it yet (the field only biases wander) —
+  until that swap, this divergence stays. Phase 2 shipped the field's
+  *gameplay* half, not its *determinism* half.
 - Float-with-discipline ruling (NOT fixed-point) locked 2026-06-08.
 - **WorldConstants autoload** (2026-06-10): map geometry defined once.
 
@@ -81,10 +89,24 @@ play-confirmed by a human — plus the blind spots listed at the bottom.
 
 ## Corrections to the earlier state summary (the ones Matt missed)
 
-1. **Tracks A and B are now complete** — the summary predated the overnight
-   run; both shipped with lab evidence.
-2. **Survivors have NO gold-family sprites** — the third faction is playable
-   but renders with placeholder art. Biggest art gap; it's on the asset list.
+1. **Tracks A and B shipped, but with load-bearing caveats** (not "complete").
+   Track A's *architecture* is done (defends, harasses, both factions,
+   data-driven) but is **not yet validated**: the lab shows Tribal 6-0
+   dominance and the Military mirror data was invalidated by a projectile
+   friendly-fire bug (faction- vs team-hostility), so the "worthy opponent?"
+   exit bar is unproven pending a re-run + Matt's feel-test. Track B's
+   *gameplay* (Caller herding, harvest) is done but its *determinism migration*
+   (zombies off `move_and_slide`) is **not** — see the Track B / determinism
+   notes above. Treat both as "code-complete, feel- and balance-unverified."
+2. **Survivors have NO gold-family sprites** — **CLOSED 2026-06-10 (same
+   day)**: full §7.3 roster built (Runner/Bolter/Brawler/Saboteur/Chemist/
+   Builder + Farm/Radio Station) with gold pro-48 sprites for all six units,
+   and CONNECTED on Matt's go — the SettlementHub recruits the new roster,
+   the Builder places Farms/Radio Stations, the Saboteur's sound grenade
+   routes from ground right-clicks. The Caller also got gold sprites.
+   Remaining Survivor gap: **AIProfiles SURVIVOR** (the AI cannot play the
+   faction yet; deferred per the AI-extension-before-external-playtest
+   ruling — Survivor mirrors and SvM/SvT lab data don't exist).
 3. **Workshop is a Military building** (not Survivor) — the summary
    misattributed it.
 4. **Contamination nuance**: the zombie checksum (zh) is noisy on identical
