@@ -66,9 +66,51 @@ const MILITARY := {
 	"defend_cooldown": 15.0,
 }
 
-# A4 fills this in (Walkers -> Hunting Lodge -> Hunters -> Ritual Site ->
-# Shaman). Declared now so profile_for has a stable shape to grow into.
-const TRIBAL := {}
+# A4 (2026-06-10): the Tribal strategy. Costs mirror the player buildings
+# (TribalCamp/HuntingLodge/RitualSite consts); AI build times use the same
+# ~2.5-3x scale the Military profile applies vs player times. Identity
+# choices: attack_threshold 4 (Strike/Withdraw — earlier, smaller commits
+# than Military's mass-and-push 6) and uses_shaman (the strategist sends
+# idle Shamans to ritual at the infested building nearest the ENEMY HQ —
+# approved default C — making "zombies as a weapon" an AI behavior).
+const TRIBAL := {
+	"build_order": [
+		{ "item": "walker", "cost": 50, "time": 20.0, "needs_production_building": false },
+		{ "item": "walker", "cost": 50, "time": 20.0, "needs_production_building": false },
+		{ "item": "hunting_lodge", "cost": 150, "time": 45.0, "needs_production_building": false },
+		{ "item": "hunter", "cost": 50, "time": 25.0, "needs_production_building": true },
+		{ "item": "hunter", "cost": 50, "time": 25.0, "needs_production_building": true },
+		{ "item": "ritual_site", "cost": 200, "time": 50.0, "needs_production_building": false },
+		{ "item": "shaman", "cost": 100, "time": 30.0, "needs_tech_building": true },
+		{ "item": "hunter", "cost": 50, "time": 25.0, "needs_production_building": true },
+	],
+	"sustain": [
+		{ "item": "hunter", "cost": 50, "time": 25.0, "needs_production_building": true },
+		{ "item": "hunter", "cost": 50, "time": 25.0, "needs_production_building": true },
+		{ "item": "hunter", "cost": 50, "time": 25.0, "needs_production_building": true },
+		{ "item": "shaman", "cost": 100, "time": 30.0, "needs_tech_building": true },
+	],
+	"recovery_worker": { "item": "walker", "cost": 50, "time": 20.0, "needs_production_building": false },
+	"recovery_production_building": { "item": "hunting_lodge", "cost": 150, "time": 45.0, "needs_production_building": false },
+	"economy_floor": 1,
+	"worker_targets": [[0, 2], [3, 3], [6, 4]],
+	"production_building_step": 3,
+	"worker_script": "res://scripts/Walker.gd",
+	"attack_threshold": 4,
+	"retreat_fraction": 0.6,
+	"defend_cooldown": 15.0,
+	"uses_shaman": true,
+	# Min sim-seconds between ritual ORDERS. Without it the first MT lab run
+	# was a ritual every ~6s at the enemy's doorstep — an unstoppable zombie
+	# hose that won by minute 2 and drained every coin (sustain starved).
+	# 45s makes each ritual a punctuating wave, not a faucet. Lab-tunable.
+	"forcespawn_interval": 45.0,
+	# Earliest sim-second for the FIRST ritual (same anti-rush logic as the
+	# approved harass-start default): a doorstep ritual at 0.9 min still won
+	# by minute 2 even at the 45s cadence — no opening can answer it. 150s
+	# lets both factions' openings mature before zombies become a weapon.
+	"forcespawn_start": 150.0,
+}
 
 
 static func profile_for(faction: int) -> Dictionary:

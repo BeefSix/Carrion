@@ -15,6 +15,15 @@ const BARRACKS_SCENE := preload("res://scenes/buildings/Barracks.tscn")
 const LOOTER_SCENE := preload("res://scenes/units/Looter.tscn")
 const RIFLEMAN_SCENE := preload("res://scenes/units/Rifleman.tscn")
 const HEAVY_GUNNER_SCENE := preload("res://scenes/units/HeavyGunner.tscn")
+# A4: Tribal roster + structures.
+const TC_SCENE := preload("res://scenes/buildings/TribalCamp.tscn")
+const HUNTING_LODGE_SCENE := preload("res://scenes/buildings/HuntingLodge.tscn")
+const RITUAL_SITE_SCENE := preload("res://scenes/buildings/RitualSite.tscn")
+const WALKER_SCENE := preload("res://scenes/units/Walker.tscn")
+const HUNTER_SCENE := preload("res://scenes/units/Hunter.tscn")
+const SHAMAN_SCENE := preload("res://scenes/units/Shaman.tscn")
+const SHAMAN_SCRIPT := preload("res://scripts/Shaman.gd")
+const TECH_SPAWN_OFFSET := Vector2(-140, 0)  # ritual site west of camp (lodge takes east)
 
 const LOOTER_SPAWN_OFFSET := Vector2(0, 80)
 const RIFLEMAN_SPAWN_OFFSET := Vector2(0, 80)
@@ -47,7 +56,12 @@ var _next_strategic_sim: float = 0.0
 var _next_tactical_sim: float = 0.0
 var _next_phase_snapshot_sim: float = 0.0
 var _hq: Node2D = null
+# Production building: Barracks (Military) or Hunting Lodge (Tribal). The
+# name predates A4; has_barracks() is the generic "production building
+# exists" check both profiles gate on.
 var _barracks: Node2D = null
+# A4: tech building — Ritual Site (Tribal). Gates shaman rows.
+var _tech_building: Node2D = null
 
 var _producing: bool = false
 var _producing_what: String = ""
@@ -130,15 +144,23 @@ func get_controller_id() -> String:
 
 
 func _emit_phase_snapshot() -> void:
+	# A4: count the PROFILE's worker (Walker for Tribal, Looter for
+	# Military) — the hardcoded Looter count read 0 for Tribal and hid the
+	# economy from telemetry.
+	if _worker_script_cached == null and strategist != null:
+		_worker_script_cached = load(strategist.profile["worker_script"])
 	MatchStats.log_event(&"ai_phase", {
 		"controller": get_controller_id(),
 		"step": strategist.get_step() if strategist != null else -1,
 		"state": strategist.get_state_name() if strategist != null else "UNKNOWN",
 		"salvage": salvage,
-		"looters": count_units_with_script(LOOTER_SCRIPT),
+		"looters": count_units_with_script(_worker_script_cached),
 		"combat": get_combat_count(),
 		"has_barracks": has_barracks(),
 	})
+
+
+var _worker_script_cached = null
 
 
 # ---------- Strategist-facing API (defense, A2) ----------
@@ -176,6 +198,41 @@ func is_producing() -> bool:
 
 func has_barracks() -> bool:
 	return _barracks != null and is_instance_valid(_barracks)
+
+
+func has_tech_building() -> bool:
+	return _tech_building != null and is_instance_valid(_tech_building)
+
+
+# A4: first idle Shaman in our unit group (idle = its Sub state machine is
+# NONE — not approaching, not channeling). First-seen on group order is the
+# documented interim tie-break; matches typically field one Shaman.
+func find_idle_shaman():
+	for u in get_tree().get_nodes_in_group(_unit_group):
+		if not is_instance_valid(u):
+			continue
+		if u.get_script() != SHAMAN_SCRIPT:
+			continue
+		if u.get("_sub") == 0:  # Shaman.Sub.NONE
+			return u
+	return null
+
+
+# A4: force-spawn target — the infested Lootable nearest the ENEMY HQ
+# (approved Decision C default). Strict min-distance, first-seen tie-break.
+func find_forcespawn_target():
+	var best = null
+	var best_dist: float = INF
+	for l in get_tree().get_nodes_in_group("lootable"):
+		if not is_instance_valid(l):
+			continue
+		if not ("is_infested" in l) or not l.is_infested:
+			continue
+		var d: float = enemy_hq_position.distance_to(l.position)
+		if d < best_dist:
+			best_dist = d
+			best = l
+	return best
 
 
 func spend_for_production(cost: int) -> bool:
@@ -252,7 +309,11 @@ func get_enemy_hq_position() -> Vector2:
 
 
 func _spawn_hq() -> void:
-	_hq = CP_SCENE.instantiate()
+	# A4: HQ routes by faction — same pattern Main._spawn_hq uses. The
+	# TribalCamp doubles as the Tribal elimination condition (PLACEHOLDER
+	# ruling — DESIGN_MASTER §12 #6 is still [OPEN]; Matt rules later).
+	var scene: PackedScene = TC_SCENE if faction == GameState.Faction.TRIBAL else CP_SCENE
+	_hq = scene.instantiate()
 	_hq.position = spawn_position
 	get_parent().add_child(_hq)
 	_hq.add_to_group(_building_group)
@@ -295,46 +356,74 @@ func _spawn_produced(item: String) -> void:
 	match item:
 		"looter":
 			_spawn_unit(LOOTER_SCENE, _hq.position + LOOTER_SPAWN_OFFSET)
+		"walker":
+			_spawn_unit(WALKER_SCENE, _hq.position + LOOTER_SPAWN_OFFSET)
 		"rifleman":
 			var origin: Vector2 = _barracks.position if has_barracks() else _hq.position
 			_spawn_unit(RIFLEMAN_SCENE, origin + RIFLEMAN_SPAWN_OFFSET)
 		"heavy_gunner":
 			var origin2: Vector2 = _barracks.position if has_barracks() else _hq.position
 			_spawn_unit(HEAVY_GUNNER_SCENE, origin2 + RIFLEMAN_SPAWN_OFFSET)
+		"hunter":
+			var origin3: Vector2 = _barracks.position if has_barracks() else _hq.position
+			_spawn_unit(HUNTER_SCENE, origin3 + RIFLEMAN_SPAWN_OFFSET)
+		"shaman":
+			var origin4: Vector2 = _tech_building.position if has_tech_building() else _hq.position
+			_spawn_unit(SHAMAN_SCENE, origin4 + RIFLEMAN_SPAWN_OFFSET)
 		"barracks":
-			_barracks = BARRACKS_SCENE.instantiate()
-			_barracks.position = _hq.position + BARRACKS_SPAWN_OFFSET
-			get_parent().add_child(_barracks)
-			_barracks.add_to_group(_building_group)
-			if "owner_controller" in _barracks:
-				_barracks.owner_controller = self  # A2 damage routing
-			if get_parent().has_method("rebake_navigation"):
-				get_parent().call_deferred("rebake_navigation")
+			_barracks = _spawn_structure(BARRACKS_SCENE, _hq.position + BARRACKS_SPAWN_OFFSET)
+		"hunting_lodge":
+			_barracks = _spawn_structure(HUNTING_LODGE_SCENE, _hq.position + BARRACKS_SPAWN_OFFSET)
+		"ritual_site":
+			_tech_building = _spawn_structure(RITUAL_SITE_SCENE, _hq.position + TECH_SPAWN_OFFSET)
+
+
+# A4: shared structure spawn — ownership tag, A2 damage routing, nav rebake.
+func _spawn_structure(scene: PackedScene, pos: Vector2) -> Node2D:
+	var b: Node2D = scene.instantiate()
+	b.position = pos
+	get_parent().add_child(b)
+	b.add_to_group(_building_group)
+	if "owner_controller" in b:
+		b.owner_controller = self
+	if get_parent().has_method("rebake_navigation"):
+		get_parent().call_deferred("rebake_navigation")
+	return b
 
 
 const SPAWN_JITTER := 24.0
-# A3: how far from the HQ the AI is willing to stake a Looter onto an
-# infested building. Past this, the courier run home gets too long and the
-# Looter spends its life commuting. Lab placeholder.
-const LOOTER_STAKE_RADIUS_PX := 14.0 * 32.0
+# A3/A4: how far from the HQ the AI is willing to stake a Looter onto an
+# infested building. The original 14 tiles found ZERO infested buildings
+# near some spawn corners (seed-42 player corner among them), which
+# silently zeroed the player-slot AI's income in every lab run — Military
+# income IS zombie farming, so no infested in range = structurally dead
+# economy. 40 tiles trades commute time for a guaranteed income source.
+const LOOTER_STAKE_RADIUS_PX := 40.0 * 32.0
+
+# A4: round-robin cursor so successive Looters stake DIFFERENT infested
+# buildings instead of stacking on one spawner.
+var _stake_counter: int = 0
 
 
 func _find_looter_stake() -> Vector2:
-	# Nearest infested Lootable to the HQ within stake range. ZERO = none
-	# found (caller leaves the Looter's default home anchor).
+	# i-th nearest infested Lootable to the HQ within stake range, where i
+	# cycles per Looter staked. Deterministic: sorted by (distance, x, y).
 	var hq_pos: Vector2 = get_hq_position()
-	var best: Vector2 = Vector2.ZERO
-	var best_dist: float = LOOTER_STAKE_RADIUS_PX
+	var candidates: Array = []
 	for l in get_tree().get_nodes_in_group("lootable"):
 		if not is_instance_valid(l):
 			continue
 		if not ("is_infested" in l) or not l.is_infested:
 			continue
 		var d: float = hq_pos.distance_to(l.position)
-		if d < best_dist:
-			best_dist = d
-			best = l.position
-	return best
+		if d < LOOTER_STAKE_RADIUS_PX:
+			candidates.append([d, l.position.x, l.position.y])
+	if candidates.is_empty():
+		return Vector2.ZERO
+	candidates.sort()
+	var pick: Array = candidates[_stake_counter % candidates.size()]
+	_stake_counter += 1
+	return Vector2(pick[1], pick[2])
 
 
 func _spawn_unit(scene: PackedScene, pos: Vector2) -> void:

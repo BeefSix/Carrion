@@ -5,7 +5,13 @@ enum Sub { NONE, GATHER_APPROACH, GATHER_CHANNEL, GATHER_RETURN }
 const SALVAGE_PER_TRIP := 25
 const CHANNEL_TIME := 3.0
 const INTERACTION_RANGE := 80.0
-const SEARCH_RADIUS := 1000.0
+# Widened 1000 -> 2000 (A4 lab finding): two Walkers drain every lootable
+# within 1000px of the camp in ~2 sim-minutes, then idle forever — the
+# Tribal AI's income froze mid-match. Walkers are auto-seekers by design;
+# the wider net keeps them working as the local patch depletes. FEEL FLAG:
+# player Walkers also roam farther before idling (less micro, but they
+# wander deeper into the map on their own).
+const SEARCH_RADIUS := 2000.0
 # H13: when no lootable is in range, hold off the next scan for this long
 # instead of re-iterating the lootable group every physics frame.
 const LOOTABLE_RETRY_INTERVAL := 1.0

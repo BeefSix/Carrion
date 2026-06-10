@@ -42,6 +42,7 @@ var _step: int = 0
 var _sustain_idx: int = 0  # round-robin cursor over profile.sustain
 var _state: int = State.BUILD
 var _peak_combat: int = 0
+var _last_forcespawn_sim: float = -1000.0  # A4 ritual cadence anchor
 
 
 func evaluate() -> void:
@@ -49,6 +50,35 @@ func evaluate() -> void:
 		return
 	_advance_production()
 	_update_posture()
+	_direct_shaman()
+
+
+func _direct_shaman() -> void:
+	# A4 Tribal identity: an IDLE Shaman is a wasted Shaman. Send it to
+	# ritual at the infested building nearest the enemy HQ (approved
+	# default C — deterministic, dramatic, teaches the player what
+	# force-spawn does). The Shaman handles its own approach + channel +
+	# owner-aware salvage; re-issued only when idle again, so a 5s eval
+	# cadence can't interrupt a ritual in progress.
+	if not profile.get("uses_shaman", false):
+		return
+	if GameState.sim_seconds() < float(profile.get("forcespawn_start", 0.0)):
+		return
+	if GameState.sim_seconds() - _last_forcespawn_sim < float(profile.get("forcespawn_interval", 45.0)):
+		return
+	var shaman = controller.find_idle_shaman()
+	if shaman == null:
+		return
+	var target = controller.find_forcespawn_target()
+	if target == null:
+		return
+	var src: String = CommandBus.SRC_AI_PLAYER_SLOT if controller.as_player_slot else CommandBus.SRC_AI_OPPOSING
+	CommandBus.issue("force_spawn", shaman, {"target": target}, src)
+	_last_forcespawn_sim = GameState.sim_seconds()
+	MatchStats.log_event(&"ai_forcespawn_ordered", {
+		"controller": controller.get_controller_id(),
+		"target_pos": [target.position.x, target.position.y],
+	})
 
 
 func _advance_production() -> void:
@@ -57,7 +87,11 @@ func _advance_production() -> void:
 	var task: Dictionary = _next_task()
 	if task.is_empty():
 		return
-	if task.needs_production_building and not controller.has_barracks():
+	# .get, not dot access — rows only carry the gate keys they need (the
+	# Tribal shaman row has needs_tech_building but no production key).
+	if task.get("needs_production_building", false) and not controller.has_barracks():
+		return
+	if task.get("needs_tech_building", false) and not controller.has_tech_building():
 		return
 	if not controller.spend_for_production(task.cost):
 		return

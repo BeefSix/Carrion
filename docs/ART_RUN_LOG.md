@@ -1,3 +1,15 @@
+# SPRITE REDO QUEUE (Matt directive 2026-06-10): match the gold pro-48px family
+# (Engineer/Shaman/Hunter/Walker/Runner v1). Per character: pro create -> 4 anim
+# batches (idle breathing-idle / walk walking-8-frames / attack v3 custom 6f all
+# 8 dirs / death falling-back-death) -> download -> swap tree -> commit.
+- [RUNNING] HeavyGunner v4 (437297e8-db17-436a-81ff-867ad7c52f94) create. Attack v3: "leaning back braced, firing heavy belt-fed machine gun from the hip, muzzle climb". Tree: military/heavy_gunner.
+- [ ] Rifleman v7: "post-apocalyptic military rifleman, grizzled bearded soldier in worn olive fatigues and patrol cap, tactical scarf around neck, plate carrier with pouches, maintained carbine rifle, visible weathered face, desaturated olive coyote gunmetal palette, bleak realistic pixel art, The Road register". Attack v3: "standing braced, aiming rifle and firing with sharp recoil kick". Tree: military/rifleman.
+- [ ] Looter v4: "post-apocalyptic military looter-scavenger, lean wiry soldier in worn olive fatigues, heavy scavenging pack with slung sacks and scrap, large revolver magnum sidearm drawn, weathered confident face, desaturated olive coyote palette, bleak realistic pixel art". Attack v3: "aiming a heavy revolver two-handed and firing a single deliberate shot". Tree: military/looter.
+- [ ] Medic v2: same prompt as Medic v1 (red-cross satchel, no rifle) but pro 48px family scale. Attack v3: "kneeling down, pressing a bandage wrap onto a wound with both hands". Tree: military/medic.
+- [ ] Shambler v4: "slow shambling zombie, desiccated gaunt civilian in tattered ragged clothing, grey-green rotted flesh, hunched lurching posture, vacant dead eyes, bleak horror pixel art, grimy". Walk = scary-walk template. Attack v3: "lurching grab and bite". Tree: zombies/shambler.
+- [ ] Brute v2 AT 64PX: "huge hulking zombie, massively muscled and swollen, towering bulk, thick rotted hide, slow devastating presence, bleak horror pixel art". Walk = scary-walk. Attack v3: "massive overhead two-armed smash". Tree: zombies/brute.
+# Budget at queue start: ~949 gens (after HG create). ~330 needed total. Floor 100.
+
 # FINAL OVERNIGHT REPORT — 2026-06-09/10 (read this first, Matt)
 
 ## Awaiting YOUR approval (the two plan-first gates — nothing built on these)

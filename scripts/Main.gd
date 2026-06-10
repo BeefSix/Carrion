@@ -371,14 +371,20 @@ func _spawn_ai_vs_ai_opponents() -> void:
 		return
 	var player_pos: Vector2 = _get_spawn_position()
 	var ai_pos: Vector2 = _get_ai_spawn_position()
+	# A4: --matchup=XY picks the factions (X = player slot, Y = opposing;
+	# M = Military, T = Tribal). Default MM preserves the existing mirror.
+	var matchup: String = "MM"
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--matchup="):
+			matchup = arg.get_slice("=", 1).to_upper()
 	var player_ai = ai_script.new()
-	player_ai.faction = GameState.Faction.MILITARY
+	player_ai.faction = GameState.Faction.TRIBAL if matchup.substr(0, 1) == "T" else GameState.Faction.MILITARY
 	player_ai.spawn_position = player_pos
 	player_ai.enemy_hq_position = ai_pos
 	player_ai.as_player_slot = true
 	add_child(player_ai)
 	var opposing_ai = ai_script.new()
-	opposing_ai.faction = GameState.Faction.MILITARY
+	opposing_ai.faction = GameState.Faction.TRIBAL if matchup.substr(1, 1) == "T" else GameState.Faction.MILITARY
 	opposing_ai.spawn_position = ai_pos
 	opposing_ai.enemy_hq_position = player_pos
 	opposing_ai.as_player_slot = false
