@@ -104,10 +104,17 @@ fi
 # alongside; if a real error exists its specific line survives filtering.
 AUTOLOAD_NAMES=$(sed -n '/^\[autoload\]/,/^\[/p' project.godot \
     | grep -oE '^[A-Za-z_][A-Za-z0-9_]*' | paste -sd'|' -)
+# "Failed to compile depended scripts" (added 2026-06-10): the standalone
+# checker failing to compile a DEPENDENCY of the checked file (the
+# dependency's own autoload references can't resolve in isolation). If a
+# dependency is genuinely broken, it's either in CHANGED_GD itself (its
+# specific error still blocks) or the full-project verification run
+# catches it.
 REMAINING=$(printf '%s\n' "$ERR_LINES" \
     | grep -vE "Identifier not found: (${AUTOLOAD_NAMES})\$" \
     | grep -vE "(Cannot resolve|Identifier \"(${AUTOLOAD_NAMES})\" not declared in the current scope)" \
     | grep -vE 'Failed to load script .* "Compilation failed"' \
+    | grep -vE 'Failed to compile depended scripts' \
     || true)
 
 if [[ -z "$REMAINING" ]]; then
