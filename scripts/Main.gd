@@ -176,10 +176,6 @@ func _ready() -> void:
 		# Force the recorded seed (reset_match honors the env override).
 		GameState.match_seed = ReplayRecorder.playback_seed()
 		SimRng.seed_with(GameState.match_seed)
-	# Dev CLI override: --ridley flag (after Godot's -- separator) forces the
-	# image-to-map PoC path. Lets headless testing skip the TitleScreen.
-	if "--ridley" in user_args:
-		GameState.custom_map_path = "res://assets/maps/ridley_data.json"
 	# Image-to-map PoC: when GameState.custom_map_path is set, load that JSON
 	# instead of running TownPlanner. The image is rendered as an iso-projected
 	# Polygon2D background covering the world's diamond view space.
