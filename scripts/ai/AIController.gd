@@ -66,6 +66,10 @@ func _ready() -> void:
 		_building_group = "player_buildings"
 	strategist = AIStrategist.new()
 	strategist.controller = self
+	# A1: faction strategy is data — the strategist reads a profile and
+	# carries zero faction knowledge itself. A4 adds the Tribal profile.
+	# (Preload, not class_name — headless cache-independence.)
+	strategist.profile = preload("res://scripts/ai/AIProfiles.gd").profile_for(faction)
 	tactician = AITactician.new()
 	tactician.controller = self
 	_spawn_hq()
