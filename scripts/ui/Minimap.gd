@@ -12,7 +12,7 @@ extends Control
 #   3. Camera view diamond — the iso viewport projected to world space.
 # Click / drag: pan the camera to the clicked world position (SC behavior).
 
-const WORLD := 6144.0
+const WORLD := WorldConstants.MAP_SIZE_PX
 const REFRESH_SEC := 0.25  # 4 Hz blip refresh — SC1 cadence territory
 
 const TILE_COLORS := {

@@ -6,7 +6,7 @@ const MAX_REACH := 480.0
 const MERGE_RADIUS := 96.0
 const MIN_INTENSITY := 1.0
 const ATTRACT_INTERVAL := 0.4
-const MAP_SIZE := Vector2(6144, 6144)
+const MAP_SIZE := WorldConstants.MAP_SIZE  # single source: WorldConstants
 const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
 # H14: derive occluder cache radius from Shambler's hearing range so the two
 # can't drift apart again (they did once - hearing was bumped 512 -> 704 px

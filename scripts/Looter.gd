@@ -541,8 +541,7 @@ func _tick_return_home() -> void:
 			var away: Vector2 = (global_position - threat.global_position).normalized()
 			var to_home: Vector2 = (_home_base.position - global_position).normalized()
 			var sidestep: Vector2 = global_position + away * AVOID_DETOUR_PX + to_home * AVOID_DETOUR_PX
-			sidestep.x = clamp(sidestep.x, 50.0, 6094.0)
-			sidestep.y = clamp(sidestep.y, 50.0, 6094.0)
+			sidestep = WorldConstants.clamp_to_world(sidestep)
 			_nav.target_position = sidestep
 		else:
 			# No threat - direct line home.

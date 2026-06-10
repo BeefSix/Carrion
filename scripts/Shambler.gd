@@ -1082,8 +1082,7 @@ func _physics_tick(delta: float) -> void:
 					SimRng.randf_range(-SEARCH_RADIUS, SEARCH_RADIUS),
 				)
 				var search_pos: Vector2 = _investigate_target + offset
-				search_pos.x = clamp(search_pos.x, 50.0, 6094.0)
-				search_pos.y = clamp(search_pos.y, 50.0, 6094.0)
+				search_pos = WorldConstants.clamp_to_world(search_pos)
 				_nav.target_position = search_pos
 				_set_desired_facing(search_pos)
 			_follow_navigation()
@@ -1209,8 +1208,7 @@ func _start_wander() -> void:
 	if target == Vector2.ZERO:
 		var direction: Vector2 = _pick_wander_direction()
 		target = global_position + direction * _wander_radius_px
-	target.x = clamp(target.x, 50.0, 6094.0)
-	target.y = clamp(target.y, 50.0, 6094.0)
+	target = WorldConstants.clamp_to_world(target)
 	_wander_target = target
 	_wandering = true
 	_wander_start_pos = global_position
@@ -1431,8 +1429,7 @@ func follow_leader_wander(leader_target: Vector2) -> void:
 		SimRng.randf_range(-COHESION_TARGET_JITTER, COHESION_TARGET_JITTER),
 		SimRng.randf_range(-COHESION_TARGET_JITTER, COHESION_TARGET_JITTER),
 	)
-	jittered.x = clamp(jittered.x, 50.0, 6094.0)
-	jittered.y = clamp(jittered.y, 50.0, 6094.0)
+	jittered = WorldConstants.clamp_to_world(jittered)
 	_wander_target = jittered
 	_wandering = true
 	_wander_start_pos = global_position

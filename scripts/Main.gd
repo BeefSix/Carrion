@@ -8,7 +8,7 @@ const SH_SCENE := preload("res://scenes/buildings/SettlementHub.tscn")
 const SHAMBLER_SCENE := preload("res://scenes/units/Shambler.tscn")
 const NoiseFieldScript := preload("res://scripts/NoiseField.gd")
 const WIN_OVERLAY_SCENE := preload("res://scenes/WinOverlay.tscn")
-const MAP_SIZE := Vector2(6144, 6144)
+const MAP_SIZE := WorldConstants.MAP_SIZE  # single source: WorldConstants
 const DEV_SPEED := 4.0
 const DEV_NOISE_INJECT := 100.0
 
