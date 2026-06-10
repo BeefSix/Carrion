@@ -14,7 +14,11 @@ Everything else — doctrines, campaign, endgame units, netcode — is downstrea
 
 ## Phase order (each gated on a feel-test exit bar)
 
-### Phase 1 — The Opponent (Track A: docs/AI_OVERHAUL_PLAN.md) ⟵ NEXT, awaiting approval
+### Phase 1 — The Opponent (Track A) — ✅ CODE COMPLETE 2026-06-10 (feel-test pending Matt)
+A1 profiles+goal-stack, A2 defense, A3 economy growth+composition, A4 Tribal AI,
+A5 harassment, A6 lab report (docs/AI_LAB_REPORT.md — PROVISIONAL: Tribal 6-0-4
+cross-faction, Military mirrors stalemate, corner asymmetry measured; A6b
+re-tune budgeted after Phase 3).
 **Exit bar:** Matt loses a game he was trying to win and immediately wants a rematch.
 **Why first (load-bearing, not preference):** Phase 2's exit bar is "herd 20 zombies
 into the Military base" — that feel-test is meaningless without a Military base that
@@ -23,7 +27,9 @@ cannot be flipped.
 **Caveat:** A6's tuning numbers are provisional — tuned against a world where zombies
 are still weather. A6b re-tune is budgeted after Phase 3 (see plan doc).
 
-### Phase 2 — The Field + The Caller + Harvest (Track B: docs/CALLER_PLAN.md)
+### Phase 2 — The Field + The Caller + Harvest (Track B) — ✅ CODE COMPLETE 2026-06-10 (feel-test pending Matt)
+B1 SteeringField v0, B2 Caller whistle (silent v1), B3 harvest-the-dead
+(19 harvests in the B4 sanity match), B4 TT lab sanity green.
 **Exit bar:** herd a 20-zombie cluster into the Military AI's base, harvest the
 aftermath with Walkers, and it felt like *conducting*, not micromanaging.
 **Also closes:** the last determinism frontier (move_and_slide → field sampling) and

@@ -1,3 +1,39 @@
+# WORKDAY SUMMARY 2026-06-10 (Matt at work — read this + ROADMAP.md + AI_LAB_REPORT.md)
+
+## Track A — COMPLETE (code; your feel-test is the exit bar)
+A4 Tribal AI a1ec528 · A5 harassment 2d5bc8f · A6 lab report e3d8fd0
+(A1-A3 were morning: da3aeeb / 7e0966f / 2f95598)
+Lab headline: Tribal 6-0-4 cross-faction (hunter rush decides), Military
+mirrors stalemate (attrition equilibrium), CORNER ASYMMETRY measured (map-pass
+input). All balance numbers provisional until the threat pass (A6b budgeted).
+
+## Track B — COMPLETE through B4 (code)
+B1 SteeringField v0 bcef9e9 · B2 Caller aed2ada · B3 harvest 7bbe0e2 ·
+B4 sanity: TT match = 19 harvests, rituals firing, both Tribal AIs healthy.
+
+## Sprite redo queue (gold pro-48 family) — 5 of 6 shipped
+HG v4 7012d8d · Rifleman v7 d8b2766 · Looter v4 80edc07 · Medic v2 a99f556 ·
+Shambler v4 bd67c1e · Brute v2 (64px) IN FLIGHT (a0e177f9, anims finishing on
+the loop — final commit lands before you're home).
+
+## Budget: 713 generations remaining (Brute v2 needs ~40 more; floor 100 safe).
+
+## Evening feel-test checklist (the real exit bars)
+1. Play vs the Military AI, then vs the Tribal AI (title screen as usual; AI
+   faction now matches the matchup) — bar: lose a game you tried to win and
+   want a rematch. Expect Tribal to feel TOO strong (lab says so) — that's
+   A6b's job, tell me where it crossed from pressure into unfair.
+2. Build a Caller (Ritual Site, 90): close right-click = whistle (line+ring
+   telegraph), far right-click = walk. Herd a cluster at the enemy. Kill him
+   mid-whistle: drift stops instantly.
+3. Watch Walkers: when local lootables run dry they harvest remains piles
+   (dark mounds, bone fleck) automatically. Right-click a Brute pile = 40.
+4. Sprite scale: whole roster should now read as ONE family. Flag any unit
+   that still feels off-scale or off-style.
+5. Walker roaming feel-flag: they range ~2x farther before idling (A4 fix).
+
+---
+
 # SPRITE REDO QUEUE (Matt directive 2026-06-10): match the gold pro-48px family
 # (Engineer/Shaman/Hunter/Walker/Runner v1). Per character: pro create -> 4 anim
 # batches (idle breathing-idle / walk walking-8-frames / attack v3 custom 6f all
