@@ -78,6 +78,10 @@ func _dispatch(kind: String, actor, args: Dictionary) -> void:
 			# B2: the Caller's herd verb (CALLER_PLAN).
 			if actor.has_method("whistle_at"):
 				actor.whistle_at(args.get("target", Vector2.ZERO))
+		"harvest":
+			# B3: the Walker's remains-harvest verb (CALLER_PLAN).
+			if actor.has_method("harvest_remains"):
+				actor.harvest_remains(args.get("target", null))
 		"gather":
 			if actor.has_method("gather_from"):
 				actor.gather_from(args.get("target", null))

@@ -130,6 +130,7 @@ func _mouse_world() -> Vector2:
 
 func _handle_right_click(world_pos: Vector2) -> void:
 	var target_corpse = _find_corpse_at(world_pos)
+	var target_remains = _find_remains_at(world_pos)
 	var target_building = _find_building_at(world_pos)
 	var target_lootable = null
 	if target_building != null and target_building.is_in_group("lootable"):
@@ -156,7 +157,9 @@ func _handle_right_click(world_pos: Vector2) -> void:
 		# B2: Caller ground clicks route to the whistle (which itself walks
 		# when the point is out of whistle range) — never to plain move.
 		var has_whistle_action: bool = target_building == null and target_corpse == null and u.has_method("whistle_at")
-		if has_corpse_action or has_repair_action or has_force_spawn_action or has_gather_action or has_whistle_action:
+		# B3: Walker right-click on a remains pile = harvest order.
+		var has_harvest_action: bool = target_remains != null and u.has_method("harvest_remains")
+		if has_corpse_action or has_repair_action or has_force_spawn_action or has_gather_action or has_whistle_action or has_harvest_action:
 			continue
 		if u.has_method("move_to"):
 			move_unit_count += 1
@@ -176,6 +179,8 @@ func _handle_right_click(world_pos: Vector2) -> void:
 			CommandBus.issue("force_spawn", u, {"target": target_lootable}, CommandBus.SRC_PLAYER)
 		elif target_lootable != null and u.has_method("gather_from"):
 			CommandBus.issue("gather", u, {"target": target_lootable}, CommandBus.SRC_PLAYER)
+		elif target_remains != null and u.has_method("harvest_remains"):
+			CommandBus.issue("harvest", u, {"target": target_remains}, CommandBus.SRC_PLAYER)
 		elif target_building == null and target_corpse == null and u.has_method("whistle_at"):
 			CommandBus.issue("whistle", u, {"target": world_pos}, CommandBus.SRC_PLAYER)
 		elif u.has_method("move_to"):
@@ -244,6 +249,22 @@ func _find_building_at(world_pos: Vector2):
 		if collider != null and collider.is_in_group("buildings"):
 			return collider
 	return null
+
+
+func _find_remains_at(world_pos: Vector2):
+	# B3: same click model as corpses — nearest remains within a small
+	# click radius.
+	const REMAINS_CLICK_RADIUS := 14.0
+	var nearest = null
+	var nearest_d := REMAINS_CLICK_RADIUS
+	for r in get_tree().get_nodes_in_group("remains"):
+		if not is_instance_valid(r):
+			continue
+		var d: float = world_pos.distance_to(r.position)
+		if d < nearest_d:
+			nearest_d = d
+			nearest = r
+	return nearest
 
 
 func _find_corpse_at(world_pos: Vector2):

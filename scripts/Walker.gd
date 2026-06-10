@@ -1,6 +1,6 @@
 extends "res://scripts/Unit.gd"
 
-enum Sub { NONE, GATHER_APPROACH, GATHER_CHANNEL, GATHER_RETURN }
+enum Sub { NONE, GATHER_APPROACH, GATHER_CHANNEL, GATHER_RETURN, HARVEST_APPROACH, HARVEST_CHANNEL }
 
 const SALVAGE_PER_TRIP := 25
 const CHANNEL_TIME := 3.0
@@ -15,9 +15,16 @@ const SEARCH_RADIUS := 2000.0
 # H13: when no lootable is in range, hold off the next scan for this long
 # instead of re-iterating the lootable group every physics frame.
 const LOOTABLE_RETRY_INTERVAL := 1.0
+const HARVEST_TIME := 3.0
+const HARVEST_RANGE := 60.0
 
 var _sub: Sub = Sub.NONE
 var _target_lootable = null
+# B3 harvest-the-dead (CALLER_PLAN): Walkers channel on zombie Remains and
+# convert them to salvage — the Tribal economy finally engages the
+# ecosystem instead of ignoring it. Channel is shorter than a gather trip
+# (the pile is right there); yield comes from the Remains node.
+var _target_remains = null
 var _home_base = null
 var _channel_timer := 0.0
 var _carrying := 0
@@ -92,8 +99,8 @@ func _update_walker_sprite_animation() -> void:
 	var action: String
 	if current_hp <= 0:
 		action = "death"
-	elif _sub == Sub.GATHER_CHANNEL:
-		action = "gather"
+	elif _sub == Sub.GATHER_CHANNEL or _sub == Sub.HARVEST_CHANNEL:
+		action = "gather"  # the stoop reads for both verbs
 	elif velocity.length_squared() > 1.0:
 		action = "walk"
 	else:
@@ -112,10 +119,21 @@ func gather_from(lootable) -> void:
 	_nav.target_position = lootable.position
 
 
+func harvest_remains(remains) -> void:
+	# B3: ordered harvest (right-click a Remains pile).
+	if remains == null or not is_instance_valid(remains):
+		return
+	_target_remains = remains
+	_sub = Sub.HARVEST_APPROACH
+	current_command = Command.GATHER
+	_nav.target_position = remains.position
+
+
 func move_to(world_pos: Vector2) -> void:
 	super.move_to(world_pos)
 	_sub = Sub.NONE
 	_target_lootable = null
+	_target_remains = null
 
 
 func _physics_process(delta: float) -> void:
@@ -146,6 +164,10 @@ func _physics_process(delta: float) -> void:
 			_tick_gather_channel(delta)
 		Sub.GATHER_RETURN:
 			_tick_gather_return()
+		Sub.HARVEST_APPROACH:
+			_tick_harvest_approach()
+		Sub.HARVEST_CHANNEL:
+			_tick_harvest_channel(delta)
 		_:
 			velocity = Vector2.ZERO
 
@@ -163,11 +185,61 @@ func _try_find_lootable() -> void:
 			best_dist = d
 			best = l
 	if best == null:
+		# B3 auto-harvest fallback: no lootable in reach -> work the nearest
+		# Remains instead. The Walker is never idle while the dead are lying
+		# around — the 'constantly working the dead' identity.
+		var r = _find_nearest_remains()
+		if r != null:
+			harvest_remains(r)
+			return
 		velocity = Vector2.ZERO
 		return
 	_target_lootable = best
 	_sub = Sub.GATHER_APPROACH
 	_nav.target_position = best.position
+
+
+func _find_nearest_remains():
+	var best = null
+	var best_dist := SEARCH_RADIUS
+	for r in get_tree().get_nodes_in_group("remains"):
+		if not is_instance_valid(r):
+			continue
+		var d: float = global_position.distance_to(r.position)
+		if d <= best_dist:
+			best_dist = d
+			best = r
+	return best
+
+
+func _tick_harvest_approach() -> void:
+	if _target_remains == null or not is_instance_valid(_target_remains):
+		_sub = Sub.NONE
+		return
+	if global_position.distance_to(_target_remains.position) <= HARVEST_RANGE:
+		_sub = Sub.HARVEST_CHANNEL
+		_channel_timer = HARVEST_TIME
+		velocity = Vector2.ZERO
+	else:
+		_follow_navigation()
+
+
+func _tick_harvest_channel(delta: float) -> void:
+	velocity = Vector2.ZERO
+	if _target_remains == null or not is_instance_valid(_target_remains):
+		_sub = Sub.NONE
+		return
+	_channel_timer -= delta
+	if _channel_timer <= 0.0:
+		var pay: int = _target_remains.harvest()
+		if pay > 0:
+			_carrying += pay
+			MatchStats.log_event(&"harvest", {
+				"yield": pay,
+				"pos": [global_position.x, global_position.y],
+			})
+		_target_remains = null
+		_sub = Sub.NONE  # next tick: carry triggers return home, or keep working
 
 
 func _start_return_home() -> void:

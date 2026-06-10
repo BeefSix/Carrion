@@ -772,6 +772,26 @@ func _tick_idle_head_turn(delta: float) -> void:
 		_desired_facing_angle = _facing_angle + SimRng.randf_range(-2.094, 2.094)
 
 
+# ---- Remains (B3 harvest economy) ----------------------------------------
+
+const REMAINS_SCENE := preload("res://scenes/props/Remains.tscn")
+const HARVEST_YIELD_NORMAL := 8
+const HARVEST_YIELD_BRUTE := 40  # §3.3: "dead Brutes are a Tribal resource"
+
+
+func _die(attacker = null) -> void:
+	# B3: zombie deaths leave harvestable Remains (NOT a Corpse — zombies
+	# never re-rise; see Remains.gd for the design split). Spawned before
+	# super so position is still valid. Population-neutral: remains are
+	# scenery + salvage, not actors.
+	var r = REMAINS_SCENE.instantiate()
+	r.position = global_position
+	r.harvest_yield = HARVEST_YIELD_BRUTE if variant == VARIANT_BRUTE else HARVEST_YIELD_NORMAL
+	r.from_brute = variant == VARIANT_BRUTE
+	get_parent().add_child(r)
+	super._die(attacker)
+
+
 # ---- Variant configuration ----------------------------------------------
 
 
