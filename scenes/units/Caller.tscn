@@ -1,0 +1,28 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/Caller.gd" id="1_caller"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_caller"]
+size = Vector2(24, 24)
+
+[node name="Caller" type="CharacterBody2D" groups=["units", "player_units"]]
+script = ExtResource("1_caller")
+faction = 1
+max_hp = 35
+move_speed = 80.0
+body_color = Color(0.78, 0.74, 0.62, 1)
+corpse_base_chance = 0.0
+size_px = 24
+
+[node name="CollisionShape" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_caller")
+
+[node name="NavigationAgent" type="NavigationAgent2D" parent="."]
+path_desired_distance = 16.0
+target_desired_distance = 24.0
+radius = 12.0
+max_speed = 80.0
+avoidance_enabled = false
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+sprite_frames = null

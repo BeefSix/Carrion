@@ -153,7 +153,10 @@ func _handle_right_click(world_pos: Vector2) -> void:
 		var has_repair_action: bool = target_building != null and is_damaged and building_is_player_owned and u.has_method("repair_at")
 		var has_force_spawn_action: bool = target_lootable != null and is_infested and u.has_method("force_spawn_at")
 		var has_gather_action: bool = target_lootable != null and u.has_method("gather_from")
-		if has_corpse_action or has_repair_action or has_force_spawn_action or has_gather_action:
+		# B2: Caller ground clicks route to the whistle (which itself walks
+		# when the point is out of whistle range) — never to plain move.
+		var has_whistle_action: bool = target_building == null and target_corpse == null and u.has_method("whistle_at")
+		if has_corpse_action or has_repair_action or has_force_spawn_action or has_gather_action or has_whistle_action:
 			continue
 		if u.has_method("move_to"):
 			move_unit_count += 1
@@ -173,6 +176,8 @@ func _handle_right_click(world_pos: Vector2) -> void:
 			CommandBus.issue("force_spawn", u, {"target": target_lootable}, CommandBus.SRC_PLAYER)
 		elif target_lootable != null and u.has_method("gather_from"):
 			CommandBus.issue("gather", u, {"target": target_lootable}, CommandBus.SRC_PLAYER)
+		elif target_building == null and target_corpse == null and u.has_method("whistle_at"):
+			CommandBus.issue("whistle", u, {"target": world_pos}, CommandBus.SRC_PLAYER)
 		elif u.has_method("move_to"):
 			var per_unit_target: Vector2 = _formation_position(world_pos, move_index, move_unit_count)
 			CommandBus.issue("move", u, {"target": per_unit_target}, CommandBus.SRC_PLAYER)
