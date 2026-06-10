@@ -1752,6 +1752,15 @@ func _find_visible_target():
 # never reads back from the sprite frame chosen.
 
 const SPRITE_ROOT := "res://assets/sprites/units/zombies/shambler/"
+# Variant-aware sprite roots (2026-06-09): Runner/Brute are chassis
+# configurations (§3.3) sharing this script, so the sprite loader picks
+# the root by `variant`. Missing trees no-op gracefully (procedural
+# silhouette fallback in _draw), so art can land per-variant.
+const SPRITE_ROOTS_BY_VARIANT := {
+	VARIANT_SHAMBLER: SPRITE_ROOT,
+	VARIANT_RUNNER: "res://assets/sprites/units/zombies/runner/",
+	VARIANT_BRUTE: "res://assets/sprites/units/zombies/brute/",
+}
 const SPRITE_DIRECTIONS := ["east", "south-east", "south", "south-west", "west", "north-west", "north", "north-east"]
 
 # Action -> animation-fps. attack is fast and fairly punchy (lunge/bite
@@ -1774,7 +1783,7 @@ func _build_shambler_sprite_frames() -> SpriteFrames:
 			var added_any := false
 			var i := 0
 			while true:
-				var frame_path := "%s%s/%s/%d.png" % [SPRITE_ROOT, action, dir, i]
+				var frame_path := "%s%s/%s/%d.png" % [SPRITE_ROOTS_BY_VARIANT.get(variant, SPRITE_ROOT), action, dir, i]
 				if not ResourceLoader.exists(frame_path):
 					break
 				if not added_any:
