@@ -41,3 +41,4 @@ Thumbs.db
 
 # Claude Code runtime lockfile (session-scoped, regenerated)
 .claude/scheduled_tasks.lock
+atlas_dump.png

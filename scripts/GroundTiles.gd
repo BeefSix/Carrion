@@ -48,6 +48,39 @@ const TILE_COLORS := [
 	Color("3c402e"),  # 10 fence
 ]
 
+# ---- Palette unification (2026-06-11, "skin the maps" pass) ----
+# The 11 source tiles were generated separately and never agreed on a
+# palette: cool near-black roads next to bright warm-brown yards read as
+# a quilt, not ground. Fix at LOAD TIME: each tile's pixels are remapped
+# by luminance onto a per-terrain color ramp from one bleak family —
+# hue carries terrain identity (asphalt cool, organics khaki/olive,
+# dirt warm brown), the source tile's texture survives as value
+# variation. Source PNGs untouched; the ramps are the tuning surface.
+# RENDER-ONLY.
+const TILE_RAMPS := [
+	[Color("1d1d20"), Color("36363c")],  # 0 main road — cool asphalt
+	[Color("35332e"), Color("565349")],  # 1 sidewalk — warm concrete
+	[Color("222226"), Color("3b3b41")],  # 2 secondary road
+	[Color("272420"), Color("423e35")],  # 3 side street — worn mix
+	[Color("2a2a2d"), Color("45454a")],  # 4 parking lot
+	[Color("46422e"), Color("6e684a")],  # 5 yard — dead-grass khaki
+	[Color("41382c"), Color("5f5343")],  # 6 bare ground — dirt
+	[Color("3a3228"), Color("584a3b")],  # 7 dirt road
+	[Color("363d2a"), Color("535e3d")],  # 8 vegetation — olive
+	[Color("2c2823"), Color("494339")],  # 9 rubble
+	[Color("373226"), Color("514a39")],  # 10 fence
+]
+# Posterize the ramp position into discrete steps — keeps the pixel-art
+# read instead of a smooth gradient wash.
+const RAMP_STEPS := 6
+
+# Per-cell variation: each atlas tile gets alternates (h-flip + small
+# value nudges) picked by a deterministic hash of the cell coords, so a
+# 30-cell road doesn't wallpaper one stamp. RENDER-ONLY: gameplay reads
+# atlas coords (get_tile_type_at), which alternates never change.
+const ALT_MODULATES := [Color(1, 1, 1), Color(0.94, 0.94, 0.94), Color(1.05, 1.05, 1.05), Color(0.97, 0.97, 0.97)]
+const ALT_FLIPS := [false, true, false, true]
+
 
 func _ready() -> void:
 	add_to_group("ground_tiles")
@@ -68,10 +101,13 @@ func get_tile_type_at(world_pos: Vector2) -> int:
 
 func apply_tile_grid(grid: PackedByteArray) -> void:
 	# Paint the entire 192x192 tile map from a TownPlanner-provided grid.
+	# Alternate choice is a deterministic coordinate hash (same picture on
+	# every client/run) — pure anti-wallpaper variation.
 	for x in range(MAP_TILES):
 		for y in range(MAP_TILES):
 			var t: int = grid[x + y * MAP_TILES]
-			set_cell(Vector2i(x, y), 0, Vector2i(t, 0))
+			var h: int = ((x * 73856093) ^ (y * 19349663)) & 0x7FFFFFFF
+			set_cell(Vector2i(x, y), 0, Vector2i(t, 0), h % ALT_MODULATES.size())
 
 
 func _build_tileset() -> void:
@@ -88,6 +124,21 @@ func _build_tileset() -> void:
 	for i in range(count):
 		var x_offset: int = i * TILE_W
 		var src_img: Image = _load_tile_image(i)
+		# Pre-scan: the source tile's luminance range inside the diamond,
+		# so the ramp remap can stretch whatever texture the tile has
+		# (even near-flat ones) across the full terrain ramp.
+		var lum_min: float = 1.0
+		var lum_max: float = 0.0
+		if src_img != null:
+			for px in range(TILE_W):
+				for py in range(TILE_H):
+					if abs(float(px) + 0.5 - cx) / cx + abs(float(py) + 0.5 - cy) / cy <= 1.0:
+						var c: Color = src_img.get_pixel(px, py)
+						if c.a >= 0.01:
+							var l: float = c.get_luminance()
+							lum_min = minf(lum_min, l)
+							lum_max = maxf(lum_max, l)
+		var lum_span: float = maxf(lum_max - lum_min, 0.0001)
 		for px in range(TILE_W):
 			for py in range(TILE_H):
 				var dx: float = abs(float(px) + 0.5 - cx) / cx
@@ -97,9 +148,14 @@ func _build_tileset() -> void:
 					if src_img != null:
 						pixel = src_img.get_pixel(px, py)
 						if pixel.a < 0.01:
-							pixel = TILE_COLORS[i]  # transparent source pixel inside diamond — fall back to slot color
+							pixel = TILE_RAMPS[i][0].lerp(TILE_RAMPS[i][1], 0.5)
+						else:
+							# Luminance -> posterized ramp position -> terrain color.
+							var t: float = clampf((pixel.get_luminance() - lum_min) / lum_span, 0.0, 1.0)
+							t = floorf(t * float(RAMP_STEPS - 1) + 0.5) / float(RAMP_STEPS - 1)
+							pixel = TILE_RAMPS[i][0].lerp(TILE_RAMPS[i][1], t)
 					else:
-						pixel = TILE_COLORS[i]
+						pixel = TILE_RAMPS[i][0].lerp(TILE_RAMPS[i][1], 0.5)
 					img.set_pixel(x_offset + px, py, pixel)
 				else:
 					img.set_pixel(x_offset + px, py, Color(0, 0, 0, 0))
@@ -113,6 +169,13 @@ func _build_tileset() -> void:
 	src.texture_region_size = Vector2i(TILE_W, TILE_H)
 	for i in range(count):
 		src.create_tile(Vector2i(i, 0))
+		# Alternates 1..N-1 (0 is the base tile): h-flips + value nudges
+		# for per-cell variation. Iso diamonds mirror cleanly.
+		for a in range(1, ALT_MODULATES.size()):
+			var alt_id: int = src.create_alternative_tile(Vector2i(i, 0))
+			var td: TileData = src.get_tile_data(Vector2i(i, 0), alt_id)
+			td.flip_h = ALT_FLIPS[a]
+			td.modulate = ALT_MODULATES[a]
 	ts.add_source(src, 0)
 	tile_set = ts
 

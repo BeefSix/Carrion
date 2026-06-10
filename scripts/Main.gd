@@ -154,6 +154,14 @@ var _town_data: Dictionary = {}
 
 
 func _ready() -> void:
+	# Global color grade ("skin the maps" pass, 2026-06-11): one subtle
+	# CanvasModulate glues tiles, buildings, units, and props into a single
+	# bleak register — the cheapest "looks like one game" lever there is.
+	# World canvas only; the HUD lives on its own CanvasLayer, unaffected.
+	# RENDER-ONLY.
+	var grade := CanvasModulate.new()
+	grade.color = Color(0.93, 0.92, 0.89)
+	add_child(grade)
 	# --replay=<path> overrides everything: load recorded JSONL, seed SimRng
 	# from the header, apply the recorded town snapshot. Done BEFORE
 	# reset_match so the override seed survives, and BEFORE map planning so
