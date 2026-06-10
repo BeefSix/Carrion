@@ -34,7 +34,7 @@ static func build(map_name: String) -> Dictionary:
 	rng.seed = RECIPE_SEED
 	var grid := PackedByteArray()
 	grid.resize(GRID * GRID)
-	var out := {"tile_grid": grid, "lootables": [], "scenery": []}
+	var out := {"tile_grid": grid, "lootables": [], "scenery": [], "props": []}
 	match map_name:
 		"downtown":
 			_build_downtown(out, rng)
@@ -44,7 +44,57 @@ static func build(map_name: String) -> Dictionary:
 			_build_orchard(out, rng)
 		_:
 			return {}
+	_scatter_props(out, rng, map_name)
 	return out
+
+
+# Prop scatter (2026-06-10): render-only doodads keyed to the tile they
+# stand on, rolled from the same fixed-seed rng AFTER layout so the grid
+# is readable. {tile_id: [[chance, [kinds...]], ...]} per map. Kinds map
+# to textures in Main.PROP_TEXTURES. Spawn clear radius respected.
+const PROP_TABLES := {
+	"downtown": {
+		0: [[0.012, ["car"]]],                                 # main road: wrecks
+		2: [[0.010, ["car"]]],                                 # avenue
+		1: [[0.010, ["lamp", "hydrant", "mailbox", "cone"]]],  # sidewalk furniture
+		4: [[0.020, ["bench", "cart", "dumpster", "barrel"]]], # plazas
+		9: [[0.030, ["brickpile", "pallet"]]],                 # rubble lots
+	},
+	"terrace": {
+		3: [[0.008, ["car"]]],                                 # lanes: parked wrecks
+		2: [[0.010, ["car", "cone"]]],
+		1: [[0.008, ["lamp", "mailbox", "hydrant"]]],
+		5: [[0.006, ["tree", "pallet"]]],                      # yards
+		8: [[0.020, ["bench", "tree"]]],                       # the park
+		9: [[0.030, ["brickpile", "dumpster"]]],
+	},
+	"orchard": {
+		8: [[0.005, ["tree"]]],                                # fields: dead orchard
+		5: [[0.008, ["tree", "barrel"]]],
+		7: [[0.008, ["car", "pallet"]]],                       # dirt drives
+		2: [[0.008, ["car"]]],
+		9: [[0.025, ["brickpile", "barrel"]]],
+	},
+}
+
+
+static func _scatter_props(out: Dictionary, rng: RandomNumberGenerator, map_name: String) -> void:
+	var table: Dictionary = PROP_TABLES.get(map_name, {})
+	if table.is_empty():
+		return
+	var g: PackedByteArray = out["tile_grid"]
+	for ty in range(2, GRID - 2):
+		for tx in range(2, GRID - 2):
+			var rules = table.get(g[ty * GRID + tx])
+			if rules == null or _near_spawn(tx, ty):
+				continue
+			for rule in rules:
+				if rng.randf() < rule[0]:
+					var kinds: Array = rule[1]
+					var kind: String = kinds[rng.randi_range(0, kinds.size() - 1)]
+					var jitter := Vector2(rng.randf_range(-10.0, 10.0), rng.randf_range(-10.0, 10.0))
+					out["props"].append({"pos": _world(tx, ty) + jitter, "kind": kind})
+					break
 
 
 # ---------------------------------------------------------------- helpers

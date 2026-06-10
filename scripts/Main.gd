@@ -719,6 +719,23 @@ func _spawn_lootables() -> void:
 
 
 const SCENERY_SCENE := preload("res://scenes/buildings/SceneryBuilding.tscn")
+const PROP_SCRIPT := preload("res://scripts/Prop.gd")
+# Doodad textures (assets/props, generated 2026-06-09). Render-only —
+# see Prop.gd. Keys match MapRecipes.PROP_TABLES kinds.
+const PROP_TEXTURES := {
+	"car": preload("res://assets/props/abandoned_car.png"),
+	"tree": preload("res://assets/props/dead_tree.png"),
+	"dumpster": preload("res://assets/props/dumpster.png"),
+	"barrel": preload("res://assets/props/oil_barrel.png"),
+	"cart": preload("res://assets/props/shopping_cart.png"),
+	"lamp": preload("res://assets/props/lamp_post.png"),
+	"bench": preload("res://assets/props/park_bench.png"),
+	"cone": preload("res://assets/props/traffic_cone.png"),
+	"hydrant": preload("res://assets/props/fire_hydrant.png"),
+	"mailbox": preload("res://assets/props/mailbox.png"),
+	"pallet": preload("res://assets/props/wood_pallet.png"),
+	"brickpile": preload("res://assets/props/brick_pile.png"),
+}
 
 
 func _spawn_scenery() -> void:
@@ -728,3 +745,17 @@ func _spawn_scenery() -> void:
 		b.position = entry["pos"]
 		b.neighborhood_type = entry["type"]
 		add_child(b)
+	_spawn_props()
+
+
+func _spawn_props() -> void:
+	# Render-only doodads from the recipe's deterministic scatter.
+	for entry in _town_data.get("props", []):
+		var tex: Texture2D = PROP_TEXTURES.get(entry["kind"])
+		if tex == null:
+			continue
+		var prop := Node2D.new()
+		prop.set_script(PROP_SCRIPT)
+		prop.position = entry["pos"]
+		prop.texture = tex
+		add_child(prop)
