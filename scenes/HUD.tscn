@@ -75,7 +75,7 @@ anchor_bottom = 1.0
 offset_left = 16.0
 offset_top = 72.0
 offset_right = 256.0
-offset_bottom = -16.0
+offset_bottom = -196.0
 script = ExtResource("2_sidebar")
 
 [node name="VBox" type="VBoxContainer" parent="SquadSidebar"]

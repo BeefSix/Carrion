@@ -82,8 +82,9 @@ func _init_toast() -> void:
 	_toast_label.anchor_bottom = 1.0
 	_toast_label.offset_left = -300.0
 	_toast_label.offset_right = 300.0
-	_toast_label.offset_top = -100.0
-	_toast_label.offset_bottom = -64.0
+	# Sits just above the bottom console (184px tall).
+	_toast_label.offset_top = -240.0
+	_toast_label.offset_bottom = -204.0
 	_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_toast_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

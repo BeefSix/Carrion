@@ -17,6 +17,11 @@ var _selected_building = null
 var _placing_wall := false
 var _wall_builder = null
 
+# Control groups (SC core interaction, 2026-06-10): Ctrl+1..9 assigns the
+# current selection to a group; 1..9 recalls it. Dead units pruned on
+# recall. Pure UI state — never touches the sim.
+var _control_groups: Dictionary = {}  # int (1-9) -> Array of units
+
 # SC-style building placement (2026-06-10): a worker's build action puts
 # the manager in placement mode; the ghost follows the mouse with validity
 # coloring; LMB pays + spawns a ConstructionSite + orders the worker to
@@ -156,6 +161,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	# coords - so we project iso back to world at the boundary before passing
 	# to handlers.
 	if event is InputEventKey and event.pressed and not event.echo:
+		# Control groups: Ctrl+N assign, N recall (SC semantics).
+		if event.keycode >= KEY_1 and event.keycode <= KEY_9:
+			var slot: int = event.keycode - KEY_1 + 1
+			if event.ctrl_pressed:
+				_assign_control_group(slot)
+			else:
+				_recall_control_group(slot)
+			return
 		if event.keycode == KEY_X:
 			var hud := get_tree().get_first_node_in_group("hud")
 			if hud != null and hud.has_method("_apply_stance_toggle"):
@@ -204,6 +217,43 @@ func _unhandled_input(event: InputEvent) -> void:
 			_handle_right_click(_mouse_world())
 	elif event is InputEventMouseMotion and _dragging:
 		queue_redraw()
+
+
+func _assign_control_group(slot: int) -> void:
+	var members: Array = []
+	for u in _selected_units:
+		if is_instance_valid(u):
+			members.append(u)
+	if members.is_empty():
+		return
+	_control_groups[slot] = members
+	var hud := get_tree().get_first_node_in_group("hud")
+	if hud != null and hud.has_method("show_toast"):
+		hud.show_toast("Group %d: %d units" % [slot, members.size()])
+
+
+func _recall_control_group(slot: int) -> void:
+	if not _control_groups.has(slot):
+		return
+	var alive: Array = []
+	for u in _control_groups[slot]:
+		if is_instance_valid(u) and ("current_hp" not in u or u.current_hp > 0):
+			alive.append(u)
+	_control_groups[slot] = alive
+	if alive.is_empty():
+		return
+	# Adopt as the selection (same path _finalize_selection uses).
+	for u in _selected_units:
+		if is_instance_valid(u) and u.has_method("set_selected"):
+			u.set_selected(false)
+	_selected_units = alive.duplicate()
+	for u in _selected_units:
+		if u.has_method("set_selected"):
+			u.set_selected(true)
+	if _selected_building != null and is_instance_valid(_selected_building):
+		_selected_building.set_selected(false)
+	_selected_building = null
+	selection_changed.emit(_selected_units, null)
 
 
 func _mouse_world() -> Vector2:
