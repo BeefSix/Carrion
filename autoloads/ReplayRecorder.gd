@@ -168,14 +168,20 @@ func record_command(kind: String, actor, args: Dictionary, src: String) -> void:
 	_file.flush()
 
 
-func record_checksum(h: int) -> void:
+func record_checksum(h: int, parts: Dictionary = {}) -> void:
 	if not is_recording or _file == null:
 		return
-	_file.store_line(JSON.stringify({
+	var row := {
 		"tick": GameState.sim_ticks,
 		"kind": "hash",
 		"h": h,
-	}))
+	}
+	# Per-component hashes (SimChecksum.compute_checksum_parts) so a stream
+	# diff localizes WHICH subsystem diverged. Optional for compatibility.
+	for k in ["uh", "un", "bh", "zh", "sal", "rng"]:
+		if parts.has(k):
+			row[k] = parts[k]
+	_file.store_line(JSON.stringify(row))
 	_file.flush()
 
 
