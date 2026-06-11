@@ -18,6 +18,25 @@ const MAP_TILES := 192
 # If a PNG is missing or fails to load, the corresponding TILE_COLORS entry
 # below is used as a flat-color fallback (defensive at the asset boundary).
 const TILE_DIR := "res://assets/tiles/ground/"
+# HD art layer (2026-06-11, the architecture pivot: logic grid is sim
+# truth, the render layer is swappable art). When the HD rural tileset
+# is present it takes priority over the pixel packs: professionally
+# seamless, raw (no remap). Families: A dark soil, B asphalt, D planks,
+# E earth, F concrete slabs, G grass. Paths relative to HD_DIR.
+const HD_DIR := "res://assets/hd/ground/"
+const HD_PACKS := {
+	0: ["Ground B1_S.png", "Ground B2_S.png", "Ground B3_S.png", "Ground B4_S.png", "Ground B5_S.png", "Ground B6_S.png"],   # main road = asphalt
+	1: ["Ground F1_S.png", "Ground F2_S.png", "Ground F3_S.png", "Ground F4_S.png", "Ground F5_S.png"],                       # sidewalk = concrete slabs
+	2: ["Ground B7_S.png", "Ground B8_S.png", "Ground B9_S.png", "Ground B10_S.png"],                                          # secondary road
+	3: ["Ground B11_S.png", "Ground B12_S.png", "Ground B13_S.png"],                                                           # side street
+	4: ["Ground B14_S.png", "Ground B1_S.png", "Ground F5_S.png"],                                                             # parking
+	5: ["Ground G1_S.png", "Ground G2_S.png", "Ground G3_S.png", "Ground G4_S.png", "Ground G5_S.png", "Ground G6_S.png"],     # yard = grass
+	6: ["Ground E1_S.png", "Ground E2_S.png", "Ground E3_S.png", "Ground E4_S.png", "Ground E5_S.png"],                        # bare = earth
+	7: ["Ground A1_S.png", "Ground A2_S.png", "Ground A3_S.png", "Ground A4_S.png"],                                           # dirt road = dark soil
+	8: ["Ground G7_S.png", "Ground G8_S.png", "Ground G9_S.png", "Ground G10_S.png"],                                          # vegetation = deep grass
+	9: ["Ground A5_S.png", "Ground E6_S.png", "Ground A6_S.png"],                                                              # rubble = churned soil
+	10: ["Ground E7_S.png", "Ground A7_S.png"],                                                                                # fence line ground
+}
 # TerrainKit manifest (Phase 2, 2026-06-11): each terrain is a PACK of
 # variant files, not one tile. Variant 0 is the original; extra variants
 # break the wallpaper. Missing files are skipped at load (the manifest
@@ -222,10 +241,19 @@ func _build_tileset() -> void:
 	for i in range(count):
 		var y_offset: int = i * TILE_H
 		var loaded: int = 0
-		for k in range(TERRAIN_PACKS[i].size()):
-			var fname: String = TERRAIN_PACKS[i][k]
-			var raw: bool = fname.begins_with("harvest_")  # reference-true: no remap
-			var src_img: Image = _load_tile_image(TILE_DIR + fname)
+		# HD art layer takes priority when its files exist; pixel packs
+		# remain the fallback (and the lab's known baseline).
+		var pack: Array = TERRAIN_PACKS[i]
+		var dir: String = TILE_DIR
+		var hd: bool = false
+		if HD_PACKS.has(i) and FileAccess.file_exists(HD_DIR + HD_PACKS[i][0]):
+			pack = HD_PACKS[i]
+			dir = HD_DIR
+			hd = true
+		for k in range(pack.size()):
+			var fname: String = pack[k]
+			var raw: bool = hd or fname.begins_with("harvest_")  # pro/reference art: no remap
+			var src_img: Image = _load_tile_image(dir + fname)
 			if src_img == null and k > 0:
 				continue  # missing variant — skip; variant 0 missing still paints fallback
 			var x_offset: int = loaded * TILE_W
