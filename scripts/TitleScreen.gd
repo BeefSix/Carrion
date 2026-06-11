@@ -55,6 +55,7 @@ func _ready() -> void:
 		mp.add_item("Map: Downtown (city)")
 		mp.add_item("Map: Terrace Row (row homes)")
 		mp.add_item("Map: Orchard Sprawl (loose suburb)")
+		mp.add_item("Map: Willow Creek (IMAGE)")
 	# Opponent picker (every faction wired in, 2026-06-11).
 	if has_node("VBox/OpponentPicker"):
 		var op: OptionButton = $VBox/OpponentPicker
@@ -85,7 +86,9 @@ func _start(faction: int) -> void:
 	# map recipes instead. custom_map_path stays as dormant plumbing.)
 	GameState.custom_map_path = ""
 	if has_node("VBox/MapPicker"):
-		GameState.map_recipe = ["", "downtown", "terrace", "orchard"][$VBox/MapPicker.selected]
+		var map_idx: int = $VBox/MapPicker.selected
+		GameState.map_recipe = ["", "downtown", "terrace", "orchard", ""][map_idx]
+		GameState.image_map = "willow_creek" if map_idx == 4 else ""
 	if has_node("VBox/OpponentPicker"):
 		GameState.ai_faction = [GameState.Faction.MILITARY, GameState.Faction.TRIBAL, GameState.Faction.SURVIVOR][$VBox/OpponentPicker.selected]
 	get_tree().change_scene_to_file("res://scenes/Main.tscn")

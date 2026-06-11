@@ -33,6 +33,9 @@ var map_recipe: String = ""
 # AI opponent faction for normal play (title-screen Opponent picker,
 # 2026-06-11). Lab --matchup overrides per-controller and ignores this.
 var ai_faction: int = Faction.MILITARY
+# Image-first map name ("" = off). assets/maps/<name>.png + .json —
+# Matt-generated map images as the literal world (2026-06-11 pivot).
+var image_map: String = ""
 
 # Match-scoped seed picked in reset_match(). Stored so MatchStats can log it
 # in the JSONL header and so future deterministic replays can reuse it.

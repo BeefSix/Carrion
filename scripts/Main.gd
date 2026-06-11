@@ -206,10 +206,14 @@ func _ready() -> void:
 	for arg in user_args:
 		if arg.begins_with("--map="):
 			GameState.map_recipe = arg.get_slice("=", 1)
+		elif arg.begins_with("--image-map="):
+			GameState.image_map = arg.get_slice("=", 1)
 	if ReplayRecorder.is_playing:
 		# Replay: rebuild town from the recorded snapshot so playback
 		# doesn't depend on TownPlanner being deterministic across runs.
 		_apply_replay_town(ReplayRecorder.playback_town())
+	elif GameState.image_map != "":
+		_load_image_map(GameState.image_map)
 	elif GameState.map_recipe != "":
 		_town_data = preload("res://scripts/maps/MapRecipes.gd").build(GameState.map_recipe)
 		if _town_data.is_empty():
@@ -571,6 +575,8 @@ func _finalize_match(result: String, winner_faction: String) -> void:
 
 
 func _get_ai_spawn_position() -> Vector2:
+	if _image_map_active:
+		return _image_spawn_ai
 	match GameState.player_faction:
 		GameState.Faction.MILITARY:
 			return SPAWN_SE
@@ -629,7 +635,101 @@ func _spawn_edge_wanderer() -> void:
 	add_child(s)
 
 
+# Image-first map state (2026-06-11): spawns come from the annotation
+# sidecar instead of the corner constants.
+var _image_spawn_player := Vector2.ZERO
+var _image_spawn_ai := Vector2.ZERO
+var _image_map_active: bool = false
+
+const IMAGE_MAP_LOADER := preload("res://scripts/maps/ImageMapLoader.gd")
+const IMAGE_LOOTABLE_SCENE_SCRIPT := preload("res://scripts/maps/ImageLootable.gd")
+const IMAGE_BLOCKED_SCRIPT := preload("res://scripts/maps/ImageBlocked.gd")
+
+
+func _load_image_map(name: String) -> void:
+	# The painting IS the world: backdrop sprite in iso screen space,
+	# annotations inverse-projected into gameplay. RENDER side = one
+	# sprite; SIM side = ordinary Lootables/blockers at deterministic
+	# JSON-derived positions (no RNG involved at all).
+	var data: Dictionary = IMAGE_MAP_LOADER.load_map(name)
+	if data.is_empty():
+		push_warning("[ImageMap] %s failed — procedural fallback" % name)
+		var planner = TOWN_PLANNER_SCRIPT.new()
+		_town_data = planner.plan_town()
+		$GroundTiles.apply_tile_grid(_town_data["tile_grid"])
+		return
+	_image_map_active = true
+	# Backdrop (dual loader: imported resource or raw PNG pre-import).
+	var tex: Texture2D = null
+	var ipath: String = data["image_path"]
+	if ResourceLoader.exists(ipath):
+		tex = load(ipath)
+	elif FileAccess.file_exists(ipath):
+		var img := Image.new()
+		if img.load_png_from_buffer(FileAccess.get_file_as_bytes(ipath)) == OK:
+			tex = ImageTexture.create_from_image(img)
+	var img_size := Vector2(2912, 1440)
+	if tex != null:
+		img_size = tex.get_size()
+		var backdrop := Sprite2D.new()
+		backdrop.name = "ImageBackdrop"
+		backdrop.texture = tex
+		backdrop.centered = false
+		var o: Array = data.get("screen_origin", [0, 0])
+		backdrop.position = Vector2(float(o[0]), float(o[1]))
+		backdrop.z_index = -50
+		backdrop.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		add_child(backdrop)
+	# Spawns.
+	var sp: Dictionary = data.get("spawns", {})
+	var p: Array = sp.get("player", [200, 200])
+	var a: Array = sp.get("ai", [2700, 1200])
+	_image_spawn_player = IMAGE_MAP_LOADER.img_to_world(data, Vector2(float(p[0]), float(p[1])))
+	_image_spawn_ai = IMAGE_MAP_LOADER.img_to_world(data, Vector2(float(a[0]), float(a[1])))
+	# Phantom buildings: gameplay shadows of the painted structures.
+	for b in data.get("buildings", []):
+		var c := Vector2(float(b["c"][0]), float(b["c"][1]))
+		var node := StaticBody2D.new()
+		node.set_script(IMAGE_LOOTABLE_SCENE_SCRIPT)
+		node.position = IMAGE_MAP_LOADER.img_to_world(data, c)
+		node.neighborhood_type = str(b.get("type", "residential"))
+		node.is_infested = bool(b.get("infested", false))
+		# Footprint: world square sized to the visual base width (the nav
+		# polygon below carries the exact shape).
+		var side: float = float(b.get("w", 140)) * 0.45
+		node.size_pixels = Vector2(side, side)
+		node.nav_poly_world = IMAGE_MAP_LOADER.rect_world_poly(data, c, float(b.get("w", 140)), float(b.get("h", 100)))
+		var shape := CollisionShape2D.new()
+		shape.name = "CollisionShape"  # Lootable._ready resolves $CollisionShape
+		var rect := RectangleShape2D.new()
+		rect.size = node.size_pixels
+		shape.shape = rect
+		node.add_child(shape)
+		add_child(node)
+	# Non-building obstacles + the boundary fence.
+	for blk in data.get("blocked", []):
+		var bc := Vector2(float(blk["c"][0]), float(blk["c"][1]))
+		_spawn_image_blocker(IMAGE_MAP_LOADER.img_to_world(data, bc), IMAGE_MAP_LOADER.rect_world_poly(data, bc, float(blk.get("w", 100)), float(blk.get("h", 100))), float(blk.get("w", 100)) * 0.45)
+	for poly in IMAGE_MAP_LOADER.boundary_polys(data, img_size.x, img_size.y):
+		var center := Vector2.ZERO
+		for pt in poly:
+			center += pt
+		center /= float(poly.size())
+		_spawn_image_blocker(center, poly, 48.0)
+
+
+func _spawn_image_blocker(world_pos: Vector2, poly: PackedVector2Array, side: float) -> void:
+	var node := StaticBody2D.new()
+	node.set_script(IMAGE_BLOCKED_SCRIPT)
+	node.position = world_pos
+	node.size_pixels = Vector2(side, side)
+	node.nav_poly_world = poly
+	add_child(node)
+
+
 func _get_spawn_position() -> Vector2:
+	if _image_map_active:
+		return _image_spawn_player
 	match GameState.player_faction:
 		GameState.Faction.MILITARY:
 			return SPAWN_NW
@@ -683,6 +783,11 @@ func _rebake_navigation() -> void:
 			continue
 		obstacles[l.get_instance_id()] = l
 	for b in obstacles.values():
+		# Image-map nodes carry an exact inverse-projected footprint
+		# polygon — matches the painted base instead of an axis box.
+		if "nav_poly_world" in b and b.nav_poly_world.size() >= 3:
+			source.add_obstruction_outline(b.nav_poly_world)
+			continue
 		if not ("size_pixels" in b):
 			continue
 		var half: Vector2 = b.size_pixels * 0.5

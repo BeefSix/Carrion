@@ -1,0 +1,32 @@
+{
+	"comment": "Willow Creek - first image-first map (Matt's generated image, 2026-06-11). All coords are IMAGE PIXELS; the loader inverse-projects through screen_origin.",
+	"screen_origin": [-1456, 2276],
+	"spawns": { "player": [364, 461], "ai": [1432, 1238] },
+	"buildings": [
+		{ "c": [1407, 718], "w": 388, "h": 136, "type": "commercial", "infested": false },
+		{ "c": [1684, 927], "w": 184, "h": 107, "type": "commercial", "infested": false },
+		{ "c": [548, 82], "w": 146, "h": 97, "type": "residential", "infested": false },
+		{ "c": [874, 131], "w": 146, "h": 97, "type": "residential", "infested": false },
+		{ "c": [1179, 63], "w": 146, "h": 97, "type": "residential", "infested": false },
+		{ "c": [1504, 160], "w": 146, "h": 97, "type": "residential", "infested": false },
+		{ "c": [1961, 228], "w": 146, "h": 97, "type": "residential", "infested": false },
+		{ "c": [2208, 306], "w": 146, "h": 97, "type": "residential", "infested": false },
+		{ "c": [2402, 461], "w": 146, "h": 97, "type": "residential", "infested": false },
+		{ "c": [330, 194], "w": 146, "h": 97, "type": "residential", "infested": false },
+		{ "c": [1611, 446], "w": 146, "h": 97, "type": "residential", "infested": false },
+		{ "c": [2063, 694], "w": 146, "h": 97, "type": "residential", "infested": false },
+		{ "c": [2087, 791], "w": 146, "h": 97, "type": "residential", "infested": false },
+		{ "c": [524, 1106], "w": 146, "h": 97, "type": "residential", "infested": false },
+		{ "c": [694, 1150], "w": 146, "h": 97, "type": "residential", "infested": false },
+		{ "c": [1004, 1252], "w": 146, "h": 97, "type": "residential", "infested": false },
+		{ "c": [281, 1077], "w": 146, "h": 97, "type": "residential", "infested": false },
+		{ "c": [2524, 874], "w": 150, "h": 100, "type": "residential", "infested": true },
+		{ "c": [2684, 971], "w": 150, "h": 100, "type": "residential", "infested": true },
+		{ "c": [2621, 1126], "w": 150, "h": 100, "type": "residential", "infested": true },
+		{ "c": [2800, 786], "w": 150, "h": 100, "type": "residential", "infested": true },
+		{ "c": [2451, 718], "w": 150, "h": 100, "type": "residential", "infested": true }
+	],
+	"blocked": [
+		{ "c": [1907, 471], "w": 233, "h": 107 }
+	]
+}
