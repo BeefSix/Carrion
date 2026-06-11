@@ -28,4 +28,7 @@ func _ready() -> void:
 		bg.resize(bg.get_width() * 4, bg.get_height() * 4, Image.INTERPOLATE_NEAREST)
 		bg.save_png("res://fringe_dump.png")
 		print("FRINGES DUMPED")
+	# Prefab bakes (compositor gate).
+	preload("res://scripts/maps/PrefabCompositor.gd").dump_all(ProjectSettings.globalize_path("res://"))
+	print("PREFABS DUMPED")
 	get_tree().quit(0)
