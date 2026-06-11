@@ -388,6 +388,13 @@ func _install_image_background(image_path: String) -> void:
 		$GroundTiles.modulate = Color(1, 1, 1, 0.0)  # invisible but still queryable for get_tile_type_at
 
 
+func _faction_key(faction: int) -> String:
+	match faction:
+		GameState.Faction.TRIBAL: return "tribal"
+		GameState.Faction.SURVIVOR: return "survivor"
+		_: return "military"
+
+
 func _matchup_faction(letter: String) -> int:
 	# M = Military, T = Tribal, S = Survivor (lab matchup codes).
 	match letter:
@@ -668,24 +675,43 @@ func _load_image_map(name: String) -> void:
 		var img := Image.new()
 		if img.load_png_from_buffer(FileAccess.get_file_as_bytes(ipath)) == OK:
 			tex = ImageTexture.create_from_image(img)
+	var rs: float = float(data.get("render_scale", 1.0))
 	var img_size := Vector2(2912, 1440)
 	if tex != null:
-		img_size = tex.get_size()
+		img_size = tex.get_size() * rs  # render-pixel extent
 		var backdrop := Sprite2D.new()
 		backdrop.name = "ImageBackdrop"
 		backdrop.texture = tex
 		backdrop.centered = false
 		var o: Array = data.get("screen_origin", [0, 0])
 		backdrop.position = Vector2(float(o[0]), float(o[1]))
+		backdrop.scale = Vector2(rs, rs)  # integer nearest upscale = crisp pixel art
 		backdrop.z_index = -50
 		backdrop.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		add_child(backdrop)
-	# Spawns.
+	# Spawns: faction-keyed when the pipeline schema provides territories
+	# (player and AI each spawn at THEIR faction's painted compound),
+	# generic player/ai pair otherwise.
+	var by_faction: Dictionary = data.get("spawns_by_faction", {})
 	var sp: Dictionary = data.get("spawns", {})
-	var p: Array = sp.get("player", [200, 200])
-	var a: Array = sp.get("ai", [2700, 1200])
+	var p: Array = by_faction.get(_faction_key(GameState.player_faction), sp.get("player", [200, 200]))
+	var a: Array = by_faction.get(_faction_key(GameState.ai_faction), sp.get("ai", [2700, 1200]))
 	_image_spawn_player = IMAGE_MAP_LOADER.img_to_world(data, Vector2(float(p[0]), float(p[1])))
 	_image_spawn_ai = IMAGE_MAP_LOADER.img_to_world(data, Vector2(float(a[0]), float(a[1])))
+	if _image_spawn_player.distance_to(_image_spawn_ai) < 100.0:
+		# Same faction both sides: shove the AI to the tribal/military alt.
+		var alt: Array = by_faction.get("tribal" if _faction_key(GameState.player_faction) != "tribal" else "military", a)
+		_image_spawn_ai = IMAGE_MAP_LOADER.img_to_world(data, Vector2(float(alt[0]), float(alt[1])))
+	# Impassable terrain + UI exclusions from the pipeline schema.
+	for poly in data.get("blocked_polys", []):
+		var wpts := PackedVector2Array()
+		var centroid := Vector2.ZERO
+		for pt in poly:
+			var wp: Vector2 = IMAGE_MAP_LOADER.img_to_world(data, Vector2(float(pt[0]), float(pt[1])))
+			wpts.append(wp)
+			centroid += wp
+		if wpts.size() >= 3:
+			_spawn_image_blocker(centroid / float(wpts.size()), wpts, 48.0)
 	# Phantom buildings: gameplay shadows of the painted structures.
 	for b in data.get("buildings", []):
 		var c := Vector2(float(b["c"][0]), float(b["c"][1]))
@@ -694,6 +720,8 @@ func _load_image_map(name: String) -> void:
 		node.position = IMAGE_MAP_LOADER.img_to_world(data, c)
 		node.neighborhood_type = str(b.get("type", "residential"))
 		node.is_infested = bool(b.get("infested", false))
+		if b.has("hp"):
+			node.max_hp = int(b["hp"])
 		# Footprint: world square sized to the visual base width (the nav
 		# polygon below carries the exact shape).
 		var side: float = float(b.get("w", 140)) * 0.45
